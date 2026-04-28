@@ -1,0 +1,1044 @@
+{
+  "vehicles": [
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-34",
+      "vehicleTypeID": 0,
+      "compactDescr_hex": "010000000000cb000300000000000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-85",
+      "vehicleTypeID": 1,
+      "compactDescr_hex": "010102000000cb000300020035000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "IS",
+      "vehicleTypeID": 2,
+      "compactDescr_hex": "010204000300cc00080003000b000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "BT-7",
+      "vehicleTypeID": 3,
+      "compactDescr_hex": "010306000600c9000200050013000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "BT-2",
+      "vehicleTypeID": 4,
+      "compactDescr_hex": "01040a000900c9000100090017000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "KV",
+      "vehicleTypeID": 5,
+      "compactDescr_hex": "01050e000200cb0004000c001b000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-28",
+      "vehicleTypeID": 6,
+      "compactDescr_hex": "010608000900cb000200070015000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "S-51",
+      "vehicleTypeID": 7,
+      "compactDescr_hex": "01070c000a00cb0004000b0019000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "A-20",
+      "vehicleTypeID": 8,
+      "compactDescr_hex": "010810000000ca0003000e0013000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-152",
+      "vehicleTypeID": 9,
+      "compactDescr_hex": "010912000a00cc000400100020000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-34-85",
+      "vehicleTypeID": 10,
+      "compactDescr_hex": "010a14000100cb000300110006000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "KV-1s",
+      "vehicleTypeID": 11,
+      "compactDescr_hex": "010b16000a00cb00040013001b000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-46",
+      "vehicleTypeID": 12,
+      "compactDescr_hex": "010c18000b00c9000200150013000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "MS-1",
+      "vehicleTypeID": 13,
+      "compactDescr_hex": "010d1a000e00c9000000170017000000",
+      "crewSize": 2
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-100",
+      "vehicleTypeID": 14,
+      "compactDescr_hex": "010e1c000100cc000300190007000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-18",
+      "vehicleTypeID": 15,
+      "compactDescr_hex": "010f1e000e00c90001001a0028000000",
+      "crewSize": 2
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-14",
+      "vehicleTypeID": 16,
+      "compactDescr_hex": "011020000a00cb0004001b0019000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-44",
+      "vehicleTypeID": 17,
+      "compactDescr_hex": "011122001100cc0005001c0023000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-26",
+      "vehicleTypeID": 18,
+      "compactDescr_hex": "011224001300c90001001e0010000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-5",
+      "vehicleTypeID": 19,
+      "compactDescr_hex": "011326001300c900020020002a000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "AT-1",
+      "vehicleTypeID": 20,
+      "compactDescr_hex": "011428001300c900010021002f000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "IS-3",
+      "vehicleTypeID": 21,
+      "compactDescr_hex": "01152a001600cc00080022000e000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-8",
+      "vehicleTypeID": 22,
+      "compactDescr_hex": "01162c002300cb000400240037000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "KV-3",
+      "vehicleTypeID": 23,
+      "compactDescr_hex": "01172e000400cb000400250039000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "IS-4",
+      "vehicleTypeID": 24,
+      "compactDescr_hex": "011830001600cd00080027000f000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-76",
+      "vehicleTypeID": 25,
+      "compactDescr_hex": "011932001800ca000300290034000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-43",
+      "vehicleTypeID": 26,
+      "compactDescr_hex": "011a34000c00cb0003002a0023000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "GAZ-74b",
+      "vehicleTypeID": 27,
+      "compactDescr_hex": "011b38001b00ca0003002e003d000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "IS-7",
+      "vehicleTypeID": 28,
+      "compactDescr_hex": "011c3a002400cd000b002f003a000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "ISU-152",
+      "vehicleTypeID": 29,
+      "compactDescr_hex": "011d3c000300cc000400310021000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "SU-26",
+      "vehicleTypeID": 30,
+      "compactDescr_hex": "011e41001300c9000200350028000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-54",
+      "vehicleTypeID": 31,
+      "compactDescr_hex": "011f45001200cd00050038004c000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "Object_704",
+      "vehicleTypeID": 32,
+      "compactDescr_hex": "012047001600cc0008003a0050000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "Object_212",
+      "vehicleTypeID": 33,
+      "compactDescr_hex": "012149002d00cd0004003b0019000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "Object_261",
+      "vehicleTypeID": 34,
+      "compactDescr_hex": "01224b001600cd0004003c0051000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "KV-13",
+      "vehicleTypeID": 35,
+      "compactDescr_hex": "01234d000a00cc0008003d001b000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "KV-220",
+      "vehicleTypeID": 200,
+      "compactDescr_hex": "01c836001d00cb0011002c004a000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "Matilda_II_LL",
+      "vehicleTypeID": 201,
+      "compactDescr_hex": "01c937001f00cb000a002d0041000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "Churchill_LL",
+      "vehicleTypeID": 202,
+      "compactDescr_hex": "01ca3b002500cb000a00300045000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "BT-SV",
+      "vehicleTypeID": 204,
+      "compactDescr_hex": "01cc3f002b00ca001200330048000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "Valentine_LL",
+      "vehicleTypeID": 205,
+      "compactDescr_hex": "01cd40002700cb000a00340048000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "M3_Stuart_LL",
+      "vehicleTypeID": 206,
+      "compactDescr_hex": "01ce43002900ca000f00360049000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "A-32",
+      "vehicleTypeID": 207,
+      "compactDescr_hex": "01cf44002a00cb00100037004b000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "KV-5",
+      "vehicleTypeID": 208,
+      "compactDescr_hex": "01d04f003100cc0014003f0052000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "ussr",
+      "nationID": 0,
+      "name": "T-127",
+      "vehicleTypeID": 209,
+      "compactDescr_hex": "01d150003200c9001200400048000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzIV",
+      "vehicleTypeID": 0,
+      "compactDescr_hex": "110000000000cb000200000000000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Hummel",
+      "vehicleTypeID": 1,
+      "compactDescr_hex": "110102000100cc000200020006000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzVI",
+      "vehicleTypeID": 2,
+      "compactDescr_hex": "110204000400cd000400030004000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Pz35t",
+      "vehicleTypeID": 3,
+      "compactDescr_hex": "110306000700c9000b0005000b000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "StuGIII",
+      "vehicleTypeID": 4,
+      "compactDescr_hex": "110408000000cb000200070011000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzV",
+      "vehicleTypeID": 5,
+      "compactDescr_hex": "11050a000400cc000400080004000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "JagdPzIV",
+      "vehicleTypeID": 6,
+      "compactDescr_hex": "11060e000000cc0002000b0012000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Hetzer",
+      "vehicleTypeID": 7,
+      "compactDescr_hex": "11070c000900ca000b000a0011000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzII",
+      "vehicleTypeID": 8,
+      "compactDescr_hex": "110810000c00c90001000c000a000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "VK3601H",
+      "vehicleTypeID": 9,
+      "compactDescr_hex": "110912000400cc0002000e0003000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "VK3001H",
+      "vehicleTypeID": 10,
+      "compactDescr_hex": "110a14000300cb000200100002000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Bison_I",
+      "vehicleTypeID": 11,
+      "compactDescr_hex": "110b16001000c9000100120018000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Ltraktor",
+      "vehicleTypeID": 12,
+      "compactDescr_hex": "110c18000f00c9000000130016000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Pz38t",
+      "vehicleTypeID": 13,
+      "compactDescr_hex": "110d1a000a00ca000b0015000c000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PanzerJager_I",
+      "vehicleTypeID": 14,
+      "compactDescr_hex": "110e1c001100c900010017001a000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "JagdPanther",
+      "vehicleTypeID": 15,
+      "compactDescr_hex": "110f1e000400cc000400180013000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "VK3002DB",
+      "vehicleTypeID": 16,
+      "compactDescr_hex": "111020000500cc000200190003000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzIII",
+      "vehicleTypeID": 17,
+      "compactDescr_hex": "111122000000ca0002001b0016000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Sturmpanzer_II",
+      "vehicleTypeID": 18,
+      "compactDescr_hex": "111224000c00c90002001d0018000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzIII_A",
+      "vehicleTypeID": 19,
+      "compactDescr_hex": "111326000000ca0002001e0016000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzVIB_Tiger_II",
+      "vehicleTypeID": 20,
+      "compactDescr_hex": "111428000500cd000400200009000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "VK1602",
+      "vehicleTypeID": 21,
+      "compactDescr_hex": "11152a000100ca000200220016000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Grille",
+      "vehicleTypeID": 22,
+      "compactDescr_hex": "11162c000900cb000b00230018000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Wespe",
+      "vehicleTypeID": 23,
+      "compactDescr_hex": "11172f000c00ca000200250021000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzII_Luchs",
+      "vehicleTypeID": 24,
+      "compactDescr_hex": "111831000d00ca000200260015000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzIII_IV",
+      "vehicleTypeID": 25,
+      "compactDescr_hex": "111935000100cb0002002a0002000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "G20_Marder_II",
+      "vehicleTypeID": 26,
+      "compactDescr_hex": "111a37000c00ca0001002c001b000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Maus",
+      "vehicleTypeID": 27,
+      "compactDescr_hex": "111b39001900cd000d002d0025000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "VK3001P",
+      "vehicleTypeID": 28,
+      "compactDescr_hex": "111c3c001d00cb000200300003000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "VK4502P",
+      "vehicleTypeID": 29,
+      "compactDescr_hex": "111d3e001e00cd000400320009000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Ferdinand",
+      "vehicleTypeID": 30,
+      "compactDescr_hex": "111e42001e00cd00040036001d000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "JagdTiger",
+      "vehicleTypeID": 31,
+      "compactDescr_hex": "111f4a000500cd0004003b0028000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Pz38_NA",
+      "vehicleTypeID": 32,
+      "compactDescr_hex": "11204d001500ca000b003d000c000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Panther_II",
+      "vehicleTypeID": 33,
+      "compactDescr_hex": "11214f000600cd0004003f0004000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "G_Tiger",
+      "vehicleTypeID": 34,
+      "compactDescr_hex": "112251000400cd000200410030000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "G_Panther",
+      "vehicleTypeID": 35,
+      "compactDescr_hex": "112353002500cc000200420007000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "G_E",
+      "vehicleTypeID": 36,
+      "compactDescr_hex": "112456000400cd000200440034000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzV_PzIV",
+      "vehicleTypeID": 201,
+      "compactDescr_hex": "11c933002200cb000f0028002b000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzII_J",
+      "vehicleTypeID": 202,
+      "compactDescr_hex": "11ca34001600ca00030029002c000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "S35_captured",
+      "vehicleTypeID": 203,
+      "compactDescr_hex": "11cb3a001b00ca000e002e0026000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "B-1bis_captured",
+      "vehicleTypeID": 204,
+      "compactDescr_hex": "11cc3b001c00ca000e002f0026000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "H39_captured",
+      "vehicleTypeID": 205,
+      "compactDescr_hex": "11cd40002100c9000e00340027000000",
+      "crewSize": 2
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "PzV_PzIV_ausf_Alfa",
+      "vehicleTypeID": 211,
+      "compactDescr_hex": "11d34c002200cb000f003c002b000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "germany",
+      "nationID": 1,
+      "name": "Lowe",
+      "vehicleTypeID": 212,
+      "compactDescr_hex": "11d455002800cd001000430033000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T14",
+      "vehicleTypeID": 0,
+      "compactDescr_hex": "210000002000cb00000000001e000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M3_Stuart",
+      "vehicleTypeID": 1,
+      "compactDescr_hex": "210101000200ca000400010001000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T1_Cunningham",
+      "vehicleTypeID": 2,
+      "compactDescr_hex": "210203000400c9000300030004000000",
+      "crewSize": 2
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M6",
+      "vehicleTypeID": 3,
+      "compactDescr_hex": "210306000b00cb000800060007000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M4_Sherman",
+      "vehicleTypeID": 4,
+      "compactDescr_hex": "210408000c00cb000800080000000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M4A3E8_Sherman",
+      "vehicleTypeID": 5,
+      "compactDescr_hex": "21050a000d00cb0008000a0000000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T20",
+      "vehicleTypeID": 6,
+      "compactDescr_hex": "21060c000f00cb0008000c0008000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M2_lt",
+      "vehicleTypeID": 7,
+      "compactDescr_hex": "21070e001100c90004000e000c000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T57",
+      "vehicleTypeID": 8,
+      "compactDescr_hex": "210810000200ca00040010000d000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T23",
+      "vehicleTypeID": 9,
+      "compactDescr_hex": "210912001000cc000800110008000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T30",
+      "vehicleTypeID": 10,
+      "compactDescr_hex": "210a15001700cd000b0014000f000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T34_hvy",
+      "vehicleTypeID": 11,
+      "compactDescr_hex": "210b16001600cd000800150010000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M3_Grant",
+      "vehicleTypeID": 12,
+      "compactDescr_hex": "210c18001800cb00040025001c000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T1_hvy",
+      "vehicleTypeID": 13,
+      "compactDescr_hex": "210d1a000a00cb000800190007000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M7_Priest",
+      "vehicleTypeID": 14,
+      "compactDescr_hex": "210e1c000c00cb0008001b0013000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T29",
+      "vehicleTypeID": 15,
+      "compactDescr_hex": "210f1e000000cd0008001c0009000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M41",
+      "vehicleTypeID": 16,
+      "compactDescr_hex": "211020001a00cb000c001e0015000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T32",
+      "vehicleTypeID": 17,
+      "compactDescr_hex": "211122000000cd0008001f0010000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M37",
+      "vehicleTypeID": 18,
+      "compactDescr_hex": "211224001a00ca000100210013000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M2_med",
+      "vehicleTypeID": 19,
+      "compactDescr_hex": "211326001b00cb000400220002000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M5_Stuart",
+      "vehicleTypeID": 20,
+      "compactDescr_hex": "211429000300ca000800260001000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M7_med",
+      "vehicleTypeID": 21,
+      "compactDescr_hex": "21152b000c00cb000800280003000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T2_med",
+      "vehicleTypeID": 22,
+      "compactDescr_hex": "21162d002100c90004002a0005000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "Pershing",
+      "vehicleTypeID": 23,
+      "compactDescr_hex": "21172f001000cc0008002c0008000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T18",
+      "vehicleTypeID": 24,
+      "compactDescr_hex": "211831000200c90004002e0020000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T82",
+      "vehicleTypeID": 25,
+      "compactDescr_hex": "211933000200c90004002f0021000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M10_Wolverine",
+      "vehicleTypeID": 27,
+      "compactDescr_hex": "211b37000c00cc000800310025000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M36_Slagger",
+      "vehicleTypeID": 28,
+      "compactDescr_hex": "211c3a000c00cc000800340027000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M40M43",
+      "vehicleTypeID": 29,
+      "compactDescr_hex": "211d3c000c00cd000c0036002a000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T40",
+      "vehicleTypeID": 30,
+      "compactDescr_hex": "211e3e001800cb000400370021000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M12",
+      "vehicleTypeID": 31,
+      "compactDescr_hex": "211f40001800cb000c00380016000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T28",
+      "vehicleTypeID": 32,
+      "compactDescr_hex": "212042002500cc00080039002c000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T92",
+      "vehicleTypeID": 33,
+      "compactDescr_hex": "212144002500cd000c003a002f000000",
+      "crewSize": 6
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T95",
+      "vehicleTypeID": 34,
+      "compactDescr_hex": "212246002500cc0008003b002d000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M46_Patton",
+      "vehicleTypeID": 35,
+      "compactDescr_hex": "21234a001000cd0008003e000a000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T25_AT",
+      "vehicleTypeID": 36,
+      "compactDescr_hex": "21244c001000cc000800400029000000",
+      "crewSize": 4
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "T2_lt",
+      "vehicleTypeID": 201,
+      "compactDescr_hex": "21c905000900c9000f0005001b000000",
+      "crewSize": 3
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "Ram-II",
+      "vehicleTypeID": 202,
+      "compactDescr_hex": "21ca14002200cb000a0013001d000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M4A2E4",
+      "vehicleTypeID": 204,
+      "compactDescr_hex": "21cc39002b00cb00000033001e000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M6A2E1",
+      "vehicleTypeID": 205,
+      "compactDescr_hex": "21cd48002900cd0000003c0032000000",
+      "crewSize": 5
+    },
+    {
+      "nation": "usa",
+      "nationID": 2,
+      "name": "M22_Locust",
+      "vehicleTypeID": 206,
+      "compactDescr_hex": "21ce49002a00ca0010003d0033000000",
+      "crewSize": 3
+    }
+  ]
+}

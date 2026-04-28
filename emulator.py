@@ -309,19 +309,29 @@ ACCOUNT_ENTITY_TYPE = 0   # Account is first entity type in WoT entities list
 PLAYER_ENTITY_ID    = 1   # any non-zero EntityID for our player
 SPACE_ID            = 1   # arbitrary SpaceID for hangar
 
-# WoT 0.6.5 Account ClientMethods indexes — отримані парсером Account.def +
-# Chat.def + AccountEditor.def + TransactionUser.def (інтерфейс Chat додає
-# ОДИН client-method `onChatAction` ПЕРЕД методами Account, тому всі
-# Account-методи зміщені на +1).
-#
-#   idx=2  msgID=0x82  onCmdResponse        (INT16 reqID, INT16 resultID)
-#   idx=3  msgID=0x83  onCmdResponseExt     (INT16 reqID, INT16 resultID, STRING ext)
-#   idx=16 msgID=0x90  showGUI              (STRING ctx)
-#   idx=21 msgID=0x95  update               (STRING diff)
-ACCOUNT_SHOWGUI_MSG_ID         = 0x90
-ACCOUNT_ONCMDRESPONSE_MSG_ID   = 0x82
+# ─── Account.def ClientMethods (порядок з PackedSection парсера) ─────────
+#   idx=0  version_eu6501      (марker, 0x81)
+#   idx=1  onCmdResponse       0x82  (INT16 reqID, INT16 resultID)
+#   idx=2  onCmdResponseExt    0x83  (INT16 reqID, INT16 resultID, STRING ext)
+#   idx=3  onKickedFromServer  0x84
+#   idx=4  onEnqueued          0x85  (no args)
+#   idx=5  onEnqueueFailure    0x86  (INT8 errorCode)
+#   idx=6  onDequeued          0x87  (no args)
+#   idx=7  onArenaCreated      0x88  (no args)
+#   idx=8  onArenaJoinFailure  0x89  (INT8 errorCode)
+#   idx=12 onKickedFromQueue   0x8d  (no args)
+#   idx=13 onKickedFromArena   0x8e  (INT8 reasonCode)
+#   idx=15 showGUI             0x90  (STRING ctx)
+#   idx=20 update              0x95  (STRING diff)
+# ВАЖЛИВО: реальний msgID = 0x81 + def_index (Mercury пропускає idx=0).
+ACCOUNT_SHOWGUI_MSG_ID          = 0x90
+ACCOUNT_ONCMDRESPONSE_MSG_ID    = 0x82
 ACCOUNT_ONCMDRESPONSEEXT_MSG_ID = 0x83
-ACCOUNT_UPDATE_MSG_ID          = 0x95
+ACCOUNT_UPDATE_MSG_ID           = 0x95
+ACCOUNT_ONENQUEUED_MSG_ID       = 0x85
+ACCOUNT_ONDEQUEUED_MSG_ID       = 0x87
+ACCOUNT_ONARENACREATED_MSG_ID   = 0x88
+ACCOUNT_ONKICKEDFROMQUEUE_MSG_ID = 0x8d
 
 # Account exposed BaseMethods (client → server):
 #   idx=3 msgID=0xc3  doCmdStr      (INT16 reqID, INT16 cmd, STRING)
@@ -347,6 +357,8 @@ CMD_SYNC_SHOP    = 300      # cmd=300 → ВЕЛИКИЙ shop dict через ST
 CMD_SYNC_DOSSIERS = 600
 CMD_SET_LANGUAGE = 1000
 CMD_REQ_SERVER_STATS = 501
+CMD_ENQUEUE_FOR_ARENA = 700  # vehInvID, arenaTypeID, queueType
+CMD_DEQUEUE      = 701
 RES_SUCCESS      = 0
 RES_STREAM       = 1
 RES_CACHE        = 2
@@ -451,7 +463,8 @@ def load_all_vehicles():
     out = []
     for inv_id, v in enumerate(data['vehicles'][:MAX_VEHICLES_INLINE], start=1):
         cd = bytes.fromhex(v['compactDescr_hex'])
-        out.append((inv_id, cd, v['name']))
+        crew_size = v.get('crewSize', 4)
+        out.append((inv_id, cd, v['name'], crew_size))
     return out
 
 
@@ -488,11 +501,19 @@ def make_full_sync_pickle() -> bytes:
     veh_eqs = {}
     veh_settings = {}
     veh_lock = {}
-    for inv_id, cd, name in veh_list:
+    # CurrentVehicle.isCrewFull():
+    #   None not in vehicle.crew  AND  vehicle.crew != []
+    # Hangar.__updateTankmen ітерує `for i in range(len(crew))` і для
+    # кожного i читає `crewRoles[i]`, тому len(crew) має == crewSize.
+    # invID=0 — "поза інвентарем" tankman: Hangar шукає його в `tankmen`,
+    # не знаходить → tman=None → пропускає скіл-секцію (без крашу),
+    # АЛЕ умова isCrewFull() пройде.
+    FAKE_TANKMAN_INVID = 0
+    for inv_id, cd, name, crew_size in veh_list:
         veh_compDescr[inv_id] = cd
         veh_shellsLayout[inv_id] = {}
         veh_shells[inv_id] = []
-        veh_crew[inv_id] = []
+        veh_crew[inv_id] = [FAKE_TANKMAN_INVID] * crew_size
         veh_repair[inv_id] = (0, 1.0)        # 0 cost, full health
         veh_eqsLayout[inv_id] = [0, 0, 0]
         veh_eqs[inv_id] = [0, 0, 0]
@@ -654,10 +675,32 @@ def send_shop_stream(sock, addr, sess, req_id: int):
           f"in {len(chunks)} fragment(s)")
 
 
+def build_account_event_noargs(msg_id: int) -> bytes:
+    """Account.<event>() без аргументів — entityMessage з лише EntityID(4B)."""
+    em = struct.pack('<I', PLAYER_ENTITY_ID)
+    return msg_varlen(msg_id, em)
+
+
+def send_account_event(sock, addr, sess, msg_id: int, label: str,
+                       extra: bytes = b''):
+    """Відправляє Account entity-method (без args або з extra payload)."""
+    em = struct.pack('<I', PLAYER_ENTITY_ID) + extra
+    msg = msg_varlen(msg_id, em)
+    pkt = build_channel_packet(msg, sess, reliable=True)
+    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    try:
+        sock.sendto(pkt, addr)
+    except Exception:
+        return
+    print(f"    [>] {label}  (msgID=0x{msg_id:02x})")
+
+
 def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
     """Розгалуження за cmd:
-       - cmd=300 (CMD_SYNC_SHOP)  → stream з shop dict
-       - інші                      → одразу onCmdResponseExt(success, full_sync)"""
+       - cmd=300 (CMD_SYNC_SHOP)        → stream з shop dict
+       - cmd=700 (CMD_ENQUEUE_FOR_ARENA) → onEnqueued event (no response)
+       - cmd=701 (CMD_DEQUEUE)           → onDequeued event (no response)
+       - інші                            → onCmdResponseExt(success, full_sync)"""
     req_id, cmd = parse_doCmd_request(msg_id, payload)
     if req_id is None:
         return
@@ -665,6 +708,18 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
 
     if cmd == CMD_SYNC_SHOP:
         send_shop_stream(sock, addr, sess, req_id)
+        return
+
+    if cmd == CMD_ENQUEUE_FOR_ARENA:
+        # REQUEST_ID_NO_RESPONSE → cmd response не потрібен. Натомість шлемо
+        # entity event onEnqueued, після якого клієнт показує "У черзі...".
+        send_account_event(sock, addr, sess,
+                           ACCOUNT_ONENQUEUED_MSG_ID, "Account.onEnqueued()")
+        return
+
+    if cmd == CMD_DEQUEUE:
+        send_account_event(sock, addr, sess,
+                           ACCOUNT_ONDEQUEUED_MSG_ID, "Account.onDequeued()")
         return
 
     msg = build_oncmdrespext(req_id, RES_SUCCESS, get_sync_pickle())
