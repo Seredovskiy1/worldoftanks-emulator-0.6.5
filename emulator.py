@@ -5,6 +5,7 @@ import os
 import time
 import threading
 import pickle
+import zlib
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, Blowfish
 
@@ -330,6 +331,26 @@ ACCOUNT_UPDATE_MSG_ID          = 0x95
 #   idx=7 msgID=0xc7  doCmdIntArr   (INT16 reqID, INT16 cmd, INT32 array)
 ACCOUNT_DOCMD_MSG_IDS = {0xc3, 0xc4, 0xc5, 0xc6, 0xc7}
 
+# BigWorld native streaming (lib/connection/client_interface.hpp + common):
+#   #55 = 0x37  resourceHeader   varlen2 B  (uint16 id, STRING desc)
+#   #56 = 0x38  resourceFragment varlen2 B  (uint16 rid, uint8 seq,
+#                                             uint8 flags, raw data)
+# flags=1 → final fragment (sets DataDownload.hasLast_=true, see
+# server_connection.cpp:2168 — `pData->insert(seg, args.flags == 1)`).
+# Один fragment з flags=1 + header → onStreamComplete fires одразу.
+RESOURCE_HEADER_MSG_ID   = 0x37
+RESOURCE_FRAGMENT_MSG_ID = 0x38
+
+# WoT AccountCommands (з res/scripts/common/AccountCommands.py):
+CMD_SYNC_DATA    = 100      # cmd=100 → діфф (наш full_sync) у ext
+CMD_SYNC_SHOP    = 300      # cmd=300 → ВЕЛИКИЙ shop dict через STREAM
+CMD_SYNC_DOSSIERS = 600
+CMD_SET_LANGUAGE = 1000
+CMD_REQ_SERVER_STATS = 501
+RES_SUCCESS      = 0
+RES_STREAM       = 1
+RES_CACHE        = 2
+
 
 def bw_pack_int(value: int) -> bytes:
     if value >= 0xFF:
@@ -410,6 +431,30 @@ def parse_doCmd_request(msg_id: int, payload: bytes):
     return req_id, cmd
 
 
+MAX_VEHICLES_INLINE = 3   # BigWorld Packet::MAX_SIZE = 1472. Pickle для 10 танків
+                          # = 2545B, для 3 ≈ 1100B → влізає. Більше танків — треба
+                          # фрагментація (PACKET_FLAG_IS_FRAGMENT) або RES_STREAM.
+
+
+def load_all_vehicles():
+    """Читає _vehicles.json (генерується _dump_vehicles.py) і повертає
+    список (invID, compactDescr_bytes, name) для усіх танків гри.
+    Обмежує до MAX_VEHICLES_INLINE щоб pickle вмістився в один UDP packet."""
+    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             '_vehicles.json')
+    if not os.path.exists(json_path):
+        print(f"[!] _vehicles.json не знайдено — ангар буде порожнім")
+        return []
+    import json
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    out = []
+    for inv_id, v in enumerate(data['vehicles'][:MAX_VEHICLES_INLINE], start=1):
+        cd = bytes.fromhex(v['compactDescr_hex'])
+        out.append((inv_id, cd, v['name']))
+    return out
+
+
 def make_full_sync_pickle() -> bytes:
     """Повний (full-sync) diff для Account._update. Без 'prevRev' →
     isFullSync=True → клієнт чистить __cache і застосовує наш diff.
@@ -422,31 +467,93 @@ def make_full_sync_pickle() -> bytes:
       5=vehicleEngine, 6=vehicleFuelTank, 7=vehicleRadio, 8=tankman,
       9=optionalDevice, 10=shell, 11=equipment.
     """
+    veh_list = load_all_vehicles()
+
+    # InventoryParser.parseVehicles читає такі sub-dicts:
+    #   compDescr[id]    → vehCompDescr (raw bytes)
+    #   shellsLayout[id] → dict
+    #   shells[id]       → list
+    #   crew[id]         → list (tankman invIDs)
+    #   repair[id]       → tuple (repairCost, health)
+    #   eqsLayout[id]    → list[3]
+    #   eqs[id]          → list[3]
+    #   settings[id]     → int
+    #   lock[id]         → int
+    veh_compDescr = {}
+    veh_shellsLayout = {}
+    veh_shells = {}
+    veh_crew = {}
+    veh_repair = {}
+    veh_eqsLayout = {}
+    veh_eqs = {}
+    veh_settings = {}
+    veh_lock = {}
+    for inv_id, cd, name in veh_list:
+        veh_compDescr[inv_id] = cd
+        veh_shellsLayout[inv_id] = {}
+        veh_shells[inv_id] = []
+        veh_crew[inv_id] = []
+        veh_repair[inv_id] = (0, 1.0)        # 0 cost, full health
+        veh_eqsLayout[inv_id] = [0, 0, 0]
+        veh_eqs[inv_id] = [0, 0, 0]
+        veh_settings[inv_id] = 0
+        veh_lock[inv_id] = 0
+
+    print(f"[*] Inventory: {len(veh_list)} vehicles завантажено")
+
     diff = {
         'rev': 0,
         'inventory': {
             1: {  # vehicle
-                'compDescr': {}, 'shellsLayout': {}, 'shells': {},
-                'crew': {}, 'repair': {}, 'eqsLayout': {}, 'eqs': {},
-                'settings': {}, 'lock': {},
+                'compDescr': veh_compDescr,
+                'shellsLayout': veh_shellsLayout,
+                'shells': veh_shells,
+                'crew': veh_crew,
+                'repair': veh_repair,
+                'eqsLayout': veh_eqsLayout,
+                'eqs': veh_eqs,
+                'settings': veh_settings,
+                'lock': veh_lock,
             },
             2: {}, 3: {}, 4: {}, 5: {}, 6: {}, 7: {},
             8: {'compDescr': {}, 'vehicle': {}},   # tankman
             9: {}, 10: {}, 11: {},
         },
         'cache': {'vehsLock': {}},
+        # Stats.synchronize → diff['stats']:
+        #   _SIMPLE_VALUE_STATS: credits, gold, slots, berths, freeXP, dossier,
+        #     clanInfo, accOnline, accOffline, freeTMenLeft, freeVehiclesLeft,
+        #     captchaTriesLeft, hasFinPassword, tkillIsSuspected
+        #   _GROWING_SET_STATS: unlocks, eliteVehicles, doubleXPVehs (set update)
+        # Якщо не дати 'slots'/'doubleXPVehs' — Stats.get('slots') повертає None
+        # → Hangar.__updateVehicles падає з 'NoneType is unsubscriptable'.
         'stats': {
-            'credits': 0, 'gold': 0, 'freeXP': 0,
-            'vehTypeXP': {}, 'tankmen': {}, 'eliteVehicles': (),
+            'credits': 1000000000, 'gold': 1000000, 'freeXP': 1000000,
+            'slots': 100, 'berths': 50,
+            'vehTypeXP': {}, 'tankmen': {},
+            'unlocks': set(), 'eliteVehicles': set(), 'doubleXPVehs': set(),
             'dossier': '', 'clanInfo': None,
+            'accOnline': 0, 'accOffline': 0,
+            'freeTMenLeft': 100, 'freeVehiclesLeft': 100,
+            'captchaTriesLeft': 5, 'hasFinPassword': False,
+            'tkillIsSuspected': False,
         },
         'shop': {'rev': 0},
-        'account': {'attrs': 0, 'premiumExpiryTime': 0},
+        # _ACCOUNT_STATS: clanDBID, attrs, premiumExpiryTime, autoBanTime,
+        # restrictions → копіюються в Stats.__cache.
+        'account': {
+            'attrs': 0, 'premiumExpiryTime': 0,
+            'clanDBID': 0, 'autoBanTime': 0, 'restrictions': {},
+        },
     }
-    return pickle.dumps(diff, protocol=0)
+    # protocol=2 (binary) скорочує pickle ~30% порівняно з protocol=0 →
+    # 1655B → 1197B, поміщається у 1472B BigWorld Packet::MAX_SIZE.
+    # cPickle.loads на клієнті автоматично визначає protocol.
+    return pickle.dumps(diff, protocol=2)
 
 
 _CACHED_SYNC_PICKLE = None
+_CACHED_SHOP_BLOB = None
 
 
 def get_sync_pickle() -> bytes:
@@ -456,16 +563,111 @@ def get_sync_pickle() -> bytes:
     return _CACHED_SYNC_PICKLE
 
 
+def make_shop_pickle() -> bytes:
+    """Shop.__cache повний словник, що буде записаний клієнтом у
+    `Shop.__cache = data` після onSyncStreamComplete (zlib + cPickle).
+    requesters.py запитує items для всіх nation x itemType пар; якщо
+    `__cache['items'][nation][itemType]` = None → ShopParser.parseModules
+    впаде з 'NoneType' is unsubscriptable."""
+    # nation IDs у WoT 0.6.5 (res/scripts/common/nations.py):
+    #   0=ussr, 1=germany, 2=usa, 15=NONE_INDEX (артефакти: optDev, equipment).
+    # itemTypeID 1..11 (ITEM_TYPE_NAMES: vehicle, vehicleChassis ... equipment).
+    NATION_IDS  = (0, 1, 2, 15)
+    ITEM_TYPES  = tuple(range(1, 12))
+    items = {n: {it: ({}, set()) for it in ITEM_TYPES} for n in NATION_IDS}
+
+    shop = {
+        'rev': 1,
+        'slotsPrices':       (5, [300, 600, 900, 1200, 1500, 1800]),
+        'berthsPrices':      (10, 8, [200, 400, 600, 800]),
+        'exchangeRate':      400,
+        'freeXPConversion':  (200, 25),
+        'premiumCost':       {1: 250, 3: 600, 7: 1250, 14: 2500, 30: 4500},
+        'tradeFees':         (0.0, 0.0),
+        'tankmanCost':       [(0, 0, 0), (500, 0, 1), (0, 200, 2)],
+        'paidRemovalCost':   5,
+        'camouflageCost':    {0: [], 1: [], 2: []},
+        'hornCost':          (5, 0),
+        'passportChangeCost': 50,
+        'items':             items,
+        'sellPriceModif':    0.5,
+    }
+    return pickle.dumps(shop, protocol=2)
+
+
+def get_shop_blob() -> bytes:
+    """zlib(pickle(shop)) — як того чекає SyncController.__onSyncStreamComplete."""
+    global _CACHED_SHOP_BLOB
+    if _CACHED_SHOP_BLOB is None:
+        _CACHED_SHOP_BLOB = zlib.compress(make_shop_pickle())
+    return _CACHED_SHOP_BLOB
+
+
+def build_resource_header(stream_id: int, desc: bytes = b'') -> bytes:
+    """resourceHeader (msgID 0x37): uint16 id + STRING desc."""
+    payload = struct.pack('<H', stream_id) + bw_pack_string(desc)
+    return msg_varlen(RESOURCE_HEADER_MSG_ID, payload)
+
+
+def build_resource_fragment(stream_id: int, seq: int, flags: int,
+                            data: bytes) -> bytes:
+    """resourceFragment (msgID 0x38):
+       uint16 rid + uint8 seq + uint8 flags + raw data (rest of packet)."""
+    payload = struct.pack('<HBB', stream_id, seq, flags) + data
+    return msg_varlen(RESOURCE_FRAGMENT_MSG_ID, payload)
+
+
+def send_shop_stream(sock, addr, sess, req_id: int):
+    """Реалізує BigWorld stream protocol для Shop sync:
+       1. cmd response з resultID=RES_STREAM (1) → клієнт викликає
+          `_subscribeForStream(requestID, callback)`.
+       2. resourceHeader(streamID=req_id, desc='') — задає pDesc_.
+       3. resourceFragment(rid=req_id, seq=0, flags=1, data=zlib(pickle(shop)))
+          — flags=1 ставить hasLast_=true → DataDownload.complete()=true →
+          Account.onStreamComplete(req_id, blob) → SyncController.__onSync
+          StreamComplete → Shop.__onSyncComplete(syncID, data) → cache=data."""
+    blob = get_shop_blob()
+
+    # 1. cmd response RES_STREAM
+    ext = pickle.dumps({'shopRev': 1}, protocol=0)
+    msgs = build_oncmdrespext(req_id, RES_STREAM, ext)
+    # 2. resource header (опис порожній — клієнтський onStreamComplete не
+    # використовує desc для Shop sync, але pDesc_ != NULL потрібен для
+    # complete()=true).
+    msgs += build_resource_header(req_id, b'shop')
+    # 3. єдиний фрагмент (flags=1 → final). Якщо blob > ~1300 байт треба
+    # розбити на кілька fragments (seq=0,1,2,..., останній з flags=1).
+    MAX_FRAG = 1300
+    chunks = [blob[i:i + MAX_FRAG] for i in range(0, len(blob), MAX_FRAG)] or [b'']
+    for i, chunk in enumerate(chunks):
+        is_last = (i == len(chunks) - 1)
+        flags = 1 if is_last else 0
+        msgs += build_resource_fragment(req_id, i, flags, chunk)
+
+    pkt = build_channel_packet(msgs, sess, reliable=True)
+    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    try:
+        sock.sendto(pkt, addr)
+    except Exception:
+        return
+    print(f"    [>] Shop STREAM: req={req_id}, blob={len(blob)}B "
+          f"in {len(chunks)} fragment(s)")
+
+
 def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
-    """Універсальний "fake-success" responder на будь-який doCmd*.
-    На КОЖЕН запит шлемо повний sync diff — Inventory/Stats/Trader/Shop
-    наповнять свої кеші порожніми dict'ами і processLobby не впаде."""
+    """Розгалуження за cmd:
+       - cmd=300 (CMD_SYNC_SHOP)  → stream з shop dict
+       - інші                      → одразу onCmdResponseExt(success, full_sync)"""
     req_id, cmd = parse_doCmd_request(msg_id, payload)
     if req_id is None:
         return
     print(f"    [doCmd] msg=0x{msg_id:02x} reqID={req_id} cmd={cmd}")
 
-    msg = build_oncmdrespext(req_id, 0, get_sync_pickle())
+    if cmd == CMD_SYNC_SHOP:
+        send_shop_stream(sock, addr, sess, req_id)
+        return
+
+    msg = build_oncmdrespext(req_id, RES_SUCCESS, get_sync_pickle())
     pkt = build_channel_packet(msg, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
     try:
