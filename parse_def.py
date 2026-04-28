@@ -21,6 +21,8 @@ while True:
         break
     strings.append(s)
 print(f"string-table: {len(strings)} entries")
+for i, s in enumerate(strings):
+    print(f"  [{i:3d}] {s!r}")
 
 ROOT_OFF = off
 
@@ -75,7 +77,9 @@ def walk(off, depth=0, name='<root>', parent_path=''):
     children, own_type, own_size, block_start = parse_section(off)
     indent = '  ' * depth
     full = parent_path + '/' + name
-    show = depth <= 1 or 'Method' in name or 'Method' in parent_path
+    show = depth <= 1 or 'Method' in name or 'Method' in parent_path \
+        or 'Propert' in name or 'Propert' in parent_path \
+        or 'Volatile' in parent_path
     if show:
         print(f"{indent}[{TYPE_NAMES.get(own_type, own_type)}] {name}  "
               f"({len(children)} children, ownData={own_size}B)")
@@ -83,7 +87,26 @@ def walk(off, depth=0, name='<root>', parent_path=''):
         if ch['type'] == 0 and ch['data_size'] >= 2:  # SECTION
             walk(ch['data_off'], depth + 1, ch['name'], full)
         elif show:
-            print(f"{indent}  - {ch['name']}  [{TYPE_NAMES.get(ch['type'], ch['type'])}, {ch['data_size']}B]")
+            extra = ''
+            if ch['type'] == 1:  # STRING
+                try:
+                    s = data[ch['data_off']:ch['data_off'] + ch['data_size']]
+                    extra = f" = {s.decode('latin-1')!r}"
+                except Exception:
+                    pass
+            elif ch['type'] == 2 and ch['data_size'] in (1, 2, 4):  # INT
+                try:
+                    fmt = {1: '<b', 2: '<h', 4: '<i'}[ch['data_size']]
+                    val = struct.unpack_from(fmt, data, ch['data_off'])[0]
+                    extra = f" = {val}"
+                except Exception:
+                    pass
+            elif ch['type'] == 5:  # BLOB
+                blob = data[ch['data_off']:ch['data_off'] + ch['data_size']]
+                extra = f" = {blob.hex()}"
+                if ch['data_size'] <= 4:
+                    extra += f" (int={int.from_bytes(blob, 'little')})"
+            print(f"{indent}  - {ch['name']}  [{TYPE_NAMES.get(ch['type'], ch['type'])}, {ch['data_size']}B]{extra}")
 
 
 print("\n=== Walking root ===")

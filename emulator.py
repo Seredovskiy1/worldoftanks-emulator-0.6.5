@@ -305,8 +305,25 @@ def msg_varlen(msg_id: int, payload: bytes) -> bytes:
 #  0x05 createBasePlayer      varlen 2 B  EntityID(4)+EntityTypeID(2)+props
 #  0x80+N entityMessage       varlen 2 B  EntityID(4)+methodArgs
 
-ACCOUNT_ENTITY_TYPE = 0   # Account is first entity type in WoT entities list
-PLAYER_ENTITY_ID    = 1   # any non-zero EntityID for our player
+ACCOUNT_ENTITY_TYPE = 0   # Account — 1-й тип у entities.xml (idx=0)
+AVATAR_ENTITY_TYPE  = 1   # Avatar  — 2-й тип у entities.xml (idx=1).
+                          # ВАЖЛИВО: parse_def.py дає БЕЗ alphasort:
+                          # 0=Account 1=Avatar 2=Admin 3=Arena 4=ArenaMgr
+                          # 5=Vehicle 6=Projectile 7=AreaDestructibles ...
+                          # Помилковий typeID=6 ламав createBasePlayer:
+                          # клієнт намагався створити Projectile з
+                          # Avatar-property stream → C++ segfault.
+VEHICLE_ENTITY_TYPE = 2   # CLIENT-SIDE clientIndex! НЕ server idx=5.
+                          # entity_type.cpp:209 використовує clientIndex,
+                          # який КОМПРЕСУЄ індекси (server-only entities
+                          # без .pyc на клієнті — пропускаються).
+                          # У WoT 0.6.5 клієнт має .pyc для:
+                          # Account, Avatar, Vehicle, AreaDestructibles,
+                          # Flock, OfflineEntity → clientIndex 0..5.
+                          # Vehicle (server idx=5) → clientIndex=2.
+PLAYER_ENTITY_ID    = 1   # any non-zero EntityID for our player (Account)
+AVATAR_ENTITY_ID    = 100 # окремий EntityID для Avatar entity у бою
+PLAYER_VEHICLE_ID   = 200 # EntityID для Vehicle entity, на якому грає player
 SPACE_ID            = 1   # arbitrary SpaceID for hangar
 
 # ─── Account.def ClientMethods (порядок з PackedSection парсера) ─────────
@@ -397,17 +414,18 @@ def build_init_bundle(session_key_int: int) -> bytes:
     #     1. name           (STRING)
     #     2. normalizedName (STRING)
     #     3. serverSettings (PYTHON  →  pickled dict)
-    #   serverSettings ПОВИНЕН містити ключ 'vivoxDomain', інакше
-    #   Account.onBecomePlayer падає з 'NoneType is unsubscriptable'
+    #   serverSettings ПОВИНЕН містити vivoxDomain/vivoxIssuer/voipDomain —
+    #   інакше Account.onBecomePlayer падає з 'NoneType is unsubscriptable'
     #   (див. World_of_Tanks/res/scripts/client/Account.py:142).
-    server_settings_pickle = (
-        b"(dp0\n"
-        b"S'vivoxDomain'\np1\nS''\np2\ns"
-        b"S'vivoxIssuer'\np3\nS''\np4\ns"
-        b"S'voipDomain'\np5\nS''\np6\ns"
-        b"S'serverUTC'\np7\nL0L\ns"
-        b"."
-    )
+    #   captchaKey НЕ потрібен: CaptchaUI.isCaptchaRequired() базується
+    #   лише на _battlesTillCaptcha (Stats _CACHE_STATS), яке ми задаємо
+    #   в diff['cache']['battlesTillCaptcha'] = 999.
+    server_settings_pickle = pickle.dumps({
+        'vivoxDomain':  '',
+        'vivoxIssuer':  '',
+        'voipDomain':   '',
+        'serverUTC':    0,
+    }, protocol=0)
     props = b''
     props += bw_pack_string(b'qwerty')               # name
     props += bw_pack_string(b'qwerty')               # normalizedName
@@ -540,7 +558,11 @@ def make_full_sync_pickle() -> bytes:
             8: {'compDescr': {}, 'vehicle': {}},   # tankman
             9: {}, 10: {}, 11: {},
         },
-        'cache': {'vehsLock': {}},
+        # Stats._CACHE_STATS = ('battlesTillCaptcha',) → саме звідси
+        # CaptchaUI читає battlesTillCaptcha. Якщо не покласти, Stats.get
+        # повертає None, _battlesTillCaptcha=None → `None <= 0` == True у
+        # Python 2 → isCaptchaRequired=True → CAPTCHA запускається.
+        'cache': {'vehsLock': {}, 'battlesTillCaptcha': 999},
         # Stats.synchronize → diff['stats']:
         #   _SIMPLE_VALUE_STATS: credits, gold, slots, berths, freeXP, dossier,
         #     clanInfo, accOnline, accOffline, freeTMenLeft, freeVehiclesLeft,
@@ -681,6 +703,290 @@ def build_account_event_noargs(msg_id: int) -> bytes:
     return msg_varlen(msg_id, em)
 
 
+# ── Arena/Battle constants ────────────────────────────────────────────────────
+# Arena GUI types (з res/scripts/common/constants.py):
+#   0=UNKNOWN, 1=RANDOM, 2=TRAINING, 3=COMPANY, 4=TOURNAMENT.
+ARENA_GUI_TYPE_RANDOM = 1
+# Arena type IDs з res/scripts/arena_defs/_list_.xml:
+#   1=01_karelia, 2=02_malinovka, 4=04_himmelsdorf, 5=05_prohorovka,
+#   6=06_ensk, 7=07_lakeville, 8=08_ruinberg, 10=10_hills, 11=11_murovanka,
+#   13=13_erlenberg, 15=15_komarin, 18=18_cliff, 19=19_monastery,
+#   23=23_westfeld, 28=28_desert, 29=29_el_hallouf, 34=34_redshire,
+#   35=35_steppes, 37=37_caucasus, 38=38_mannerheim_line.
+ARENA_TYPE_KARELIA   = 1
+
+# Arena typeID → geometry path (из res/scripts/arena_defs/<typeName>.xml)
+# параметр <geometry>. Без trailing slash клієнт сам додає.
+ARENA_GEOMETRY_PATH = {
+    1:  b'spaces/01_karelia/',
+    2:  b'spaces/02_malinovka/',
+    4:  b'spaces/04_himmelsdorf/',
+    5:  b'spaces/05_prohorovka/',
+    6:  b'spaces/06_ensk/',
+    7:  b'spaces/07_lakeville/',
+    8:  b'spaces/08_ruinberg/',
+    10: b'spaces/10_hills/',
+    11: b'spaces/11_murovanka/',
+    13: b'spaces/13_erlenberg/',
+    15: b'spaces/15_komarin/',
+    18: b'spaces/18_cliff/',
+    19: b'spaces/19_monastery/',
+    23: b'spaces/23_westfeld/',
+    28: b'spaces/28_desert/',
+    29: b'spaces/29_el_hallouf/',
+    34: b'spaces/34_redshire/',
+    35: b'spaces/35_steppes/',
+    37: b'spaces/37_caucasus/',
+    38: b'spaces/38_mannerheim_line/',
+}
+
+# spaceData keys (з common/space_data_types.hpp)
+SPACE_DATA_TOD_KEY                  = 0    # SpaceData_ToDData (8B: 2 floats)
+SPACE_DATA_MAPPING_KEY_CLIENT_SERVER = 1   # 4x4 matrix + path → addMapping
+SPACE_DATA_MAPPING_KEY_CLIENT_ONLY   = 2
+
+
+def build_space_data_message(space_id: int, key: int, data: bytes,
+                             entry_id: bytes = b'\x00' * 8) -> bytes:
+    """spaceData (msgID 0x07, varlen 2B). Формат (server_connection.cpp:1845):
+       SpaceID(4) + SpaceEntryID(8 = ip4+port2+salt2) + key(2) + data(rest).
+
+       SpaceEntryID — це Mercury::Address; для нашої "симульованої" мапи
+       можна 8 нульових байт (унікальний key достатньо тримати по key)."""
+    payload = struct.pack('<I', space_id)
+    payload += entry_id
+    payload += struct.pack('<H', key)
+    payload += data
+    return msg_varlen(0x07, payload)
+
+
+def build_geometry_mapping_data(path: bytes,
+                                matrix=None) -> bytes:
+    """Формат SpaceData_MappingData (common/space_data_types.hpp):
+       float matrix[4][4] (16 floats = 64B, identity для нашого випадку)
+       + char path[] (raw bytes без length prefix — read до кінця stream)."""
+    if matrix is None:
+        # Identity matrix 4x4
+        matrix = (1.0, 0.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0, 0.0,
+                  0.0, 0.0, 1.0, 0.0,
+                  0.0, 0.0, 0.0, 1.0)
+    return struct.pack('<16f', *matrix) + path
+
+
+def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
+                               arena_gui_type: int = ARENA_GUI_TYPE_RANDOM,
+                               weather_preset_id: int = 0) -> bytes:
+    """Перехід Account → Avatar для входу в бій.
+
+    Bundle:
+      1. resetEntities(keepPlayer=False) — звільняє поточну Account player.
+      2. createBasePlayer(Avatar entity) з 5 BASE_AND_CLIENT properties
+         (порядок з Avatar.def):
+           name (STRING), arenaTypeID (INT32), arenaGuiType (UINT8),
+           arenaExtraData (PYTHON), weatherPresetID (UINT8).
+      3. createCellPlayer(Avatar) — потрібен бо Avatar має CellMethods +
+         Volatile.position. Без нього клієнт зависає / падає в C++
+         бо не має cell counterpart до якого приходять оновлення.
+         Формат (lib/connection/server_connection.cpp:1810):
+           SpaceID(4) + vehicleID(4) + Position3D(3×float) +
+           Direction3D(3×float yaw,pitch,roll) + cell+ownClient props.
+         Avatar cell+ownClient props (в def order):
+           state (UINT16) — припускаємо CELL_PUBLIC,
+           team (UINT8, OWN_CLIENT),
+           playerVehicleID (OBJECT_ID=uint32, OWN_CLIENT).
+
+    Avatar.onBecomePlayer (scripts/client/Avatar.py:36) одразу ж робить
+       self.arena = ClientArena(arenaTypeID, arenaGuiType,
+                                arenaExtraData, weatherPresetID)
+    де ClientArena.__init__ викликає ArenaType.g_cache.get(arenaTypeID),
+    тому arenaTypeID мусить існувати в _list_.xml.
+    """
+    msgs = b''
+
+    # ⚠️ resetEntities(False) ПРИБРАНО — викликало C++ crash (без python
+    # traceback, гра падала повністю). У WoT 0.6.5 createBasePlayer без
+    # попереднього reset просто перемикає player entity на нову; стара
+    # Account entity (id=1) залишається в client entities map як non-player.
+
+    # 2. createBasePlayer(Avatar)
+    #    arenaExtraData використовується BattleLoadingPage та різними UI;
+    #    поки що пустий dict — не повинен ламати Loading.
+    arena_extra = pickle.dumps({}, protocol=0)
+
+    props = b''
+    props += bw_pack_string(b'qwerty')                  # name (STRING)
+    props += struct.pack('<i', arena_type_id)           # arenaTypeID (INT32)
+    props += struct.pack('<B', arena_gui_type)          # arenaGuiType (UINT8)
+    props += bw_pack_string(arena_extra)                # arenaExtraData (PYTHON)
+    props += struct.pack('<B', weather_preset_id)       # weatherPresetID (UINT8)
+
+    cbp = struct.pack('<I', AVATAR_ENTITY_ID) + \
+          struct.pack('<H', AVATAR_ENTITY_TYPE) + \
+          props
+    msgs += msg_varlen(0x05, cbp)
+
+    # 2.5 spaceData(SPACE_DATA_MAPPING_KEY_CLIENT_SERVER) — мапить geometry
+    #     директорію (наприклад "spaces/01_karelia/") у наш SpaceID. Без цього
+    #     клієнт не починає завантажувати чанки, тому BigWorld.wg_prefetchSpaceZip
+    #     callback `Avatar.onSpaceLoaded` НЕ спрацьовує → __stepsTillInit
+    #     застрягає на 1 і loading screen не закривається.
+    #     Має йти ДО createCellPlayer бо Avatar.onBecomePlayer одразу читає
+    #     arena.typeDescriptor і починає prefetchSpaceZip.
+    geometry_path = ARENA_GEOMETRY_PATH.get(
+        arena_type_id, b'spaces/01_karelia/')
+    mapping_data = build_geometry_mapping_data(geometry_path)
+    # Унікальний SpaceEntryID (Mercury::Address) — щоб GeometryMapping не
+    # дедуплікувався при reuse. Тримаємо детерміновано на основі space_id+key.
+    entry_id = struct.pack('<IHH', SPACE_ID, 0, 1)   # ip=spaceID port=0 salt=1
+    msgs += build_space_data_message(SPACE_ID,
+                                     SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
+                                     mapping_data,
+                                     entry_id=entry_id)
+
+    # 3. createCellPlayer(Avatar) — щоб клієнт перейшов з заставки
+    # завантаження в реальний бій (Avatar.onEnterWorld → onEnterWorld).
+    # Формат (server_connection.cpp:1810):
+    #   SpaceID(4) + vehicleID(4) + Position3D(3*float)
+    #   + Direction3D(yaw,pitch,roll = 3*float) + cell_props.
+    # cell_props (def-порядок, лише OWN_CLIENT поля Avatar):
+    #   team (UINT8) + playerVehicleID (OBJECT_ID=uint32).
+    # ВАЖЛИВО: playerVehicleID != 0 → Avatar.onEnterWorld викликає
+    # set_playerVehicleID(0) (init step #1) + якщо Vehicle entity
+    # PLAYER_VEHICLE_ID існує і inWorld — vehicle_onEnterWorld(own)
+    # пізніше теж дає init step #2. Тоді з 4 кроків (1, 2, onEnterWorld,
+    # onSpaceLoaded) загрузка завершується і починається реальний бій.
+    cell_props = b''
+    cell_props += struct.pack('<B', 1)              # team  (UINT8)
+    cell_props += struct.pack('<I', PLAYER_VEHICLE_ID)  # playerVehicleID
+
+    ccp = struct.pack('<I', SPACE_ID)
+    ccp += struct.pack('<I', 0)               # vehicleID на якому стоїть Avatar — 0
+    ccp += struct.pack('<fff', 0.0, 0.0, 0.0) # position (x, y, z)
+    ccp += struct.pack('<fff', 0.0, 0.0, 0.0) # direction (yaw, pitch, roll)
+    ccp += cell_props
+    msgs += msg_varlen(0x06, ccp)
+
+    # 4. enterAoI(Vehicle) ДО createEntity!
+    #    EntityManager::onEntityCreate перевіряє unknownEntities_[id].count і
+    #    якщо це 0 → ERROR_MSG "didn't 'enter' before 'create'".
+    #    Коментар у entity_manager.cpp:1869 каже:
+    #      "we should call onEntityEnter before onEntityCreate, since the
+    #       entities are not pre cached."
+    #    Формат (client_interface.hpp:93): EntityID(4) + IDAlias(uint8).
+    msgs += msg_fixed(0x0A,
+                      struct.pack('<IB', PLAYER_VEHICLE_ID, 0))
+
+    # 5. createEntity(Vehicle) — створює Vehicle entity у клієнтському
+    #    entities map. Формат (server_connection.cpp:1944, WoT 0.6.5 ВИКОРИСТОВУЄ
+    #    CompressionIStream — підтверджено рядком
+    #    "CompressionIStream::CompressionIStream: Invalid compression type: %d"
+    #    у WorldOfTanks.exe). Тому payload починається з uint8 compressionType
+    #    (0 = BW_COMPRESSION_NONE), інакше клієнт впаде через CRITICAL_MSG:
+    #      uint8 compressionType (= 0 NONE)
+    #      EntityID(4) + EntityTypeID(2) + Position3D(3*float)
+    #      + yaw(int8) + pitch(int8) + roll(int8)
+    #      + ALL_CLIENTS+CELL_PUBLIC properties (def order, pass 2).
+    veh_compact_descr = _get_first_vehicle_compact_descr()
+    msgs += build_vehicle_create_message(PLAYER_VEHICLE_ID,
+                                         VEHICLE_ENTITY_TYPE,
+                                         veh_compact_descr,
+                                         pos=(0.0, 0.0, 0.0),
+                                         team=1)
+    return msgs
+
+
+def _get_first_vehicle_compact_descr() -> bytes:
+    """Повертає compactDescr першого танка з _vehicles.json — щоб
+    Vehicle.publicInfo.compDescr відповідав реальному танку гравця."""
+    veh_list = load_all_vehicles()
+    if veh_list:
+        return veh_list[0][1]   # (invID, compDescr_bytes, name, crewSize)
+    # Fallback: мінімальний валідний compactDescr (скорочений, але так
+    # бій навряд запуститься — все одно потрібен реальний танк).
+    return b'\x00' * 22
+
+
+def build_vehicle_create_message(vehicle_id: int, type_id: int,
+                                 compact_descr: bytes,
+                                 pos=(0.0, 0.0, 0.0),
+                                 team: int = 1) -> bytes:
+    """createEntity (msgID 0x08, varlen2). Дивись server_connection.cpp:1944.
+    Property stream — це 12 ALL_CLIENTS+CELL_PUBLIC полів Vehicle.def
+    у def-порядку:
+      1. publicInfo  (PUBLIC_VEHICLE_INFO FIXED_DICT: name, compDescr, team, prebattleID)
+      2. health      (INT16)                ALL_CLIENTS
+      3. isCrewActive(BOOL=UINT8)           ALL_CLIENTS
+      4. engineMode  (ARRAY[2] UINT8)       ALL_CLIENTS
+      5. damageStickers (ARRAY var UINT64)  ALL_CLIENTS
+      6. publicStateModifiers (ARRAY var UINT8/EXTRA_ID)  ALL_CLIENTS
+      7. status      (ARRAY[2] UINT8)       CELL_PUBLIC
+      8. speeds      (ARRAY[2] FLOAT32)     CELL_PUBLIC
+      9. invisibility(FLOAT32)              CELL_PUBLIC
+     10. radioDistance(FLOAT32)             CELL_PUBLIC
+     11. lastDamageTime(FLOAT64)            CELL_PUBLIC
+     12. detectedVehicles(ARRAY var OBJECT_ID)  CELL_PUBLIC
+    """
+    # createEntity TAGGED stream (entity_type.cpp:427 newDictionary,
+    # contents=TAGGED_CELL_ENTITY_DATA, allowOwnClientData=false):
+    #   uint8 size
+    #   { uint8 index + value-bytes } × size
+    # index — індекс у списку clientServerProperty entity (тільки props
+    # з ALL_CLIENTS / OTHER_CLIENTS прапорами; CELL_PUBLIC і OWN_CLIENT
+    # тут НЕ приймаються — лише isOtherClientData=True).
+    # Vehicle.def ALL_CLIENTS у def-порядку:
+    #   idx=0 publicInfo (PUBLIC_VEHICLE_INFO FIXED_DICT)
+    #   idx=1 health (INT16)
+    #   idx=2 isCrewActive (BOOL)
+    #   idx=3 engineMode (ARRAY[2] UINT8)
+    #   idx=4 damageStickers (ARRAY var UINT64)
+    #   idx=5 publicStateModifiers (ARRAY var UINT8)
+    # Vehicle.prerequisites() МАЄ self.publicInfo.compDescr → без
+    # publicInfo буде AttributeError у Python → C++ crash. Тому шлемо
+    # хоча б publicInfo.
+
+    # FIXED_DICT serialization: поля без length prefix у def-order.
+    # PUBLIC_VEHICLE_INFO = name(STRING) + compDescr(STRING) + team(UINT8)
+    #                       + prebattleID(OBJECT_ID=uint32)
+    public_info = b''
+    public_info += bw_pack_string(b'qwerty')
+    public_info += bw_pack_string(compact_descr)
+    public_info += struct.pack('<B', team)
+    public_info += struct.pack('<I', 0)       # prebattleID
+
+    props = b''
+    props += struct.pack('<B', 0)             # idx=0 (publicInfo)
+    props += public_info
+
+    # CompressionIStream wrapper читає 1-й байт як compression type.
+    # 0 = BW_COMPRESSION_NONE (далі raw stream без декомпресії).
+    payload = struct.pack('<B', 0)            # compressionType = NONE
+    payload += struct.pack('<I', vehicle_id)
+    payload += struct.pack('<H', type_id)
+    payload += struct.pack('<fff', *pos)
+    payload += struct.pack('<bbb', 0, 0, 0)   # yaw, pitch, roll
+    payload += struct.pack('<B', 1)           # size = 1 property
+    payload += props
+    return msg_varlen(0x08, payload)
+
+
+def send_avatar_player(sock, addr, sess):
+    """Шле повний battle-bundle:
+       createBasePlayer(Avatar) + createCellPlayer(Avatar, playerVehicleID=200)
+       + createEntity(Vehicle 200) + enterAoI(Vehicle 200)."""
+    msgs = build_avatar_player_bundle()
+    pkt = build_channel_packet(msgs, sess, reliable=True)
+    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    try:
+        sock.sendto(pkt, addr)
+    except Exception:
+        return
+    print(f"    [>] battle-bundle: createBasePlayer(Avatar #{AVATAR_ENTITY_ID}) "
+          f"+ spaceData(geom=spaces/01_karelia/) "
+          f"+ createCellPlayer(playerVeh=#{PLAYER_VEHICLE_ID}) + "
+          f"enterAoI + createEntity(Vehicle, TAGGED idx=0:publicInfo)")
+
+
 def send_account_event(sock, addr, sess, msg_id: int, label: str,
                        extra: bytes = b''):
     """Відправляє Account entity-method (без args або з extra payload)."""
@@ -715,6 +1021,27 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         # entity event onEnqueued, після якого клієнт показує "У черзі...".
         send_account_event(sock, addr, sess,
                            ACCOUNT_ONENQUEUED_MSG_ID, "Account.onEnqueued()")
+
+        # Симуляція "знайдено бій" — через 1.5 с шлемо onArenaCreated,
+        # одразу за ним перехід Account → Avatar (resetEntities +
+        # createBasePlayer(Avatar)). Avatar.onBecomePlayer створить
+        # ClientArena і запустить завантаження карти.
+        def _simulate_arena_created():
+            try:
+                send_account_event(sock, addr, sess,
+                                   ACCOUNT_ONARENACREATED_MSG_ID,
+                                   "Account.onArenaCreated()  [simulated]")
+            except Exception as e:
+                print(f"    [!] simulate_arena_created error: {e}")
+
+        def _switch_to_avatar():
+            try:
+                send_avatar_player(sock, addr, sess)
+            except Exception as e:
+                print(f"    [!] switch_to_avatar error: {e}")
+
+        threading.Timer(1.5, _simulate_arena_created).start()
+        threading.Timer(2.0, _switch_to_avatar).start()
         return
 
     if cmd == CMD_DEQUEUE:
@@ -889,8 +1216,23 @@ def handle_baseapp(sock):
     else:
         if decrypted and sess_for_addr:
             messages = list(iter_baseapp_ext_messages(body))
-            summary = ", ".join(f"0x{m:02x}({len(p)}B)" for m, p, _ in messages)
-            print(f"[<] BaseAppExt: {summary or 'none'} | flags=0x{flags:04x} seq={in_seq} body={body.hex()}")
+
+            # Спам-фільтр: client→base msgID 0x02 = avatarUpdate (вектор поза
+            # Avatar 30Hz). Виводимо тільки кожен 100-й (ще й корисно для
+            # моніторингу). msgID 0x01 (authenticate echo) теж шумний, тому
+            # не дублюємо в [post-init], якщо це єдине повідомлення.
+            avatar_update_only = all(m in (0x01, 0x02) for m, _, _ in messages) \
+                and any(m == 0x02 for m, _, _ in messages)
+            if avatar_update_only:
+                cnt = sess_for_addr.get('avatar_update_count', 0) + 1
+                sess_for_addr['avatar_update_count'] = cnt
+                if cnt % 100 == 1:
+                    print(f"[<] avatarUpdate x{cnt} (msgID=0x02, "
+                          f"остання payload={messages[-1][1].hex()})")
+            else:
+                summary = ", ".join(f"0x{m:02x}({len(p)}B)" for m, p, _ in messages)
+                print(f"[<] BaseAppExt: {summary or 'none'} | "
+                      f"flags=0x{flags:04x} seq={in_seq} body={body.hex()}")
 
             if any(m in (0x01, 0x0A) for m, _, _ in messages) and not sess_for_addr.get('init_sent'):
                 send_init_bundle(sock, addr, sess_for_addr)
@@ -899,6 +1241,8 @@ def handle_baseapp(sock):
             # Будь-який наступний пакет після init – дампимо + відповідаємо
             # на exposed Account base-methods (doCmdStr/Int3/Int4/Int2Str/IntArr).
             for m, p, _ in messages:
+                if m in (0x01, 0x02):
+                    continue   # auth-echo + avatarUpdate — мовчки
                 print(f"    [post-init] msg=0x{m:02x} payload={p.hex()}")
                 if m in ACCOUNT_DOCMD_MSG_IDS:
                     handle_account_doCmd(sock, addr, sess_for_addr, m, p)
