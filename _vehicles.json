@@ -6,7 +6,47 @@
       "name": "T-34",
       "vehicleTypeID": 0,
       "compactDescr_hex": "010000000000cb000300000000000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 3,
+      "gunCompactDescr": 4,
+      "maxAmmo": 77,
+      "defaultAmmo": [
+        7178,
+        62,
+        7434,
+        0,
+        7690,
+        15
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_BP-354",
+          "compactDescr": 7434,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -14,7 +54,47 @@
       "name": "SU-85",
       "vehicleTypeID": 1,
       "compactDescr_hex": "010102000000cb000300020035000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 515,
+      "gunCompactDescr": 13572,
+      "maxAmmo": 52,
+      "defaultAmmo": [
+        7946,
+        42,
+        8202,
+        0,
+        8458,
+        10
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354MA",
+          "compactDescr": 7946,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354M",
+          "compactDescr": 8458,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -22,7 +102,47 @@
       "name": "IS",
       "vehicleTypeID": 2,
       "compactDescr_hex": "010204000300cc00080003000b000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 771,
+      "gunCompactDescr": 2820,
+      "maxAmmo": 68,
+      "defaultAmmo": [
+        9226,
+        54,
+        9482,
+        0,
+        9738,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_85mm_UBR-365K",
+          "compactDescr": 9226,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UBR-365P",
+          "compactDescr": 9482,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UOF-365K",
+          "compactDescr": 9738,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -30,7 +150,47 @@
       "name": "BT-7",
       "vehicleTypeID": 3,
       "compactDescr_hex": "010306000600c9000200050013000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 1283,
+      "gunCompactDescr": 4868,
+      "maxAmmo": 84,
+      "defaultAmmo": [
+        3338,
+        84,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -38,7 +198,47 @@
       "name": "BT-2",
       "vehicleTypeID": 4,
       "compactDescr_hex": "01040a000900c9000100090017000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 2307,
+      "gunCompactDescr": 5892,
+      "maxAmmo": 92,
+      "defaultAmmo": [
+        2570,
+        92,
+        2826,
+        0,
+        3082,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_UBRT1",
+          "compactDescr": 2570,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_BPT1",
+          "compactDescr": 2826,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_UOT1",
+          "compactDescr": 3082,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -46,7 +246,47 @@
       "name": "KV",
       "vehicleTypeID": 5,
       "compactDescr_hex": "01050e000200cb0004000c001b000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 3075,
+      "gunCompactDescr": 6916,
+      "maxAmmo": 111,
+      "defaultAmmo": [
+        7178,
+        89,
+        8202,
+        0,
+        7690,
+        22
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -54,7 +294,47 @@
       "name": "T-28",
       "vehicleTypeID": 6,
       "compactDescr_hex": "010608000900cb000200070015000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 1795,
+      "gunCompactDescr": 5380,
+      "maxAmmo": 69,
+      "defaultAmmo": [
+        8714,
+        55,
+        7434,
+        0,
+        8970,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354KA",
+          "compactDescr": 8714,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_BP-354",
+          "compactDescr": 7434,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354K",
+          "compactDescr": 8970,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -62,7 +342,47 @@
       "name": "S-51",
       "vehicleTypeID": 7,
       "compactDescr_hex": "01070c000a00cb0004000b0019000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 2819,
+      "gunCompactDescr": 6404,
+      "maxAmmo": 16,
+      "defaultAmmo": [
+        16650,
+        16,
+        17162,
+        0,
+        16906,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_152mm_53-OF-551",
+          "compactDescr": 16650,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-G-551",
+          "compactDescr": 17162,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-OF-551BM",
+          "compactDescr": 16906,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -70,7 +390,47 @@
       "name": "A-20",
       "vehicleTypeID": 8,
       "compactDescr_hex": "010810000000ca0003000e0013000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 3587,
+      "gunCompactDescr": 4868,
+      "maxAmmo": 150,
+      "defaultAmmo": [
+        3338,
+        150,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -78,7 +438,47 @@
       "name": "SU-152",
       "vehicleTypeID": 9,
       "compactDescr_hex": "010912000a00cc000400100020000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4099,
+      "gunCompactDescr": 8196,
+      "maxAmmo": 26,
+      "defaultAmmo": [
+        15882,
+        13,
+        16138,
+        0,
+        16394,
+        13
+      ],
+      "shells": [
+        {
+          "name": "_152mm_53-G-530",
+          "compactDescr": 15882,
+          "defaultPortion": 0.5,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53BP540",
+          "compactDescr": 16138,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-OF-530",
+          "compactDescr": 16394,
+          "defaultPortion": 0.5,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -86,7 +486,47 @@
       "name": "T-34-85",
       "vehicleTypeID": 10,
       "compactDescr_hex": "010a14000100cb000300110006000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4355,
+      "gunCompactDescr": 1540,
+      "maxAmmo": 68,
+      "defaultAmmo": [
+        7946,
+        54,
+        8202,
+        0,
+        8458,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354MA",
+          "compactDescr": 7946,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354M",
+          "compactDescr": 8458,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -94,7 +534,47 @@
       "name": "KV-1s",
       "vehicleTypeID": 11,
       "compactDescr_hex": "010b16000a00cb00040013001b000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4867,
+      "gunCompactDescr": 6916,
+      "maxAmmo": 94,
+      "defaultAmmo": [
+        7178,
+        75,
+        8202,
+        0,
+        7690,
+        19
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -102,7 +582,47 @@
       "name": "T-46",
       "vehicleTypeID": 12,
       "compactDescr_hex": "010c18000b00c9000200150013000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 5379,
+      "gunCompactDescr": 4868,
+      "maxAmmo": 101,
+      "defaultAmmo": [
+        3338,
+        101,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -110,7 +630,47 @@
       "name": "MS-1",
       "vehicleTypeID": 13,
       "compactDescr_hex": "010d1a000e00c9000000170017000000",
-      "crewSize": 2
+      "crewSize": 2,
+      "turretCompactDescr": 5891,
+      "gunCompactDescr": 5892,
+      "maxAmmo": 74,
+      "defaultAmmo": [
+        2570,
+        74,
+        2826,
+        0,
+        3082,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_UBRT1",
+          "compactDescr": 2570,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_BPT1",
+          "compactDescr": 2826,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_UOT1",
+          "compactDescr": 3082,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -118,7 +678,47 @@
       "name": "SU-100",
       "vehicleTypeID": 14,
       "compactDescr_hex": "010e1c000100cc000300190007000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 6403,
+      "gunCompactDescr": 1796,
+      "maxAmmo": 62,
+      "defaultAmmo": [
+        9226,
+        50,
+        9482,
+        0,
+        9738,
+        12
+      ],
+      "shells": [
+        {
+          "name": "_85mm_UBR-365K",
+          "compactDescr": 9226,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UBR-365P",
+          "compactDescr": 9482,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UOF-365K",
+          "compactDescr": 9738,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -126,7 +726,36 @@
       "name": "SU-18",
       "vehicleTypeID": 15,
       "compactDescr_hex": "010f1e000e00c90001001a0028000000",
-      "crewSize": 2
+      "crewSize": 2,
+      "turretCompactDescr": 6659,
+      "gunCompactDescr": 10244,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        8970,
+        0,
+        7434,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UOF-354K",
+          "compactDescr": 8970,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_BP-354",
+          "compactDescr": 7434,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -134,7 +763,47 @@
       "name": "SU-14",
       "vehicleTypeID": 16,
       "compactDescr_hex": "011020000a00cb0004001b0019000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 6915,
+      "gunCompactDescr": 6404,
+      "maxAmmo": 20,
+      "defaultAmmo": [
+        16650,
+        20,
+        17162,
+        0,
+        16906,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_152mm_53-OF-551",
+          "compactDescr": 16650,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-G-551",
+          "compactDescr": 17162,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-OF-551BM",
+          "compactDescr": 16906,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -142,7 +811,47 @@
       "name": "T-44",
       "vehicleTypeID": 17,
       "compactDescr_hex": "011122001100cc0005001c0023000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 7171,
+      "gunCompactDescr": 8964,
+      "maxAmmo": 64,
+      "defaultAmmo": [
+        9226,
+        51,
+        9482,
+        0,
+        9738,
+        13
+      ],
+      "shells": [
+        {
+          "name": "_85mm_UBR-365K",
+          "compactDescr": 9226,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UBR-365P",
+          "compactDescr": 9482,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UOF-365K",
+          "compactDescr": 9738,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -150,7 +859,47 @@
       "name": "T-26",
       "vehicleTypeID": 18,
       "compactDescr_hex": "011224001300c90001001e0010000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 7683,
+      "gunCompactDescr": 4100,
+      "maxAmmo": 160,
+      "defaultAmmo": [
+        1034,
+        160,
+        1290,
+        0,
+        1546,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_UBR-160",
+          "compactDescr": 1034,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_UBR-160P",
+          "compactDescr": 1290,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_UOF-160",
+          "compactDescr": 1546,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -158,7 +907,36 @@
       "name": "SU-5",
       "vehicleTypeID": 19,
       "compactDescr_hex": "011326001300c900020020002a000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 8195,
+      "gunCompactDescr": 10756,
+      "maxAmmo": 48,
+      "defaultAmmo": [
+        8970,
+        48,
+        7434,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UOF-354K",
+          "compactDescr": 8970,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_BP-354",
+          "compactDescr": 7434,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -166,7 +944,47 @@
       "name": "AT-1",
       "vehicleTypeID": 20,
       "compactDescr_hex": "011428001300c900010021002f000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 8451,
+      "gunCompactDescr": 12036,
+      "maxAmmo": 80,
+      "defaultAmmo": [
+        3338,
+        80,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -174,7 +992,47 @@
       "name": "IS-3",
       "vehicleTypeID": 21,
       "compactDescr_hex": "01152a001600cc00080022000e000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 8707,
+      "gunCompactDescr": 3588,
+      "maxAmmo": 28,
+      "defaultAmmo": [
+        13066,
+        17,
+        13322,
+        0,
+        13578,
+        11
+      ],
+      "shells": [
+        {
+          "name": "_122mm_UBR-471",
+          "compactDescr": 13066,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_122mm_UBR-471P",
+          "compactDescr": 13322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_122mm_UOF-471",
+          "compactDescr": 13578,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -182,7 +1040,36 @@
       "name": "SU-8",
       "vehicleTypeID": 22,
       "compactDescr_hex": "01162c002300cb000400240037000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 9219,
+      "gunCompactDescr": 14084,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        13578,
+        0,
+        13322,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_122mm_UOF-471",
+          "compactDescr": 13578,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_122mm_UBR-471P",
+          "compactDescr": 13322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -190,7 +1077,47 @@
       "name": "KV-3",
       "vehicleTypeID": 23,
       "compactDescr_hex": "01172e000400cb000400250039000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 9475,
+      "gunCompactDescr": 14596,
+      "maxAmmo": 98,
+      "defaultAmmo": [
+        9226,
+        78,
+        9482,
+        0,
+        9738,
+        20
+      ],
+      "shells": [
+        {
+          "name": "_85mm_UBR-365K",
+          "compactDescr": 9226,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UBR-365P",
+          "compactDescr": 9482,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UOF-365K",
+          "compactDescr": 9738,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -198,7 +1125,47 @@
       "name": "IS-4",
       "vehicleTypeID": 24,
       "compactDescr_hex": "011830001600cd00080027000f000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 9987,
+      "gunCompactDescr": 3844,
+      "maxAmmo": 30,
+      "defaultAmmo": [
+        13066,
+        18,
+        13322,
+        0,
+        13578,
+        12
+      ],
+      "shells": [
+        {
+          "name": "_122mm_UBR-471",
+          "compactDescr": 13066,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_122mm_UBR-471P",
+          "compactDescr": 13322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_122mm_UOF-471",
+          "compactDescr": 13578,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -206,7 +1173,47 @@
       "name": "SU-76",
       "vehicleTypeID": 25,
       "compactDescr_hex": "011932001800ca000300290034000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 10499,
+      "gunCompactDescr": 13316,
+      "maxAmmo": 80,
+      "defaultAmmo": [
+        4874,
+        80,
+        5130,
+        0,
+        5386,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_57mm_UBR-271KO",
+          "compactDescr": 4874,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_57mm_UBR-271NO",
+          "compactDescr": 5130,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_57mm_UO-271UO",
+          "compactDescr": 5386,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -214,7 +1221,47 @@
       "name": "T-43",
       "vehicleTypeID": 26,
       "compactDescr_hex": "011a34000c00cb0003002a0023000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 10755,
+      "gunCompactDescr": 8964,
+      "maxAmmo": 60,
+      "defaultAmmo": [
+        9226,
+        48,
+        9482,
+        0,
+        9738,
+        12
+      ],
+      "shells": [
+        {
+          "name": "_85mm_UBR-365K",
+          "compactDescr": 9226,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UBR-365P",
+          "compactDescr": 9482,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_85mm_UOF-365K",
+          "compactDescr": 9738,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -222,7 +1269,47 @@
       "name": "GAZ-74b",
       "vehicleTypeID": 27,
       "compactDescr_hex": "011b38001b00ca0003002e003d000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 11779,
+      "gunCompactDescr": 15620,
+      "maxAmmo": 64,
+      "defaultAmmo": [
+        7178,
+        51,
+        8202,
+        0,
+        7690,
+        13
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -230,7 +1317,47 @@
       "name": "IS-7",
       "vehicleTypeID": 28,
       "compactDescr_hex": "011c3a002400cd000b002f003a000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12035,
+      "gunCompactDescr": 14852,
+      "maxAmmo": 30,
+      "defaultAmmo": [
+        14602,
+        18,
+        14858,
+        0,
+        15114,
+        12
+      ],
+      "shells": [
+        {
+          "name": "_130mm_UBR-482",
+          "compactDescr": 14602,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_130mm_UBR-482P",
+          "compactDescr": 14858,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_130mm_UOF-482",
+          "compactDescr": 15114,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -238,7 +1365,47 @@
       "name": "ISU-152",
       "vehicleTypeID": 29,
       "compactDescr_hex": "011d3c000300cc000400310021000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12547,
+      "gunCompactDescr": 8452,
+      "maxAmmo": 26,
+      "defaultAmmo": [
+        15882,
+        5,
+        16138,
+        0,
+        16394,
+        21
+      ],
+      "shells": [
+        {
+          "name": "_152mm_53-G-530",
+          "compactDescr": 15882,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53BP540",
+          "compactDescr": 16138,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-OF-530",
+          "compactDescr": 16394,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -246,7 +1413,36 @@
       "name": "SU-26",
       "vehicleTypeID": 30,
       "compactDescr_hex": "011e41001300c9000200350028000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 13571,
+      "gunCompactDescr": 10244,
+      "maxAmmo": 48,
+      "defaultAmmo": [
+        8970,
+        48,
+        7434,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UOF-354K",
+          "compactDescr": 8970,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_BP-354",
+          "compactDescr": 7434,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -254,7 +1450,47 @@
       "name": "T-54",
       "vehicleTypeID": 31,
       "compactDescr_hex": "011f45001200cd00050038004c000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 14339,
+      "gunCompactDescr": 19460,
+      "maxAmmo": 50,
+      "defaultAmmo": [
+        10762,
+        40,
+        11018,
+        0,
+        11274,
+        10
+      ],
+      "shells": [
+        {
+          "name": "_100mm_UBR-412",
+          "compactDescr": 10762,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_100mm_UBR-412P",
+          "compactDescr": 11018,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_100mm_UOF-412",
+          "compactDescr": 11274,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -262,7 +1498,47 @@
       "name": "Object_704",
       "vehicleTypeID": 32,
       "compactDescr_hex": "012047001600cc0008003a0050000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 14851,
+      "gunCompactDescr": 20484,
+      "maxAmmo": 34,
+      "defaultAmmo": [
+        15882,
+        7,
+        16138,
+        0,
+        16394,
+        27
+      ],
+      "shells": [
+        {
+          "name": "_152mm_53-G-530",
+          "compactDescr": 15882,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53BP540",
+          "compactDescr": 16138,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-OF-530",
+          "compactDescr": 16394,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -270,7 +1546,47 @@
       "name": "Object_212",
       "vehicleTypeID": 33,
       "compactDescr_hex": "012149002d00cd0004003b0019000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 15107,
+      "gunCompactDescr": 6404,
+      "maxAmmo": 47,
+      "defaultAmmo": [
+        16650,
+        47,
+        17162,
+        0,
+        16906,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_152mm_53-OF-551",
+          "compactDescr": 16650,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-G-551",
+          "compactDescr": 17162,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_152mm_53-OF-551BM",
+          "compactDescr": 16906,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -278,7 +1594,47 @@
       "name": "Object_261",
       "vehicleTypeID": 34,
       "compactDescr_hex": "01224b001600cd0004003c0051000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 15363,
+      "gunCompactDescr": 20740,
+      "maxAmmo": 18,
+      "defaultAmmo": [
+        20234,
+        18,
+        20746,
+        0,
+        20490,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_180mm_F-600D",
+          "compactDescr": 20234,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_180mm_UBR-600",
+          "compactDescr": 20746,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_180mm_F-600BM",
+          "compactDescr": 20490,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -286,7 +1642,47 @@
       "name": "KV-13",
       "vehicleTypeID": 35,
       "compactDescr_hex": "01234d000a00cc0008003d001b000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 15619,
+      "gunCompactDescr": 6916,
+      "maxAmmo": 68,
+      "defaultAmmo": [
+        7178,
+        54,
+        8202,
+        0,
+        7690,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -294,7 +1690,47 @@
       "name": "KV-220",
       "vehicleTypeID": 200,
       "compactDescr_hex": "01c836001d00cb0011002c004a000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 11267,
+      "gunCompactDescr": 18948,
+      "maxAmmo": 120,
+      "defaultAmmo": [
+        7178,
+        96,
+        8202,
+        0,
+        7690,
+        24
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -302,7 +1738,47 @@
       "name": "Matilda_II_LL",
       "vehicleTypeID": 201,
       "compactDescr_hex": "01c937001f00cb000a002d0041000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 11523,
+      "gunCompactDescr": 16644,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        7178,
+        0,
+        8202,
+        0,
+        7690,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354A",
+          "compactDescr": 7178,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UBR-354MP",
+          "compactDescr": 8202,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354",
+          "compactDescr": 7690,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -310,7 +1786,36 @@
       "name": "Churchill_LL",
       "vehicleTypeID": 202,
       "compactDescr_hex": "01ca3b002500cb000a00300045000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12291,
+      "gunCompactDescr": 17668,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        6410,
+        0,
+        6666,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_6pdr_AP_MKs_4",
+          "compactDescr": 6410,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_6pdr_APCR_MK_1T",
+          "compactDescr": 6666,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -318,7 +1823,47 @@
       "name": "BT-SV",
       "vehicleTypeID": 204,
       "compactDescr_hex": "01cc3f002b00ca001200330048000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 13059,
+      "gunCompactDescr": 18436,
+      "maxAmmo": 84,
+      "defaultAmmo": [
+        3338,
+        84,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -326,7 +1871,47 @@
       "name": "Valentine_LL",
       "vehicleTypeID": 205,
       "compactDescr_hex": "01cd40002700cb000a00340048000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 13315,
+      "gunCompactDescr": 18436,
+      "maxAmmo": 61,
+      "defaultAmmo": [
+        3338,
+        61,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -334,7 +1919,47 @@
       "name": "M3_Stuart_LL",
       "vehicleTypeID": 206,
       "compactDescr_hex": "01ce43002900ca000f00360049000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 13827,
+      "gunCompactDescr": 18692,
+      "maxAmmo": 103,
+      "defaultAmmo": [
+        18698,
+        103,
+        18954,
+        0,
+        19210,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP_M74_LL",
+          "compactDescr": 18698,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APC_M51_LL",
+          "compactDescr": 18954,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE_M63_LL",
+          "compactDescr": 19210,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -342,7 +1967,47 @@
       "name": "A-32",
       "vehicleTypeID": 207,
       "compactDescr_hex": "01cf44002a00cb00100037004b000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 14083,
+      "gunCompactDescr": 19204,
+      "maxAmmo": 72,
+      "defaultAmmo": [
+        8714,
+        58,
+        7434,
+        0,
+        8970,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_76mm_UBR-354KA",
+          "compactDescr": 8714,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_BP-354",
+          "compactDescr": 7434,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_UOF-354K",
+          "compactDescr": 8970,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -350,7 +2015,47 @@
       "name": "KV-5",
       "vehicleTypeID": 208,
       "compactDescr_hex": "01d04f003100cc0014003f0052000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 16131,
+      "gunCompactDescr": 20996,
+      "maxAmmo": 60,
+      "defaultAmmo": [
+        11530,
+        48,
+        11786,
+        0,
+        12042,
+        12
+      ],
+      "shells": [
+        {
+          "name": "_107mm_UBR-420",
+          "compactDescr": 11530,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_107mm_UBR-420P",
+          "compactDescr": 11786,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_107mm_UOF-420",
+          "compactDescr": 12042,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "ussr",
@@ -358,7 +2063,47 @@
       "name": "T-127",
       "vehicleTypeID": 209,
       "compactDescr_hex": "01d150003200c9001200400048000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 16387,
+      "gunCompactDescr": 18436,
+      "maxAmmo": 104,
+      "defaultAmmo": [
+        3338,
+        104,
+        3594,
+        0,
+        3850,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_45mm_UBR-240A",
+          "compactDescr": 3338,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UBR-240PA",
+          "compactDescr": 3594,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_45mm_UOF-240A",
+          "compactDescr": 3850,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -366,7 +2111,47 @@
       "name": "PzIV",
       "vehicleTypeID": 0,
       "compactDescr_hex": "110000000000cb000200000000000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 19,
+      "gunCompactDescr": 20,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        4634,
+        0,
+        4890,
+        0,
+        5914,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_75mm_APCBC",
+          "compactDescr": 4634,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_Gr_38_HL_A",
+          "compactDescr": 4890,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -374,7 +2159,36 @@
       "name": "Hummel",
       "vehicleTypeID": 1,
       "compactDescr_hex": "110102000100cc000200020006000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 531,
+      "gunCompactDescr": 1556,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        12058,
+        0,
+        12314,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_150mm_Sprg",
+          "compactDescr": 12058,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mmGr_39H1A",
+          "compactDescr": 12314,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -382,7 +2196,47 @@
       "name": "PzVI",
       "vehicleTypeID": 2,
       "compactDescr_hex": "110204000400cd000400030004000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 787,
+      "gunCompactDescr": 1044,
+      "maxAmmo": 110,
+      "defaultAmmo": [
+        6170,
+        88,
+        6426,
+        0,
+        6682,
+        22
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39L",
+          "compactDescr": 6170,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40L",
+          "compactDescr": 6426,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18L",
+          "compactDescr": 6682,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -390,7 +2244,47 @@
       "name": "Pz35t",
       "vehicleTypeID": 3,
       "compactDescr_hex": "110306000700c9000b0005000b000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 1299,
+      "gunCompactDescr": 2836,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        1562,
+        0,
+        1818,
+        0,
+        2074,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr39t",
+          "compactDescr": 1562,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40t",
+          "compactDescr": 1818,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18t",
+          "compactDescr": 2074,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -398,7 +2292,47 @@
       "name": "StuGIII",
       "vehicleTypeID": 4,
       "compactDescr_hex": "110408000000cb000200070011000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 1811,
+      "gunCompactDescr": 4372,
+      "maxAmmo": 44,
+      "defaultAmmo": [
+        5402,
+        35,
+        5658,
+        0,
+        5914,
+        9
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -406,7 +2340,47 @@
       "name": "PzV",
       "vehicleTypeID": 5,
       "compactDescr_hex": "11050a000400cc000400080004000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 2067,
+      "gunCompactDescr": 1044,
+      "maxAmmo": 81,
+      "defaultAmmo": [
+        6170,
+        65,
+        6426,
+        0,
+        6682,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39L",
+          "compactDescr": 6170,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40L",
+          "compactDescr": 6426,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18L",
+          "compactDescr": 6682,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -414,7 +2388,47 @@
       "name": "JagdPzIV",
       "vehicleTypeID": 6,
       "compactDescr_hex": "11060e000000cc0002000b0012000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 2835,
+      "gunCompactDescr": 4628,
+      "maxAmmo": 79,
+      "defaultAmmo": [
+        5402,
+        63,
+        5658,
+        0,
+        5914,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -422,7 +2436,47 @@
       "name": "Hetzer",
       "vehicleTypeID": 7,
       "compactDescr_hex": "11070c000900ca000b000a0011000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 2579,
+      "gunCompactDescr": 4372,
+      "maxAmmo": 40,
+      "defaultAmmo": [
+        5402,
+        32,
+        5658,
+        0,
+        5914,
+        8
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -430,7 +2484,36 @@
       "name": "PzII",
       "vehicleTypeID": 8,
       "compactDescr_hex": "110810000c00c90001000c000a000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 3091,
+      "gunCompactDescr": 2580,
+      "maxAmmo": 260,
+      "defaultAmmo": [
+        26,
+        260,
+        282,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_20mm_Pzgr39",
+          "compactDescr": 26,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_20cm_Pzgr40",
+          "compactDescr": 282,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -438,7 +2521,47 @@
       "name": "VK3601H",
       "vehicleTypeID": 9,
       "compactDescr_hex": "110912000400cc0002000e0003000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 3603,
+      "gunCompactDescr": 788,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        5402,
+        0,
+        5658,
+        0,
+        5914,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -446,7 +2569,47 @@
       "name": "VK3001H",
       "vehicleTypeID": 10,
       "compactDescr_hex": "110a14000300cb000200100002000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4115,
+      "gunCompactDescr": 532,
+      "maxAmmo": 78,
+      "defaultAmmo": [
+        5402,
+        62,
+        5658,
+        0,
+        5914,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -454,7 +2617,47 @@
       "name": "Bison_I",
       "vehicleTypeID": 11,
       "compactDescr_hex": "110b16001000c9000100120018000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4627,
+      "gunCompactDescr": 6164,
+      "maxAmmo": 20,
+      "defaultAmmo": [
+        13594,
+        20,
+        12570,
+        0,
+        12826,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_150mm_Sprg_L.erz.",
+          "compactDescr": 13594,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mm_Sprg_L",
+          "compactDescr": 12570,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mmGr_39H1A_L",
+          "compactDescr": 12826,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -462,7 +2665,47 @@
       "name": "Ltraktor",
       "vehicleTypeID": 12,
       "compactDescr_hex": "110c18000f00c9000000130016000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 4883,
+      "gunCompactDescr": 5652,
+      "maxAmmo": 44,
+      "defaultAmmo": [
+        538,
+        44,
+        1050,
+        0,
+        1306,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr36",
+          "compactDescr": 538,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40",
+          "compactDescr": 1050,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18",
+          "compactDescr": 1306,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -470,7 +2713,47 @@
       "name": "Pz38t",
       "vehicleTypeID": 13,
       "compactDescr_hex": "110d1a000a00ca000b0015000c000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 5395,
+      "gunCompactDescr": 3092,
+      "maxAmmo": 72,
+      "defaultAmmo": [
+        1562,
+        72,
+        1818,
+        0,
+        2074,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr39t",
+          "compactDescr": 1562,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40t",
+          "compactDescr": 1818,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18t",
+          "compactDescr": 2074,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -478,7 +2761,47 @@
       "name": "PanzerJager_I",
       "vehicleTypeID": 14,
       "compactDescr_hex": "110e1c001100c900010017001a000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 5907,
+      "gunCompactDescr": 6676,
+      "maxAmmo": 96,
+      "defaultAmmo": [
+        1562,
+        96,
+        1818,
+        0,
+        2074,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr39t",
+          "compactDescr": 1562,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40t",
+          "compactDescr": 1818,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18t",
+          "compactDescr": 2074,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -486,7 +2809,47 @@
       "name": "JagdPanther",
       "vehicleTypeID": 15,
       "compactDescr_hex": "110f1e000400cc000400180013000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 6163,
+      "gunCompactDescr": 4884,
+      "maxAmmo": 68,
+      "defaultAmmo": [
+        6170,
+        54,
+        6426,
+        0,
+        6682,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39L",
+          "compactDescr": 6170,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40L",
+          "compactDescr": 6426,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18L",
+          "compactDescr": 6682,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -494,7 +2857,47 @@
       "name": "VK3002DB",
       "vehicleTypeID": 16,
       "compactDescr_hex": "111020000500cc000200190003000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 6419,
+      "gunCompactDescr": 788,
+      "maxAmmo": 54,
+      "defaultAmmo": [
+        5402,
+        43,
+        5658,
+        0,
+        5914,
+        11
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -502,7 +2905,47 @@
       "name": "PzIII",
       "vehicleTypeID": 17,
       "compactDescr_hex": "111122000000ca0002001b0016000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 6931,
+      "gunCompactDescr": 5652,
+      "maxAmmo": 131,
+      "defaultAmmo": [
+        538,
+        131,
+        1050,
+        0,
+        1306,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr36",
+          "compactDescr": 538,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40",
+          "compactDescr": 1050,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18",
+          "compactDescr": 1306,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -510,7 +2953,47 @@
       "name": "Sturmpanzer_II",
       "vehicleTypeID": 18,
       "compactDescr_hex": "111224000c00c90002001d0018000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 7443,
+      "gunCompactDescr": 6164,
+      "maxAmmo": 15,
+      "defaultAmmo": [
+        13594,
+        15,
+        12570,
+        0,
+        12826,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_150mm_Sprg_L.erz.",
+          "compactDescr": 13594,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mm_Sprg_L",
+          "compactDescr": 12570,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mmGr_39H1A_L",
+          "compactDescr": 12826,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -518,7 +3001,47 @@
       "name": "PzIII_A",
       "vehicleTypeID": 19,
       "compactDescr_hex": "111326000000ca0002001e0016000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 7699,
+      "gunCompactDescr": 5652,
+      "maxAmmo": 156,
+      "defaultAmmo": [
+        538,
+        156,
+        1050,
+        0,
+        1306,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr36",
+          "compactDescr": 538,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40",
+          "compactDescr": 1050,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18",
+          "compactDescr": 1306,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -526,7 +3049,47 @@
       "name": "PzVIB_Tiger_II",
       "vehicleTypeID": 20,
       "compactDescr_hex": "111428000500cd000400200009000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 8211,
+      "gunCompactDescr": 2324,
+      "maxAmmo": 72,
+      "defaultAmmo": [
+        8218,
+        58,
+        8474,
+        0,
+        8730,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_88mm_Pzgr39",
+          "compactDescr": 8218,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_88mm_Pzgr.40",
+          "compactDescr": 8474,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_88mm_Sprg.18",
+          "compactDescr": 8730,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -534,7 +3097,47 @@
       "name": "VK1602",
       "vehicleTypeID": 21,
       "compactDescr_hex": "11152a000100ca000200220016000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 8723,
+      "gunCompactDescr": 5652,
+      "maxAmmo": 64,
+      "defaultAmmo": [
+        538,
+        64,
+        1050,
+        0,
+        1306,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr36",
+          "compactDescr": 538,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40",
+          "compactDescr": 1050,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18",
+          "compactDescr": 1306,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -542,7 +3145,47 @@
       "name": "Grille",
       "vehicleTypeID": 22,
       "compactDescr_hex": "11162c000900cb000b00230018000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 8979,
+      "gunCompactDescr": 6164,
+      "maxAmmo": 20,
+      "defaultAmmo": [
+        13594,
+        20,
+        12570,
+        0,
+        12826,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_150mm_Sprg_L.erz.",
+          "compactDescr": 13594,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mm_Sprg_L",
+          "compactDescr": 12570,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mmGr_39H1A_L",
+          "compactDescr": 12826,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -550,7 +3193,36 @@
       "name": "Wespe",
       "vehicleTypeID": 23,
       "compactDescr_hex": "11172f000c00ca000200250021000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 9491,
+      "gunCompactDescr": 8468,
+      "maxAmmo": 38,
+      "defaultAmmo": [
+        10266,
+        38,
+        10010,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_105mm_Sprg_K",
+          "compactDescr": 10266,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mmGr39H1A",
+          "compactDescr": 10010,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -558,7 +3230,36 @@
       "name": "PzII_Luchs",
       "vehicleTypeID": 24,
       "compactDescr_hex": "111831000d00ca000200260015000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 9747,
+      "gunCompactDescr": 5396,
+      "maxAmmo": 340,
+      "defaultAmmo": [
+        26,
+        340,
+        282,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_20mm_Pzgr39",
+          "compactDescr": 26,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_20cm_Pzgr40",
+          "compactDescr": 282,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -566,7 +3267,47 @@
       "name": "PzIII_IV",
       "vehicleTypeID": 25,
       "compactDescr_hex": "111935000100cb0002002a0002000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 10771,
+      "gunCompactDescr": 532,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        5402,
+        0,
+        5658,
+        0,
+        5914,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -574,7 +3315,47 @@
       "name": "G20_Marder_II",
       "vehicleTypeID": 26,
       "compactDescr_hex": "111a37000c00ca0001002c001b000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 11283,
+      "gunCompactDescr": 6932,
+      "maxAmmo": 62,
+      "defaultAmmo": [
+        3866,
+        62,
+        4122,
+        0,
+        4378,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_50mm_Pzgr39",
+          "compactDescr": 3866,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_50mm_Pzgr40",
+          "compactDescr": 4122,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_50mm_Sprg.18",
+          "compactDescr": 4378,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -582,7 +3363,47 @@
       "name": "Maus",
       "vehicleTypeID": 27,
       "compactDescr_hex": "111b39001900cd000d002d0025000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 11539,
+      "gunCompactDescr": 9492,
+      "maxAmmo": 68,
+      "defaultAmmo": [
+        11290,
+        41,
+        11546,
+        0,
+        11802,
+        27
+      ],
+      "shells": [
+        {
+          "name": "_128mm_PzGr39",
+          "compactDescr": 11290,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_128mm_PzGr40",
+          "compactDescr": 11546,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_128mm_SprG18",
+          "compactDescr": 11802,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -590,7 +3411,47 @@
       "name": "VK3001P",
       "vehicleTypeID": 28,
       "compactDescr_hex": "111c3c001d00cb000200300003000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12307,
+      "gunCompactDescr": 788,
+      "maxAmmo": 78,
+      "defaultAmmo": [
+        5402,
+        62,
+        5658,
+        0,
+        5914,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -598,7 +3459,47 @@
       "name": "VK4502P",
       "vehicleTypeID": 29,
       "compactDescr_hex": "111d3e001e00cd000400320009000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12819,
+      "gunCompactDescr": 2324,
+      "maxAmmo": 92,
+      "defaultAmmo": [
+        8218,
+        74,
+        8474,
+        0,
+        8730,
+        18
+      ],
+      "shells": [
+        {
+          "name": "_88mm_Pzgr39",
+          "compactDescr": 8218,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_88mm_Pzgr.40",
+          "compactDescr": 8474,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_88mm_Sprg.18",
+          "compactDescr": 8730,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -606,7 +3507,47 @@
       "name": "Ferdinand",
       "vehicleTypeID": 30,
       "compactDescr_hex": "111e42001e00cd00040036001d000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 13843,
+      "gunCompactDescr": 7444,
+      "maxAmmo": 50,
+      "defaultAmmo": [
+        8218,
+        40,
+        8474,
+        0,
+        8730,
+        10
+      ],
+      "shells": [
+        {
+          "name": "_88mm_Pzgr39",
+          "compactDescr": 8218,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_88mm_Pzgr.40",
+          "compactDescr": 8474,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_88mm_Sprg.18",
+          "compactDescr": 8730,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -614,7 +3555,47 @@
       "name": "JagdTiger",
       "vehicleTypeID": 31,
       "compactDescr_hex": "111f4a000500cd0004003b0028000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 15123,
+      "gunCompactDescr": 10260,
+      "maxAmmo": 40,
+      "defaultAmmo": [
+        11290,
+        24,
+        11546,
+        0,
+        11802,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_128mm_PzGr39",
+          "compactDescr": 11290,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_128mm_PzGr40",
+          "compactDescr": 11546,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_128mm_SprG18",
+          "compactDescr": 11802,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -622,7 +3603,47 @@
       "name": "Pz38_NA",
       "vehicleTypeID": 32,
       "compactDescr_hex": "11204d001500ca000b003d000c000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 15635,
+      "gunCompactDescr": 3092,
+      "maxAmmo": 72,
+      "defaultAmmo": [
+        1562,
+        72,
+        1818,
+        0,
+        2074,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr39t",
+          "compactDescr": 1562,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40t",
+          "compactDescr": 1818,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18t",
+          "compactDescr": 2074,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -630,7 +3651,47 @@
       "name": "Panther_II",
       "vehicleTypeID": 33,
       "compactDescr_hex": "11214f000600cd0004003f0004000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 16147,
+      "gunCompactDescr": 1044,
+      "maxAmmo": 80,
+      "defaultAmmo": [
+        6170,
+        64,
+        6426,
+        0,
+        6682,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39L",
+          "compactDescr": 6170,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40L",
+          "compactDescr": 6426,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18L",
+          "compactDescr": 6682,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -638,7 +3699,36 @@
       "name": "G_Tiger",
       "vehicleTypeID": 34,
       "compactDescr_hex": "112251000400cd000200410030000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 16659,
+      "gunCompactDescr": 12308,
+      "maxAmmo": 21,
+      "defaultAmmo": [
+        15386,
+        21,
+        15642,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_170mm_Sprg18",
+          "compactDescr": 15386,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_170mm_Sprg18_Ausf_G",
+          "compactDescr": 15642,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -646,7 +3736,36 @@
       "name": "G_Panther",
       "vehicleTypeID": 35,
       "compactDescr_hex": "112353002500cc000200420007000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 16915,
+      "gunCompactDescr": 1812,
+      "maxAmmo": 30,
+      "defaultAmmo": [
+        13082,
+        30,
+        13338,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_150mm_SprgG",
+          "compactDescr": 13082,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_150mmGr_39H1A_G",
+          "compactDescr": 13338,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -654,7 +3773,47 @@
       "name": "G_E",
       "vehicleTypeID": 36,
       "compactDescr_hex": "112456000400cd000200440034000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 17427,
+      "gunCompactDescr": 13332,
+      "maxAmmo": 30,
+      "defaultAmmo": [
+        15898,
+        30,
+        17946,
+        0,
+        16154,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_210mm_Sprg18",
+          "compactDescr": 15898,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_210mm_Gr.18Be",
+          "compactDescr": 17946,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_210mm_Sprg18_Ausf_G",
+          "compactDescr": 16154,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -662,7 +3821,47 @@
       "name": "PzV_PzIV",
       "vehicleTypeID": 201,
       "compactDescr_hex": "11c933002200cb000f0028002b000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 10259,
+      "gunCompactDescr": 11028,
+      "maxAmmo": 92,
+      "defaultAmmo": [
+        5402,
+        74,
+        5658,
+        0,
+        5914,
+        18
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -670,7 +3869,36 @@
       "name": "PzII_J",
       "vehicleTypeID": 202,
       "compactDescr_hex": "11ca34001600ca00030029002c000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 10515,
+      "gunCompactDescr": 11284,
+      "maxAmmo": 400,
+      "defaultAmmo": [
+        26,
+        400,
+        282,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_20mm_Pzgr39",
+          "compactDescr": 26,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_20cm_Pzgr40",
+          "compactDescr": 282,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -678,7 +3906,47 @@
       "name": "S35_captured",
       "vehicleTypeID": 203,
       "compactDescr_hex": "11cb3a001b00ca000e002e0026000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 11795,
+      "gunCompactDescr": 9748,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        3098,
+        0,
+        3354,
+        0,
+        3610,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_47mm_Pzgr39f",
+          "compactDescr": 3098,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_47cm_Pzgr40f",
+          "compactDescr": 3354,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_47mm_Sprg.18f",
+          "compactDescr": 3610,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -686,7 +3954,47 @@
       "name": "B-1bis_captured",
       "vehicleTypeID": 204,
       "compactDescr_hex": "11cc3b001c00ca000e002f0026000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 12051,
+      "gunCompactDescr": 9748,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        3098,
+        0,
+        3354,
+        0,
+        3610,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_47mm_Pzgr39f",
+          "compactDescr": 3098,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_47cm_Pzgr40f",
+          "compactDescr": 3354,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_47mm_Sprg.18f",
+          "compactDescr": 3610,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -694,7 +4002,47 @@
       "name": "H39_captured",
       "vehicleTypeID": 205,
       "compactDescr_hex": "11cd40002100c9000e00340027000000",
-      "crewSize": 2
+      "crewSize": 2,
+      "turretCompactDescr": 13331,
+      "gunCompactDescr": 10004,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        1562,
+        0,
+        1818,
+        0,
+        2074,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_Pzgr39t",
+          "compactDescr": 1562,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37cm_Pzgr40t",
+          "compactDescr": 1818,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_Sprg.18t",
+          "compactDescr": 2074,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -702,7 +4050,47 @@
       "name": "PzV_PzIV_ausf_Alfa",
       "vehicleTypeID": 211,
       "compactDescr_hex": "11d34c002200cb000f003c002b000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 15379,
+      "gunCompactDescr": 11028,
+      "maxAmmo": 92,
+      "defaultAmmo": [
+        5402,
+        74,
+        5658,
+        0,
+        5914,
+        18
+      ],
+      "shells": [
+        {
+          "name": "_75mm_Pzgr39",
+          "compactDescr": 5402,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Pzgr.40",
+          "compactDescr": 5658,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_Sprg.18",
+          "compactDescr": 5914,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "germany",
@@ -710,7 +4098,47 @@
       "name": "Lowe",
       "vehicleTypeID": 212,
       "compactDescr_hex": "11d455002800cd001000430033000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 17171,
+      "gunCompactDescr": 13076,
+      "maxAmmo": 40,
+      "defaultAmmo": [
+        16922,
+        24,
+        17178,
+        0,
+        17434,
+        16
+      ],
+      "shells": [
+        {
+          "name": "_105mm_PzGr39L1",
+          "compactDescr": 16922,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_Pzgr.40L1",
+          "compactDescr": 17178,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_Sprg_L1",
+          "compactDescr": 17434,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -718,7 +4146,47 @@
       "name": "T14",
       "vehicleTypeID": 0,
       "compactDescr_hex": "210000002000cb00000000001e000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 35,
+      "gunCompactDescr": 7716,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        3626,
+        0,
+        3882,
+        0,
+        4138,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -726,7 +4194,36 @@
       "name": "M3_Stuart",
       "vehicleTypeID": 1,
       "compactDescr_hex": "210101000200ca000400010001000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 291,
+      "gunCompactDescr": 292,
+      "maxAmmo": 760,
+      "defaultAmmo": [
+        298,
+        760,
+        554,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_20mm_AP",
+          "compactDescr": 298,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_20mm_APCR",
+          "compactDescr": 554,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -734,7 +4231,47 @@
       "name": "T1_Cunningham",
       "vehicleTypeID": 2,
       "compactDescr_hex": "210203000400c9000300030004000000",
-      "crewSize": 2
+      "crewSize": 2,
+      "turretCompactDescr": 803,
+      "gunCompactDescr": 1060,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        1578,
+        0,
+        1834,
+        0,
+        2090,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP1937",
+          "compactDescr": 1578,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APCBC1935",
+          "compactDescr": 1834,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE1916",
+          "compactDescr": 2090,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -742,7 +4279,47 @@
       "name": "M6",
       "vehicleTypeID": 3,
       "compactDescr_hex": "210306000b00cb000800060007000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 1571,
+      "gunCompactDescr": 1828,
+      "maxAmmo": 75,
+      "defaultAmmo": [
+        3626,
+        60,
+        3882,
+        0,
+        4138,
+        15
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -750,7 +4327,47 @@
       "name": "M4_Sherman",
       "vehicleTypeID": 4,
       "compactDescr_hex": "210408000c00cb000800080000000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 2083,
+      "gunCompactDescr": 36,
+      "maxAmmo": 90,
+      "defaultAmmo": [
+        3626,
+        72,
+        3882,
+        0,
+        4138,
+        18
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -758,7 +4375,47 @@
       "name": "M4A3E8_Sherman",
       "vehicleTypeID": 5,
       "compactDescr_hex": "21050a000d00cb0008000a0000000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 2595,
+      "gunCompactDescr": 36,
+      "maxAmmo": 71,
+      "defaultAmmo": [
+        3626,
+        57,
+        3882,
+        0,
+        4138,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -766,7 +4423,47 @@
       "name": "T20",
       "vehicleTypeID": 6,
       "compactDescr_hex": "21060c000f00cb0008000c0008000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 3107,
+      "gunCompactDescr": 2084,
+      "maxAmmo": 70,
+      "defaultAmmo": [
+        4394,
+        56,
+        4650,
+        0,
+        4906,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_76mm_AP_M79",
+          "compactDescr": 4394,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HVAP_M93",
+          "compactDescr": 4650,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HE_M42A1",
+          "compactDescr": 4906,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -774,7 +4471,25 @@
       "name": "M2_lt",
       "vehicleTypeID": 7,
       "compactDescr_hex": "21070e001100c90004000e000c000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 3619,
+      "gunCompactDescr": 3108,
+      "maxAmmo": 1800,
+      "defaultAmmo": [
+        42,
+        1800
+      ],
+      "shells": [
+        {
+          "name": "_12.7mm_AP_M2",
+          "compactDescr": 42,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -782,7 +4497,36 @@
       "name": "T57",
       "vehicleTypeID": 8,
       "compactDescr_hex": "210810000200ca00040010000d000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4131,
+      "gunCompactDescr": 3364,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        5162,
+        0,
+        5418,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_76mm_HE_M42B1",
+          "compactDescr": 5162,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HEAT",
+          "compactDescr": 5418,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -790,7 +4534,47 @@
       "name": "T23",
       "vehicleTypeID": 9,
       "compactDescr_hex": "210912001000cc000800110008000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4387,
+      "gunCompactDescr": 2084,
+      "maxAmmo": 75,
+      "defaultAmmo": [
+        4394,
+        60,
+        4650,
+        0,
+        4906,
+        15
+      ],
+      "shells": [
+        {
+          "name": "_76mm_AP_M79",
+          "compactDescr": 4394,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HVAP_M93",
+          "compactDescr": 4650,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HE_M42A1",
+          "compactDescr": 4906,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -798,7 +4582,47 @@
       "name": "T30",
       "vehicleTypeID": 10,
       "compactDescr_hex": "210a15001700cd000b0014000f000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 5155,
+      "gunCompactDescr": 3876,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        8490,
+        0,
+        8746,
+        0,
+        9002,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_155mm_AP_M111",
+          "compactDescr": 8490,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_155mm_AP_M112",
+          "compactDescr": 8746,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_155mm_HE_M101",
+          "compactDescr": 9002,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -806,7 +4630,47 @@
       "name": "T34_hvy",
       "vehicleTypeID": 11,
       "compactDescr_hex": "210b16001600cd000800150010000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 5411,
+      "gunCompactDescr": 4132,
+      "maxAmmo": 73,
+      "defaultAmmo": [
+        5930,
+        58,
+        6186,
+        0,
+        6442,
+        15
+      ],
+      "shells": [
+        {
+          "name": "_90mm_AP_M77",
+          "compactDescr": 5930,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HVAP_M304",
+          "compactDescr": 6186,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HE_M71",
+          "compactDescr": 6442,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -814,7 +4678,47 @@
       "name": "M3_Grant",
       "vehicleTypeID": 12,
       "compactDescr_hex": "210c18001800cb00040025001c000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 9507,
+      "gunCompactDescr": 7204,
+      "maxAmmo": 50,
+      "defaultAmmo": [
+        3626,
+        40,
+        3882,
+        0,
+        4138,
+        10
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -822,7 +4726,47 @@
       "name": "T1_hvy",
       "vehicleTypeID": 13,
       "compactDescr_hex": "210d1a000a00cb000800190007000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 6435,
+      "gunCompactDescr": 1828,
+      "maxAmmo": 75,
+      "defaultAmmo": [
+        3626,
+        60,
+        3882,
+        0,
+        4138,
+        15
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -830,7 +4774,36 @@
       "name": "M7_Priest",
       "vehicleTypeID": 14,
       "compactDescr_hex": "210e1c000c00cb0008001b0013000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 6947,
+      "gunCompactDescr": 4900,
+      "maxAmmo": 69,
+      "defaultAmmo": [
+        6698,
+        69,
+        6954,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_105mm_HE_M1",
+          "compactDescr": 6698,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_HEAT_M67",
+          "compactDescr": 6954,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -838,7 +4811,47 @@
       "name": "T29",
       "vehicleTypeID": 15,
       "compactDescr_hex": "210f1e000000cd0008001c0009000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 7203,
+      "gunCompactDescr": 2340,
+      "maxAmmo": 126,
+      "defaultAmmo": [
+        4394,
+        101,
+        4650,
+        0,
+        4906,
+        25
+      ],
+      "shells": [
+        {
+          "name": "_76mm_AP_M79",
+          "compactDescr": 4394,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HVAP_M93",
+          "compactDescr": 4650,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HE_M42A1",
+          "compactDescr": 4906,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -846,7 +4859,36 @@
       "name": "M41",
       "vehicleTypeID": 16,
       "compactDescr_hex": "211020001a00cb000c001e0015000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 7715,
+      "gunCompactDescr": 5412,
+      "maxAmmo": 22,
+      "defaultAmmo": [
+        9258,
+        22,
+        9514,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_155mm_HE_M102",
+          "compactDescr": 9258,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_155mm_HEAT_M167",
+          "compactDescr": 9514,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -854,7 +4896,47 @@
       "name": "T32",
       "vehicleTypeID": 17,
       "compactDescr_hex": "211122000000cd0008001f0010000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 7971,
+      "gunCompactDescr": 4132,
+      "maxAmmo": 54,
+      "defaultAmmo": [
+        5930,
+        43,
+        6186,
+        0,
+        6442,
+        11
+      ],
+      "shells": [
+        {
+          "name": "_90mm_AP_M77",
+          "compactDescr": 5930,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HVAP_M304",
+          "compactDescr": 6186,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HE_M71",
+          "compactDescr": 6442,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -862,7 +4944,36 @@
       "name": "M37",
       "vehicleTypeID": 18,
       "compactDescr_hex": "211224001a00ca000100210013000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 8483,
+      "gunCompactDescr": 4900,
+      "maxAmmo": 126,
+      "defaultAmmo": [
+        6698,
+        126,
+        6954,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_105mm_HE_M1",
+          "compactDescr": 6698,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_HEAT_M67",
+          "compactDescr": 6954,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -870,7 +4981,47 @@
       "name": "M2_med",
       "vehicleTypeID": 19,
       "compactDescr_hex": "211326001b00cb000400220002000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 8739,
+      "gunCompactDescr": 548,
+      "maxAmmo": 120,
+      "defaultAmmo": [
+        810,
+        120,
+        1066,
+        0,
+        1322,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP_M74",
+          "compactDescr": 810,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APC_M51",
+          "compactDescr": 1066,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE_M63",
+          "compactDescr": 1322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -878,7 +5029,36 @@
       "name": "M5_Stuart",
       "vehicleTypeID": 20,
       "compactDescr_hex": "211429000300ca000800260001000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 9763,
+      "gunCompactDescr": 292,
+      "maxAmmo": 860,
+      "defaultAmmo": [
+        298,
+        860,
+        554,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_20mm_AP",
+          "compactDescr": 298,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_20mm_APCR",
+          "compactDescr": 554,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -886,7 +5066,47 @@
       "name": "M7_med",
       "vehicleTypeID": 21,
       "compactDescr_hex": "21152b000c00cb000800280003000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 10275,
+      "gunCompactDescr": 804,
+      "maxAmmo": 178,
+      "defaultAmmo": [
+        810,
+        178,
+        1066,
+        0,
+        1322,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP_M74",
+          "compactDescr": 810,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APC_M51",
+          "compactDescr": 1066,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE_M63",
+          "compactDescr": 1322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -894,7 +5114,47 @@
       "name": "T2_med",
       "vehicleTypeID": 22,
       "compactDescr_hex": "21162d002100c90004002a0005000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 10787,
+      "gunCompactDescr": 1316,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        1578,
+        0,
+        1834,
+        0,
+        2090,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP1937",
+          "compactDescr": 1578,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APCBC1935",
+          "compactDescr": 1834,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE1916",
+          "compactDescr": 2090,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -902,7 +5162,47 @@
       "name": "Pershing",
       "vehicleTypeID": 23,
       "compactDescr_hex": "21172f001000cc0008002c0008000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 11299,
+      "gunCompactDescr": 2084,
+      "maxAmmo": 92,
+      "defaultAmmo": [
+        4394,
+        74,
+        4650,
+        0,
+        4906,
+        18
+      ],
+      "shells": [
+        {
+          "name": "_76mm_AP_M79",
+          "compactDescr": 4394,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HVAP_M93",
+          "compactDescr": 4650,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HE_M42A1",
+          "compactDescr": 4906,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -910,7 +5210,47 @@
       "name": "T18",
       "vehicleTypeID": 24,
       "compactDescr_hex": "211831000200c90004002e0020000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 11811,
+      "gunCompactDescr": 8228,
+      "maxAmmo": 110,
+      "defaultAmmo": [
+        810,
+        110,
+        1066,
+        0,
+        1322,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP_M74",
+          "compactDescr": 810,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APC_M51",
+          "compactDescr": 1066,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE_M63",
+          "compactDescr": 1322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -918,7 +5258,36 @@
       "name": "T82",
       "vehicleTypeID": 25,
       "compactDescr_hex": "211933000200c90004002f0021000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12067,
+      "gunCompactDescr": 8484,
+      "maxAmmo": 45,
+      "defaultAmmo": [
+        4138,
+        45,
+        5674,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 1.0,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_HEAT_M66",
+          "compactDescr": 5674,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -926,7 +5295,47 @@
       "name": "M10_Wolverine",
       "vehicleTypeID": 27,
       "compactDescr_hex": "211b37000c00cc000800310025000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 12579,
+      "gunCompactDescr": 9508,
+      "maxAmmo": 54,
+      "defaultAmmo": [
+        3626,
+        43,
+        3882,
+        0,
+        4138,
+        11
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -934,7 +5343,47 @@
       "name": "M36_Slagger",
       "vehicleTypeID": 28,
       "compactDescr_hex": "211c3a000c00cc000800340027000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 13347,
+      "gunCompactDescr": 10020,
+      "maxAmmo": 54,
+      "defaultAmmo": [
+        4394,
+        43,
+        4650,
+        0,
+        4906,
+        11
+      ],
+      "shells": [
+        {
+          "name": "_76mm_AP_M79",
+          "compactDescr": 4394,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HVAP_M93",
+          "compactDescr": 4650,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_76mm_HE_M42A1",
+          "compactDescr": 4906,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -942,7 +5391,36 @@
       "name": "M40M43",
       "vehicleTypeID": 29,
       "compactDescr_hex": "211d3c000c00cd000c0036002a000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 13859,
+      "gunCompactDescr": 10788,
+      "maxAmmo": 26,
+      "defaultAmmo": [
+        12842,
+        26,
+        13098,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_155mm_HE_M101M4",
+          "compactDescr": 12842,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_155mm_HE_M101M6",
+          "compactDescr": 13098,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -950,7 +5428,36 @@
       "name": "T40",
       "vehicleTypeID": 30,
       "compactDescr_hex": "211e3e001800cb000400370021000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 14115,
+      "gunCompactDescr": 8484,
+      "maxAmmo": 98,
+      "defaultAmmo": [
+        4138,
+        98,
+        5674,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 1.0,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_HEAT_M66",
+          "compactDescr": 5674,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -958,7 +5465,36 @@
       "name": "M12",
       "vehicleTypeID": 31,
       "compactDescr_hex": "211f40001800cb000c00380016000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 14371,
+      "gunCompactDescr": 5668,
+      "maxAmmo": 20,
+      "defaultAmmo": [
+        9002,
+        20,
+        11562,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_155mm_HE_M101",
+          "compactDescr": 9002,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_155mm_HE_M101M2",
+          "compactDescr": 11562,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -966,7 +5502,47 @@
       "name": "T28",
       "vehicleTypeID": 32,
       "compactDescr_hex": "212042002500cc00080039002c000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 14627,
+      "gunCompactDescr": 11300,
+      "maxAmmo": 72,
+      "defaultAmmo": [
+        5930,
+        58,
+        6186,
+        0,
+        6442,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_90mm_AP_M77",
+          "compactDescr": 5930,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HVAP_M304",
+          "compactDescr": 6186,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HE_M71",
+          "compactDescr": 6442,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -974,7 +5550,47 @@
       "name": "T92",
       "vehicleTypeID": 33,
       "compactDescr_hex": "212144002500cd000c003a002f000000",
-      "crewSize": 6
+      "crewSize": 6,
+      "turretCompactDescr": 14883,
+      "gunCompactDescr": 12068,
+      "maxAmmo": 16,
+      "defaultAmmo": [
+        12330,
+        16,
+        14378,
+        0,
+        12586,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_240mm_HE_M146",
+          "compactDescr": 12330,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_240mm_M114_M78",
+          "compactDescr": 14378,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_240mm_HE_M160",
+          "compactDescr": 12586,
+          "defaultPortion": 0.7,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -982,7 +5598,47 @@
       "name": "T95",
       "vehicleTypeID": 34,
       "compactDescr_hex": "212246002500cc0008003b002d000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 15139,
+      "gunCompactDescr": 11556,
+      "maxAmmo": 62,
+      "defaultAmmo": [
+        7210,
+        37,
+        7466,
+        0,
+        9770,
+        25
+      ],
+      "shells": [
+        {
+          "name": "_105mm_AP_T32",
+          "compactDescr": 7210,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_APCR_T29E3",
+          "compactDescr": 7466,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_HE_M11",
+          "compactDescr": 9770,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -990,7 +5646,47 @@
       "name": "M46_Patton",
       "vehicleTypeID": 35,
       "compactDescr_hex": "21234a001000cd0008003e000a000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 15907,
+      "gunCompactDescr": 2596,
+      "maxAmmo": 70,
+      "defaultAmmo": [
+        5930,
+        56,
+        6186,
+        0,
+        6442,
+        14
+      ],
+      "shells": [
+        {
+          "name": "_90mm_AP_M77",
+          "compactDescr": 5930,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HVAP_M304",
+          "compactDescr": 6186,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HE_M71",
+          "compactDescr": 6442,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -998,7 +5694,47 @@
       "name": "T25_AT",
       "vehicleTypeID": 36,
       "compactDescr_hex": "21244c001000cc000800400029000000",
-      "crewSize": 4
+      "crewSize": 4,
+      "turretCompactDescr": 16419,
+      "gunCompactDescr": 10532,
+      "maxAmmo": 56,
+      "defaultAmmo": [
+        5930,
+        45,
+        6186,
+        0,
+        6442,
+        11
+      ],
+      "shells": [
+        {
+          "name": "_90mm_AP_M77",
+          "compactDescr": 5930,
+          "defaultPortion": 0.8,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HVAP_M304",
+          "compactDescr": 6186,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_90mm_HE_M71",
+          "compactDescr": 6442,
+          "defaultPortion": 0.2,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -1006,7 +5742,36 @@
       "name": "T2_lt",
       "vehicleTypeID": 201,
       "compactDescr_hex": "21c905000900c9000f0005001b000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 1315,
+      "gunCompactDescr": 6948,
+      "maxAmmo": 1200,
+      "defaultAmmo": [
+        298,
+        1200,
+        554,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_20mm_AP",
+          "compactDescr": 298,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_20mm_APCR",
+          "compactDescr": 554,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -1014,7 +5779,36 @@
       "name": "Ram-II",
       "vehicleTypeID": 202,
       "compactDescr_hex": "21ca14002200cb000a0013001d000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 4899,
+      "gunCompactDescr": 7460,
+      "maxAmmo": 0,
+      "defaultAmmo": [
+        3114,
+        0,
+        3370,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_6pdr_AP_MKs_4",
+          "compactDescr": 3114,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_6pdr_APCR_MK_1T",
+          "compactDescr": 3370,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -1022,7 +5816,47 @@
       "name": "M4A2E4",
       "vehicleTypeID": 204,
       "compactDescr_hex": "21cc39002b00cb00000033001e000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 13091,
+      "gunCompactDescr": 7716,
+      "maxAmmo": 90,
+      "defaultAmmo": [
+        3626,
+        72,
+        3882,
+        0,
+        4138,
+        18
+      ],
+      "shells": [
+        {
+          "name": "_75mm_M61",
+          "compactDescr": 3626,
+          "defaultPortion": 0.8,
+          "price": [
+            8,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M72",
+          "compactDescr": 3882,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_75mm_M48",
+          "compactDescr": 4138,
+          "defaultPortion": 0.2,
+          "price": [
+            8,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -1030,7 +5864,47 @@
       "name": "M6A2E1",
       "vehicleTypeID": 205,
       "compactDescr_hex": "21cd48002900cd0000003c0032000000",
-      "crewSize": 5
+      "crewSize": 5,
+      "turretCompactDescr": 15395,
+      "gunCompactDescr": 12836,
+      "maxAmmo": 60,
+      "defaultAmmo": [
+        7210,
+        36,
+        7466,
+        0,
+        9770,
+        24
+      ],
+      "shells": [
+        {
+          "name": "_105mm_AP_T32",
+          "compactDescr": 7210,
+          "defaultPortion": 0.6,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_APCR_T29E3",
+          "compactDescr": 7466,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_105mm_HE_M11",
+          "compactDescr": 9770,
+          "defaultPortion": 0.4,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     },
     {
       "nation": "usa",
@@ -1038,7 +5912,47 @@
       "name": "M22_Locust",
       "vehicleTypeID": 206,
       "compactDescr_hex": "21ce49002a00ca0010003d0033000000",
-      "crewSize": 3
+      "crewSize": 3,
+      "turretCompactDescr": 15651,
+      "gunCompactDescr": 13092,
+      "maxAmmo": 50,
+      "defaultAmmo": [
+        810,
+        50,
+        1066,
+        0,
+        1322,
+        0
+      ],
+      "shells": [
+        {
+          "name": "_37mm_AP_M74",
+          "compactDescr": 810,
+          "defaultPortion": 1.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_APC_M51",
+          "compactDescr": 1066,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        },
+        {
+          "name": "_37mm_HE_M63",
+          "compactDescr": 1322,
+          "defaultPortion": 0.0,
+          "price": [
+            0,
+            0
+          ]
+        }
+      ]
     }
   ]
 }

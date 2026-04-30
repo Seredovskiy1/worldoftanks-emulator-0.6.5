@@ -193,6 +193,104 @@ def first_gun_in_turret(node, turret_name):
     return guns['children'][0]['name']
 
 
+def get_float(n, default=0.0):
+    if n is None:
+        return default
+    d = n['data']
+    if not d:
+        return default
+    t = n.get('type', DT_FLOAT)
+    if t == DT_FLOAT and len(d) == 4:
+        return struct.unpack('<f', d)[0]
+    if t == DT_INT:
+        return float(get_int(n, int(default)))
+    if t == DT_STRING:
+        try:
+            return float(d.decode('latin1').strip())
+        except Exception:
+            return default
+    return default
+
+
+def get_price(n):
+    text = get_text(n)
+    if not text:
+        return (0, 0)
+    parts = text.replace(',', ' ').split()
+    try:
+        credits = int(float(parts[0])) if parts else 0
+        gold = int(float(parts[1])) if len(parts) > 1 else 0
+        return (credits, gold)
+    except Exception:
+        return (0, 0)
+
+
+def make_int_compact_descr(item_type_id, nation_id, comp_type_id):
+    return (comp_type_id << 8) + (nation_id << 4) + item_type_id
+
+
+def parse_shells_xml(path, nation_id):
+    n = load(path)
+    if n is None:
+        return {}
+    out = {}
+    for c in n['children']:
+        if c['name'] == 'icons':
+            continue
+        shell_id = get_int(find(c, 'id'))
+        out[c['name']] = {
+            'id': shell_id,
+            'compactDescr': make_int_compact_descr(10, nation_id, shell_id),
+            'price': get_price(find(c, 'price')),
+        }
+    return out
+
+
+def parse_gun_shots(path, gun_name, nation_id, shells_map):
+    n = load(path)
+    if n is None:
+        return []
+    shared = find(n, 'shared')
+    gun = find(shared, gun_name) if shared is not None else None
+    shots = find(gun, 'shots') if gun is not None else None
+    if shots is None:
+        return []
+    out = []
+    for shot in shots['children']:
+        shell = shells_map.get(shot['name'])
+        if shell is None:
+            continue
+        out.append({
+            'name': shot['name'],
+            'compactDescr': shell['compactDescr'],
+            'defaultPortion': get_float(find(shot, 'defaultPortion'), 0.0),
+            'price': shell['price'],
+        })
+    return out
+
+
+def make_default_ammo(shots, max_ammo):
+    ammo = []
+    current = 0
+    for shot in shots:
+        count = int(shot['defaultPortion'] * max_ammo + 0.5)
+        if current + count > max_ammo:
+            count = max_ammo - current
+        current += count
+        ammo.extend([shot['compactDescr'], count])
+    if shots and current < max_ammo:
+        ammo[1] += max_ammo - current
+    return ammo
+
+
+def get_gun_max_ammo(veh_node, turret_name, gun_name):
+    turrets0 = find(veh_node, 'turrets0')
+    turret = find(turrets0, turret_name) if turrets0 is not None else None
+    guns = find(turret, 'guns') if turret is not None else None
+    gun = find(guns, gun_name) if guns is not None else None
+    return get_int(find(gun, 'maxAmmo'), 0) if gun is not None else 0
+
+
 result = {'vehicles': []}
 
 for nation in NATIONS:
@@ -206,6 +304,7 @@ for nation in NATIONS:
     radio_map = parse_components_xml(os.path.join(comp_dir, 'radios.xml'))
     turret_map = parse_components_xml(os.path.join(comp_dir, 'turrets.xml'))
     gun_map = parse_components_xml(os.path.join(comp_dir, 'guns.xml'))
+    shells_map = parse_shells_xml(os.path.join(comp_dir, 'shells.xml'), nid)
 
     print(f"\n=== {nation} (nationID={nid}) ===")
 
@@ -233,6 +332,9 @@ for nation in NATIONS:
         radio_id = radio_map.get(rd_name)
         turret_id = turret_map.get(tr_name)
         gun_id = gun_map.get(gn_name)
+        gun_shots = parse_gun_shots(os.path.join(comp_dir, 'guns.xml'),
+                                    gn_name, nid, shells_map) if gn_name else []
+        max_ammo = get_gun_max_ammo(veh, tr_name, gn_name) if tr_name and gn_name else 0
 
         if None in (chassis_id, engine_id, fuel_id, radio_id, turret_id, gun_id):
             print(f"  [SKIP] {veh_name}: missing comp "
@@ -257,12 +359,18 @@ for nation in NATIONS:
             'name': veh_name, 'vehicleTypeID': vtype_id,
             'compactDescr_hex': cd.hex(),
             'crewSize': crew_size,
+            'turretCompactDescr': make_int_compact_descr(3, nid, turret_id),
+            'gunCompactDescr': make_int_compact_descr(4, nid, gun_id),
+            'maxAmmo': max_ammo,
+            'defaultAmmo': make_default_ammo(gun_shots, max_ammo),
+            'shells': gun_shots,
         })
 
     if skipped:
         print(f"  [{nation}] skipped {skipped} vehicles")
 
-with open(r'C:\Users\qwerty\Desktop\_vehicles.json', 'w') as f:
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       '_vehicles.json'), 'w') as f:
     json.dump(result, f, indent=2)
 print(f"\nTotal vehicles: {len(result['vehicles'])}")
 print("Saved -> _vehicles.json")
