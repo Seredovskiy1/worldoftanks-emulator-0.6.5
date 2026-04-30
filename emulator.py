@@ -262,13 +262,13 @@ def build_channel_ack_packet(sess: dict) -> bytes:
     return build_channel_packet(b'', sess, reliable=False)
 
 BASEAPP_EXT_FIXED_LENGTHS = {
-    1: 4,
-    2: 25,
-    3: 34,
-    4: 28,
-    5: 37,
-    6: 1,
-    7: 5,
+    1: 4,    # authenticate
+    2: 16,   # avatarUpdateImplicit: Coord + YawPitchRoll + refNum
+    3: 25,   # avatarUpdateExplicit: spaceID + vehicleID + Coord + YPR + onGround + refNum
+    4: 19,   # avatarUpdateWardImplicit: wardID + Coord + YPR
+    5: 28,   # avatarUpdateWardExplicit: wardID + spaceID + vehicleID + Coord + YPR + onGround
+    6: 1,    # ackPhysicsCorrection
+    7: 5,    # ackWardPhysicsCorrection
     8: 0,
     10: 1,
     11: 4,
@@ -378,6 +378,8 @@ AVATAR_UPDATE_GUN_MARKER_MSG_ID     = 0x88
 AVATAR_UPDATE_OWN_POSITION_MSG_ID   = 0x89
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
+CLIENT_CONTROL_ENTITY_MSG_ID        = 0x33
+CLIENT_SET_VEHICLE_MSG_ID           = 0x10
 CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID = 0x11
 
 # Account exposed BaseMethods (client в†’ server):
@@ -498,8 +500,6 @@ def parse_doCmd_int3(payload: bytes):
 
 
 MAX_VEHICLES_INLINE = None  # None = all vehicles; full sync is streamed.
-
-
 
 
 def load_all_vehicles():
@@ -882,6 +882,16 @@ ARENA_UPDATE_AVATAR_READY = 7
 ARENA_TYPE_KARELIA   = 1
 PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
+BATTLE_MOTION_TICK = 0.05
+BATTLE_MAX_FORWARD_SPEED = 10.0
+BATTLE_MAX_BACKWARD_SPEED = 4.0
+BATTLE_MAX_ROTATION_SPEED = 1.15
+BATTLE_PIVOT_ROTATION_SPEED = 1.35
+BATTLE_ACCELERATION = 7.0
+BATTLE_DECELERATION = 10.0
+BATTLE_ROT_ACCELERATION = 4.0
+BATTLE_ROT_DECELERATION = 5.5
+BATTLE_MIN_TURN_FACTOR = 0.7
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -1016,6 +1026,36 @@ def build_forced_position(entity_id: int, pos, yaw: float,
     return msg_fixed(CLIENT_FORCED_POSITION_MSG_ID, payload)
 
 
+def build_control_entity(entity_id: int, enabled: bool) -> bytes:
+    payload = struct.pack('<I', entity_id)
+    payload += struct.pack('<B', 1 if enabled else 0)
+    return msg_fixed(CLIENT_CONTROL_ENTITY_MSG_ID, payload)
+
+
+def build_set_vehicle(passenger_id: int, vehicle_id: int) -> bytes:
+    return msg_fixed(CLIENT_SET_VEHICLE_MSG_ID,
+                     struct.pack('<II', passenger_id, vehicle_id))
+
+
+def build_avatar_vehicle_bind(pos, yaw: float) -> bytes:
+    return (
+        build_set_vehicle(AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID) +
+        build_detailed_position(AVATAR_ENTITY_ID, (0.0, 0.0, 0.0), yaw) +
+        build_detailed_position(PLAYER_VEHICLE_ID, pos, yaw)
+    )
+
+
+def build_battle_motion_sync(pos, yaw: float,
+                             speed: float = 0.0,
+                             rspeed: float = 0.0) -> bytes:
+    return (
+        build_forced_position(AVATAR_ENTITY_ID, pos, yaw,
+                              space_id=SPACE_ID, vehicle_id=0) +
+        build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
+        build_vehicle_motion_update(pos, yaw)
+    )
+
+
 def angle_to_int8(angle: float) -> int:
     value = int(math.floor((angle * 128.0) / math.pi + 0.5))
     return ((value + 128) % 256) - 128
@@ -1024,6 +1064,18 @@ def angle_to_int8(angle: float) -> int:
 def half_angle_to_int8(angle: float) -> int:
     value = int(math.floor((angle * 254.0) / math.pi + 0.5))
     return max(-128, min(127, value))
+
+
+def int8_to_angle(value: int) -> float:
+    if value >= 128:
+        value -= 256
+    return (float(value) * math.pi) / 128.0
+
+
+def int8_to_half_angle(value: int) -> float:
+    if value >= 128:
+        value -= 256
+    return (float(value) * math.pi) / 254.0
 
 
 def pack_yaw_pitch_roll(yaw: float, pitch: float = 0.0,
@@ -1035,7 +1087,10 @@ def pack_yaw_pitch_roll(yaw: float, pitch: float = 0.0,
 
 
 def _pack_bw_3(value: int) -> bytes:
-    return bytes(((value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff))
+    # BigWorld stores PackedXZ internally with BW_PACK3 (high byte first), then
+    # streams it through BW_HTON3_ASSIGN on little-endian clients. On the wire
+    # that is low, middle, high byte order.
+    return bytes((value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff))
 
 
 def pack_packed_xz(x_value: float, z_value: float) -> bytes:
@@ -1067,7 +1122,7 @@ def pack_packed_y(y_value: float) -> bytes:
     y_uint = struct.unpack('<I', struct.pack('<f', y))[0]
     packed = (y_uint >> 12) & 0x7fff
     packed |= (y_uint >> 16) & 0x8000
-    return struct.pack('<H', packed)
+    return struct.pack('>H', packed)
 
 
 def pack_packed_xyz(pos) -> bytes:
@@ -1079,6 +1134,43 @@ def build_vehicle_avatar_update(entity_id: int, pos, yaw: float) -> bytes:
     payload += pack_packed_xyz(pos)
     payload += pack_yaw_pitch_roll(yaw, 0.0, 0.0)
     return msg_fixed(CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID, payload)
+
+
+def build_vehicle_motion_update(pos, yaw: float) -> bytes:
+    return build_detailed_position(PLAYER_VEHICLE_ID, pos, yaw)
+
+
+def decode_client_coord_ypr(payload: bytes, offset: int = 0):
+    if len(payload) < offset + 15:
+        return None
+    pos = struct.unpack_from('<fff', payload, offset)
+    yaw_b, pitch_b, roll_b = struct.unpack_from('<BBB', payload, offset + 12)
+    return (
+        pos,
+        int8_to_angle(yaw_b),
+        int8_to_half_angle(pitch_b),
+        int8_to_angle(roll_b),
+    )
+
+
+def build_own_vehicle_motion_update(pos, yaw: float,
+                                    speed: float = 0.0,
+                                    rspeed: float = 0.0,
+                                    force: bool = False) -> bytes:
+    """Hard-sync the own camera matrix and the actual Vehicle entity.
+
+    This is not used for every motion tick. updateOwnVehiclePosition resets the
+    camera matrix provider before it reattaches to vehicle.matrix, so spamming it
+    makes movement look stepped.
+    """
+    msgs = (
+        build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
+        build_vehicle_motion_update(pos, yaw)
+    )
+    if force:
+        msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
+                                      space_id=SPACE_ID, vehicle_id=0)
+    return msgs
 
 
 def build_avatar_update_targeting_info(turret_yaw: float = 0.0,
@@ -1354,38 +1446,254 @@ def send_avatar_messages(sock, addr, sess, msgs: bytes, label: str,
 
 
 def init_battle_state(sess: dict, spawn_pos):
+    sess['battle_generation'] = sess.get('battle_generation', 0) + 1
     sess['battle_pos'] = tuple(float(v) for v in spawn_pos)
     sess['battle_yaw'] = 0.0
     sess['battle_speed'] = 0.0
     sess['battle_rspeed'] = 0.0
+    sess['battle_target_speed'] = 0.0
+    sess['battle_target_rspeed'] = 0.0
     sess['battle_last_motion_time'] = time.time()
+    sess['battle_motion_flags'] = 0
+    sess['battle_motion_loop_started'] = False
+    sess['battle_client_control_enabled'] = False
+    sess['server_vehicle_authoritative'] = True
+    sess['battle_period_active'] = False
     sess['battle_turret_yaw'] = 0.0
     sess['battle_gun_pitch'] = 0.0
+    sess['avatar_ready_sent'] = False
+    sess['battle_period_timer_started'] = False
 
 
-def advance_battle_motion(sess: dict, flags: int):
+def approach(current: float, target: float, rate: float, dt: float) -> float:
+    if current < target:
+        return min(target, current + rate * dt)
+    if current > target:
+        return max(target, current - rate * dt)
+    return current
+
+
+def battle_motion_targets(flags: int):
+    forward = bool(flags & 1)
+    backward = bool(flags & 2)
+    left = bool(flags & 4)
+    right = bool(flags & 8)
+    movement_dir = 1 if forward and not backward else -1 if backward and not forward else 0
+    rotation_dir = -1 if left and not right else 1 if right and not left else 0
+    speed_scale = 1.0
+    if flags & 16:
+        speed_scale = 0.5
+    elif flags & 32:
+        speed_scale = 0.25
+
+    if movement_dir > 0:
+        target_speed = BATTLE_MAX_FORWARD_SPEED * speed_scale
+    elif movement_dir < 0:
+        target_speed = -BATTLE_MAX_BACKWARD_SPEED * speed_scale
+    else:
+        target_speed = 0.0
+
+    if movement_dir == 0:
+        target_rspeed = BATTLE_PIVOT_ROTATION_SPEED * rotation_dir
+    else:
+        target_rspeed = BATTLE_MAX_ROTATION_SPEED * rotation_dir
+    return target_speed, target_rspeed
+
+
+def advance_battle_motion(sess: dict, flags: int = None):
     now = time.time()
     last = sess.get('battle_last_motion_time', now)
-    dt = max(0.03, min(0.25, now - last))
+    dt = max(0.001, min(0.25, now - last))
     sess['battle_last_motion_time'] = now
 
     x, y, z = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = float(sess.get('battle_yaw', 0.0))
+    if flags is None:
+        flags = sess.get('battle_motion_flags', 0)
 
-    movement_dir = 1 if (flags & 1) else -1 if (flags & 2) else 0
-    rotation_dir = -1 if (flags & 4) else 1 if (flags & 8) else 0
-    speed = 8.0 * movement_dir
-    rspeed = 1.2 * rotation_dir
+    target_speed, target_rspeed = battle_motion_targets(flags)
+    speed = float(sess.get('battle_speed', 0.0))
+    rspeed = float(sess.get('battle_rspeed', 0.0))
 
+    speed_rate = BATTLE_ACCELERATION if abs(target_speed) > abs(speed) \
+        else BATTLE_DECELERATION
+    rspeed_rate = BATTLE_ROT_ACCELERATION if abs(target_rspeed) > abs(rspeed) \
+        else BATTLE_ROT_DECELERATION
+    speed = approach(speed, target_speed, speed_rate, dt)
+    turn_factor = 1.0
+    if abs(target_speed) > 0.01 and abs(speed) > 0.01:
+        turn_factor = BATTLE_MIN_TURN_FACTOR
+        turn_factor += (1.0 - BATTLE_MIN_TURN_FACTOR) * min(
+            1.0, abs(speed) / max(0.01, abs(target_speed)))
+    target_rspeed *= turn_factor
+    rspeed = approach(rspeed, target_rspeed, rspeed_rate, dt)
+
+    if abs(target_rspeed) < 0.001 and abs(rspeed) < 0.01:
+        rspeed = 0.0
     yaw += rspeed * dt
-    x += math.sin(yaw) * speed * dt
-    z += math.cos(yaw) * speed * dt
+    yaw = (yaw + math.pi) % (2.0 * math.pi) - math.pi
+    if abs(speed) > 0.001:
+        x += math.sin(yaw) * speed * dt
+        z += math.cos(yaw) * speed * dt
 
     sess['battle_pos'] = (x, y, z)
     sess['battle_yaw'] = yaw
     sess['battle_speed'] = speed
     sess['battle_rspeed'] = rspeed
+    sess['battle_target_speed'] = target_speed
+    sess['battle_target_rspeed'] = target_rspeed
     return (x, y, z), yaw, speed, rspeed
+
+
+def send_own_vehicle_position(sock, addr, sess, label: str = '',
+                              reliable: bool = False, force: bool = False):
+    pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    yaw = sess.get('battle_yaw', 0.0)
+    speed = sess.get('battle_speed', 0.0)
+    rspeed = sess.get('battle_rspeed', 0.0)
+    return send_avatar_messages(
+        sock, addr, sess,
+        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force),
+        label,
+        reliable=reliable)
+
+
+def enable_client_vehicle_control(sock, addr, sess, label: str = ''):
+    if sess.get('battle_client_control_enabled'):
+        return
+    sess['battle_client_control_enabled'] = True
+    msgs = build_control_entity(PLAYER_VEHICLE_ID, True)
+    send_avatar_messages(sock, addr, sess, msgs,
+                         label or "controlEntity(Vehicle, on)",
+                         reliable=True)
+
+
+def disable_client_vehicle_control_message(sess):
+    sess['battle_client_control_enabled'] = False
+    return build_control_entity(PLAYER_VEHICLE_ID, False)
+
+
+def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
+    if msg_id == 2:
+        decoded = decode_client_coord_ypr(payload, 0)
+        if decoded is None:
+            return False
+        pos, yaw, _pitch, _roll = decoded
+        sess['avatar_pos'] = pos
+        sess['avatar_yaw'] = yaw
+        return True
+
+    if msg_id == 3:
+        if len(payload) < 25:
+            return False
+        pos, yaw, _pitch, _roll = decode_client_coord_ypr(payload, 8)
+        sess['avatar_pos'] = pos
+        sess['avatar_yaw'] = yaw
+        return True
+
+    if msg_id == 4:
+        if len(payload) < 19:
+            return False
+        ward_id = struct.unpack_from('<I', payload, 0)[0]
+        decoded = decode_client_coord_ypr(payload, 4)
+        if decoded is None:
+            return False
+        pos, yaw, _pitch, _roll = decoded
+        if ward_id == PLAYER_VEHICLE_ID:
+            prev = sess.get('client_vehicle_pos')
+            if prev is not None:
+                dx = pos[0] - prev[0]
+                dy = pos[1] - prev[1]
+                dz = pos[2] - prev[2]
+                if dx * dx + dy * dy + dz * dz > 0.0001:
+                    sess['client_vehicle_last_move_time'] = time.time()
+            sess['client_vehicle_pos'] = pos
+            sess['client_vehicle_last_update_time'] = time.time()
+            if not sess.get('server_vehicle_authoritative', True):
+                sess['battle_pos'] = pos
+                sess['battle_yaw'] = yaw
+            count = sess.get('client_vehicle_update_count', 0) + 1
+            sess['client_vehicle_update_count'] = count
+            if count % 100 == 1:
+                print(f"[<] client Vehicle#{ward_id} pos="
+                      f"({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) "
+                      f"yaw={yaw:.2f}")
+        return True
+
+    if msg_id == 5:
+        if len(payload) < 28:
+            return False
+        ward_id = struct.unpack_from('<I', payload, 0)[0]
+        decoded = decode_client_coord_ypr(payload, 12)
+        if decoded is None:
+            return False
+        pos, yaw, _pitch, _roll = decoded
+        if ward_id == PLAYER_VEHICLE_ID:
+            prev = sess.get('client_vehicle_pos')
+            if prev is not None:
+                dx = pos[0] - prev[0]
+                dy = pos[1] - prev[1]
+                dz = pos[2] - prev[2]
+                if dx * dx + dy * dy + dz * dz > 0.0001:
+                    sess['client_vehicle_last_move_time'] = time.time()
+            sess['client_vehicle_pos'] = pos
+            sess['client_vehicle_last_update_time'] = time.time()
+            if not sess.get('server_vehicle_authoritative', True):
+                sess['battle_pos'] = pos
+                sess['battle_yaw'] = yaw
+        return True
+
+    return False
+
+
+def ensure_battle_motion_loop(sock, addr, sess):
+    if sess.get('battle_motion_loop_started'):
+        return
+    sess['battle_motion_loop_started'] = True
+    generation = sess.get('battle_generation', 0)
+
+    def _tick():
+        if generation != sess.get('battle_generation', 0):
+            return
+        flags = sess.get('battle_motion_flags', 0)
+        speed = abs(float(sess.get('battle_speed', 0.0)))
+        rspeed = abs(float(sess.get('battle_rspeed', 0.0)))
+        if (not sess.get('battle_period_active') or
+                (flags == 0 and speed < 0.01 and rspeed < 0.01)):
+            sess['battle_motion_loop_started'] = False
+            return
+
+        client_last_move = sess.get('client_vehicle_last_move_time', 0.0)
+        client_is_moving = (
+            not sess.get('server_vehicle_authoritative', True) and
+            flags != 0 and
+            (time.time() - client_last_move) < 0.30
+        )
+        if client_is_moving:
+            timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
+            timer.daemon = True
+            timer.start()
+            return
+
+        pos, yaw, speed, rspeed = advance_battle_motion(sess, flags)
+        count = sess.get('battle_move_tick_count', 0) + 1
+        sess['battle_move_tick_count'] = count
+        label = ''
+        if count % 20 == 1:
+            label = (f"ServerVehicle.tick(flags=0x{flags:02x}, "
+                     f"pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}), "
+                     f"yaw={yaw:.2f})")
+        send_avatar_messages(sock, addr, sess,
+                             build_battle_motion_sync(pos, yaw, speed, rspeed),
+                             label,
+                             reliable=False)
+        timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
+        timer.daemon = True
+        timer.start()
+
+    timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
+    timer.daemon = True
+    timer.start()
 
 
 def normalize_vec(vec):
@@ -1417,14 +1725,27 @@ def schedule_battle_period(sock, addr, sess):
     if sess.get('battle_period_timer_started'):
         return
     sess['battle_period_timer_started'] = True
+    generation = sess.get('battle_generation', 0)
 
     def _start_battle():
+        if generation != sess.get('battle_generation', 0):
+            return
         now = current_server_time(sess)
-        send_avatar_arena_update(
-            sock, addr, sess, ARENA_UPDATE_PERIOD,
+        sess['battle_period_active'] = True
+        sess['server_vehicle_authoritative'] = True
+        sess['battle_client_control_enabled'] = False
+        sess['battle_last_motion_time'] = time.time()
+        msgs = build_avatar_update_arena(
+            ARENA_UPDATE_PERIOD,
             (ARENA_PERIOD_BATTLE, now + BATTLE_TIMER_SECONDS,
-             BATTLE_TIMER_SECONDS, None),
-            "PERIOD=BATTLE")
+             BATTLE_TIMER_SECONDS, None))
+        msgs += build_battle_motion_sync(
+            sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
+            sess.get('battle_yaw', 0.0),
+            0.0, 0.0)
+        msgs += disable_client_vehicle_control_message(sess)
+        send_avatar_messages(sock, addr, sess, msgs,
+                             "PERIOD=BATTLE + server vehicle control")
 
     timer = threading.Timer(PREBATTLE_TIMER_SECONDS, _start_battle)
     timer.daemon = True
@@ -1473,7 +1794,7 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     initial_target = (pos[0], pos[1] + 2.0, pos[2] + 100.0)
     msgs = b''
     msgs += build_avatar_update_arena(ARENA_UPDATE_AVATAR_READY, PLAYER_VEHICLE_ID)
-    msgs += build_detailed_position(PLAYER_VEHICLE_ID, pos, yaw)
+    msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0)
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
                          "Avatar ready + initial vehicle position/targeting")
@@ -1541,17 +1862,22 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             flags = payload[0]
         else:
             return True
-        pos, yaw, speed, rspeed = advance_battle_motion(sess, flags)
-        msgs = build_vehicle_avatar_update(PLAYER_VEHICLE_ID, pos, yaw)
+        sess['battle_motion_flags'] = flags
         move_count = sess.get('battle_move_update_count', 0) + 1
         sess['battle_move_update_count'] = move_count
-        label = ''
         if move_count % 20 == 1 or flags == 0:
-            label = (f"Vehicle.avatarUpdate(flags=0x{flags:02x}, "
-                     f"pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}), "
-                     f"yaw={yaw:.2f})")
-        send_avatar_messages(
-            sock, addr, sess, msgs, label, reliable=False)
+            mode = "server authoritative" if sess.get(
+                'server_vehicle_authoritative', True) else "client controlled"
+            move, turn = battle_motion_targets(flags)
+            print(f"    [>] Vehicle.input(flags=0x{flags:02x}) "
+                  f"[{mode}, target=({move:.1f},{turn:.2f})]")
+        if not sess.get('server_vehicle_authoritative', True):
+            return True
+        if flags != 0:
+            ensure_battle_motion_loop(sock, addr, sess)
+        elif abs(float(sess.get('battle_speed', 0.0))) > 0.01 or \
+                abs(float(sess.get('battle_rspeed', 0.0))) > 0.01:
+            ensure_battle_motion_loop(sock, addr, sess)
         return True
 
     if msg_id == AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN:
@@ -1855,18 +2181,22 @@ def handle_baseapp(sock):
         if decrypted and sess_for_addr:
             messages = list(iter_baseapp_ext_messages(body))
 
-            # РЎРїР°Рј-С„С–Р»СЊС‚СЂ: clientв†’base msgID 0x02 = avatarUpdate (РІРµРєС‚РѕСЂ РїРѕР·Р°
-            # Avatar 30Hz). Р’РёРІРѕРґРёРјРѕ С‚С–Р»СЊРєРё РєРѕР¶РµРЅ 100-Р№ (С‰Рµ Р№ РєРѕСЂРёСЃРЅРѕ РґР»СЏ
-            # РјРѕРЅС–С‚РѕСЂРёРЅРіСѓ). msgID 0x01 (authenticate echo) С‚РµР¶ С€СѓРјРЅРёР№, С‚РѕРјСѓ
-            # РЅРµ РґСѓР±Р»СЋС”РјРѕ РІ [post-init], СЏРєС‰Рѕ С†Рµ С”РґРёРЅРµ РїРѕРІС–РґРѕРјР»РµРЅРЅСЏ.
-            avatar_update_only = all(m in (0x01, 0x02) for m, _, _ in messages) \
-                and any(m == 0x02 for m, _, _ in messages)
+            for m, p, _ in messages:
+                if m in (0x02, 0x03, 0x04, 0x05):
+                    handle_client_avatar_update(sess_for_addr, m, p)
+
+            # Spam filter: client sends authenticate + avatar/vehicle movement
+            # updates almost every frame. Print only occasional samples.
+            movement_msg_ids = (0x01, 0x02, 0x03, 0x04, 0x05)
+            avatar_update_only = all(m in movement_msg_ids for m, _, _ in messages) \
+                and any(m in (0x02, 0x03, 0x04, 0x05) for m, _, _ in messages)
             if avatar_update_only:
                 cnt = sess_for_addr.get('avatar_update_count', 0) + 1
                 sess_for_addr['avatar_update_count'] = cnt
                 if cnt % 100 == 1:
-                    print(f"[<] avatarUpdate x{cnt} (msgID=0x02, "
-                          f"РѕСЃС‚Р°РЅРЅСЏ payload={messages[-1][1].hex()})")
+                    summary = ", ".join(f"0x{m:02x}({len(p)}B)"
+                                        for m, p, _ in messages)
+                    print(f"[<] movementUpdate x{cnt}: {summary}")
             else:
                 summary = ", ".join(f"0x{m:02x}({len(p)}B)" for m, p, _ in messages)
                 print(f"[<] BaseAppExt: {summary or 'none'} | "
@@ -1879,8 +2209,8 @@ def handle_baseapp(sock):
             # Р‘СѓРґСЊ-СЏРєРёР№ РЅР°СЃС‚СѓРїРЅРёР№ РїР°РєРµС‚ РїС–СЃР»СЏ init вЂ“ РґР°РјРїРёРјРѕ + РІС–РґРїРѕРІС–РґР°С”РјРѕ
             # РЅР° exposed Account base-methods (doCmdStr/Int3/Int4/Int2Str/IntArr).
             for m, p, _ in messages:
-                if m in (0x01, 0x02):
-                    continue   # auth-echo + avatarUpdate вЂ” РјРѕРІС‡РєРё
+                if m in movement_msg_ids:
+                    continue
                 print(f"    [post-init] msg=0x{m:02x} payload={p.hex()}")
                 if sess_for_addr.get('battle_bundle_sent') and m in AVATAR_BASE_METHODS:
                     if handle_avatar_base_method(sock, addr, sess_for_addr, m, p):
