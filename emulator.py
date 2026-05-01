@@ -1008,10 +1008,15 @@ def build_avatar_update_own_vehicle_position(pos, yaw: float,
     return msg_varlen(AVATAR_UPDATE_OWN_POSITION_MSG_ID, em)
 
 
+def pack_direction3d(yaw: float, pitch: float = 0.0,
+                     roll: float = 0.0) -> bytes:
+    return struct.pack('<fff', roll, pitch, yaw)
+
+
 def build_detailed_position(entity_id: int, pos, yaw: float) -> bytes:
     payload = struct.pack('<I', entity_id)
     payload += struct.pack('<fff', *pos)
-    payload += struct.pack('<fff', yaw, 0.0, 0.0)
+    payload += pack_direction3d(yaw)
     return msg_fixed(CLIENT_DETAILED_POSITION_MSG_ID, payload)
 
 
@@ -1022,7 +1027,7 @@ def build_forced_position(entity_id: int, pos, yaw: float,
     payload += struct.pack('<I', space_id)
     payload += struct.pack('<I', vehicle_id)
     payload += struct.pack('<fff', *pos)
-    payload += struct.pack('<fff', yaw, 0.0, 0.0)
+    payload += pack_direction3d(yaw)
     return msg_fixed(CLIENT_FORCED_POSITION_MSG_ID, payload)
 
 
@@ -1047,13 +1052,19 @@ def build_avatar_vehicle_bind(pos, yaw: float) -> bytes:
 
 def build_battle_motion_sync(pos, yaw: float,
                              speed: float = 0.0,
-                             rspeed: float = 0.0) -> bytes:
-    return (
-        build_forced_position(AVATAR_ENTITY_ID, pos, yaw,
-                              space_id=SPACE_ID, vehicle_id=0) +
+                             rspeed: float = 0.0,
+                             bind_avatar: bool = False) -> bytes:
+    msgs = b''
+    if bind_avatar:
+        msgs += build_set_vehicle(AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID)
+    msgs += (
+        build_forced_position(AVATAR_ENTITY_ID, (0.0, 0.0, 0.0), yaw,
+                              space_id=SPACE_ID,
+                              vehicle_id=PLAYER_VEHICLE_ID) +
         build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
         build_vehicle_motion_update(pos, yaw)
     )
+    return msgs
 
 
 def angle_to_int8(angle: float) -> int:
@@ -1742,7 +1753,8 @@ def schedule_battle_period(sock, addr, sess):
         msgs += build_battle_motion_sync(
             sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
             sess.get('battle_yaw', 0.0),
-            0.0, 0.0)
+            0.0, 0.0,
+            bind_avatar=True)
         msgs += disable_client_vehicle_control_message(sess)
         send_avatar_messages(sock, addr, sess, msgs,
                              "PERIOD=BATTLE + server vehicle control")
@@ -1794,7 +1806,8 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     initial_target = (pos[0], pos[1] + 2.0, pos[2] + 100.0)
     msgs = b''
     msgs += build_avatar_update_arena(ARENA_UPDATE_AVATAR_READY, PLAYER_VEHICLE_ID)
-    msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0)
+    msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
+                                     bind_avatar=True)
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
                          "Avatar ready + initial vehicle position/targeting")
