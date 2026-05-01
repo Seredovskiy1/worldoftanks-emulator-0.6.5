@@ -8,6 +8,9 @@ import pickle
 import zlib
 import builtins
 import math
+import sqlite3
+import hashlib
+import random
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, Blowfish
 
@@ -37,6 +40,14 @@ BASEAPP_PORT = 20017
 
 # { token_bytes : { 'bf_key': bytes, 'addr': (ip,port) } }
 active_sessions = {}
+db_lock = threading.RLock()
+battle_lock = threading.RLock()
+queue_lock = threading.RLock()
+DATABASE_PATH = "emulator.db"
+active_battle_accounts = {}
+matchmaking_queue = []
+matchmaking_timer = None
+next_battle_id = 1
 
 print("[*] Р—Р°РІР°РЅС‚Р°Р¶СѓС”РјРѕ RSA РєР»СЋС‡С–...")
 try:
@@ -66,6 +77,117 @@ def parse_logon_params(data):
         key  = data[p:p+kl]
         return user, pwd, key
     except: return None, None, None
+
+def normalize_login_name(username: str) -> str:
+    username = (username or '').strip()
+    username = ''.join(ch for ch in username if ch.isalnum() or ch in ('_', '-', '.'))
+    return username[:24] or 'player'
+
+def password_hash(password: str) -> str:
+    return hashlib.sha256((password or '').encode('utf-8')).hexdigest()
+
+def init_database():
+    with db_lock:
+        conn = sqlite3.connect(DATABASE_PATH)
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS accounts ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "username TEXT NOT NULL UNIQUE,"
+                "normalized_name TEXT NOT NULL UNIQUE,"
+                "password_hash TEXT NOT NULL,"
+                "created_at INTEGER NOT NULL,"
+                "last_login INTEGER NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS battles ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "arena_type_id INTEGER NOT NULL,"
+                "created_at INTEGER NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS battle_entries ("
+                "battle_id INTEGER NOT NULL,"
+                "account_id INTEGER NOT NULL,"
+                "vehicle_inv_id INTEGER NOT NULL,"
+                "joined_at INTEGER NOT NULL,"
+                "PRIMARY KEY (battle_id, account_id))"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+def get_or_create_account(username: str, password: str):
+    username = normalize_login_name(username)
+    normalized = username.lower()
+    pwd_hash = password_hash(password)
+    now = int(time.time())
+    with db_lock:
+        conn = sqlite3.connect(DATABASE_PATH)
+        try:
+            row = conn.execute(
+                "SELECT id, username, password_hash FROM accounts WHERE normalized_name=?",
+                (normalized,)
+            ).fetchone()
+            if row is None:
+                cur = conn.execute(
+                    "INSERT INTO accounts(username, normalized_name, password_hash, created_at, last_login) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (username, normalized, pwd_hash, now, now)
+                )
+                conn.commit()
+                return {'id': int(cur.lastrowid), 'username': username, 'created': True}
+            conn.execute("UPDATE accounts SET last_login=? WHERE id=?", (now, row[0]))
+            conn.commit()
+            return {'id': int(row[0]), 'username': row[1], 'created': False}
+        finally:
+            conn.close()
+
+def store_battle_entry(arena_type_id: int, account_id: int, vehicle_inv_id: int):
+    now = int(time.time())
+    with db_lock:
+        conn = sqlite3.connect(DATABASE_PATH)
+        try:
+            row = conn.execute(
+                "SELECT id FROM battles ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if row is None:
+                cur = conn.execute(
+                    "INSERT INTO battles(arena_type_id, created_at) VALUES (?, ?)",
+                    (arena_type_id, now)
+                )
+                battle_id = int(cur.lastrowid)
+            else:
+                battle_id = int(row[0])
+            conn.execute(
+                "INSERT OR REPLACE INTO battle_entries(battle_id, account_id, vehicle_inv_id, joined_at) "
+                "VALUES (?, ?, ?, ?)",
+                (battle_id, account_id, vehicle_inv_id, now)
+            )
+            conn.commit()
+            return battle_id
+        finally:
+            conn.close()
+
+def get_online_count() -> int:
+    seen = set()
+    for sess in baseapp_clients.values():
+        account_id = sess.get('account_id')
+        if account_id:
+            seen.add(account_id)
+    return len(seen)
+
+def get_active_battle_count() -> int:
+    with battle_lock:
+        return 1 if active_battle_accounts else 0
+
+def get_server_stats():
+    online = get_online_count()
+    battles = get_active_battle_count()
+    return {
+        'playersCount': online,
+        'arenasCount': battles,
+    }
 
 def find_rsa_block(data):
     for start in range(15, 30):
@@ -365,6 +487,8 @@ SPACE_ID            = 1   # arbitrary SpaceID for hangar
 #   idx=20 update              0x95  (STRING diff)
 # Р’РђР–Р›РР’Рћ: СЂРµР°Р»СЊРЅРёР№ msgID = 0x81 + def_index (Mercury РїСЂРѕРїСѓСЃРєР°С” idx=0).
 ACCOUNT_SHOWGUI_MSG_ID          = 0x90
+ACCOUNT_RECEIVE_ACTIVE_ARENAS_MSG_ID = 0x91
+ACCOUNT_RECEIVE_SERVER_STATS_MSG_ID = 0x92
 ACCOUNT_ONCMDRESPONSE_MSG_ID    = 0x82
 ACCOUNT_ONCMDRESPONSEEXT_MSG_ID = 0x83
 ACCOUNT_UPDATE_MSG_ID           = 0x95
@@ -415,6 +539,7 @@ CMD_SYNC_SHOP    = 300      # cmd=300 в†’ Р’Р•Р›РРљРР™ 
 CMD_BUY_ITEM     = 302
 CMD_SYNC_DOSSIERS = 600
 CMD_SET_LANGUAGE = 1000
+CMD_REQ_ARENA_LIST = 500
 CMD_REQ_SERVER_STATS = 501
 CMD_ENQUEUE_FOR_ARENA = 700  # vehInvID, arenaTypeID, queueType
 CMD_DEQUEUE      = 701
@@ -432,7 +557,8 @@ def bw_pack_int(value: int) -> bytes:
 def bw_pack_string(data: bytes) -> bytes:
     return bw_pack_int(len(data)) + data
 
-def build_init_bundle(session_key_int: int) -> bytes:
+def build_init_bundle(session_key_int: int, account_name: str = 'qwerty',
+                      database_id: int = 1) -> bytes:
     msgs = b''
 
     # 0x00 authenticate вЂ“ server proves it knows the session key
@@ -469,8 +595,9 @@ def build_init_bundle(session_key_int: int) -> bytes:
         'serverUTC':    0,
     }, protocol=0)
     props = b''
-    props += bw_pack_string(b'qwerty')               # name
-    props += bw_pack_string(b'qwerty')               # normalizedName
+    account_name_bytes = account_name.encode('utf-8', 'ignore') or b'player'
+    props += bw_pack_string(account_name_bytes)      # name
+    props += bw_pack_string(account_name_bytes.lower())  # normalizedName
     props += bw_pack_string(server_settings_pickle)  # serverSettings (PYTHON)
 
     cbp_payload = struct.pack('<I', PLAYER_ENTITY_ID) + \
@@ -480,7 +607,10 @@ def build_init_bundle(session_key_int: int) -> bytes:
 
     # Account.showGUI(ctx)  вЂ” entityMessage, msgID=0x90
     # РўСЂРёРіРµСЂРёС‚СЊ WindowsManager.showLobby в†’ CommonPage.processLobby.
-    showgui_ctx = b"(dp0\nS'databaseID'\np1\nL1L\nsS'serverUTC'\np2\nL0L\ns."
+    showgui_ctx = (
+        f"(dp0\nS'databaseID'\np1\nL{int(database_id)}L\n"
+        "sS'serverUTC'\np2\nL0L\ns."
+    ).encode('ascii')
     em = struct.pack('<I', PLAYER_ENTITY_ID) + bw_pack_string(showgui_ctx)
     msgs += msg_varlen(ACCOUNT_SHOWGUI_MSG_ID, em)
 
@@ -493,6 +623,44 @@ def build_oncmdrespext(req_id: int, result_id: int, ext_pickle: bytes) -> bytes:
     em += struct.pack('<hh', req_id, result_id)  # INT16, INT16
     em += bw_pack_string(ext_pickle)             # STRING (PYTHON pickle)
     return msg_varlen(ACCOUNT_ONCMDRESPONSEEXT_MSG_ID, em)
+
+def build_account_update(diff: dict) -> bytes:
+    em = struct.pack('<I', PLAYER_ENTITY_ID)
+    em += bw_pack_string(pickle.dumps(diff, protocol=2))
+    return msg_varlen(ACCOUNT_UPDATE_MSG_ID, em)
+
+def build_account_receive_server_stats(stats: dict) -> bytes:
+    em = struct.pack('<I', PLAYER_ENTITY_ID)
+    em += struct.pack('<II',
+                      int(stats.get('playersCount', 0)),
+                      int(stats.get('arenasCount', 0)))
+    return msg_varlen(ACCOUNT_RECEIVE_SERVER_STATS_MSG_ID, em)
+
+def build_account_receive_active_arenas():
+    with battle_lock:
+        players = len(active_battle_accounts)
+        battles = 1 if players else 0
+    arenas = []
+    if battles:
+        arenas.append({
+            'arenaID': 1,
+            'arenaTypeID': ARENA_TYPE_KARELIA,
+            'roundLength': BATTLE_TIMER_SECONDS,
+            'players': players,
+        })
+    payload = struct.pack('<I', PLAYER_ENTITY_ID)
+    payload += bw_pack_int(len(arenas))
+    for arena in arenas:
+        payload += struct.pack('<IIIf',
+                               int(arena['arenaID']),
+                               int(arena['arenaTypeID']),
+                               int(arena['roundLength']),
+                               0.0)
+    return msg_varlen(ACCOUNT_RECEIVE_ACTIVE_ARENAS_MSG_ID, payload)
+
+def build_account_server_counters_update():
+    stats = get_server_stats()
+    return build_account_receive_server_stats(stats)
 
 
 def parse_doCmd_request(msg_id: int, payload: bytes):
@@ -686,6 +854,7 @@ def make_full_sync_pickle() -> bytes:
       9=optionalDevice, 10=shell, 11=equipment.
     """
     veh_list = load_all_vehicles()
+    server_stats = get_server_stats()
 
     # InventoryParser.parseVehicles С‡РёС‚Р°С” С‚Р°РєС– sub-dicts:
     #   compDescr[id]    в†’ vehCompDescr (raw bytes)
@@ -779,7 +948,7 @@ def make_full_sync_pickle() -> bytes:
             'vehTypeXP': {}, 'tankmen': {},
             'unlocks': set(), 'eliteVehicles': set(), 'doubleXPVehs': set(),
             'dossier': '', 'clanInfo': None,
-            'accOnline': 0, 'accOffline': 0,
+            'accOnline': server_stats['playersCount'], 'accOffline': 0,
             'freeTMenLeft': 100, 'freeVehiclesLeft': slots_count - len(veh_list),
             'captchaTriesLeft': 5, 'hasFinPassword': False,
             'tkillIsSuspected': False,
@@ -978,8 +1147,10 @@ ARENA_GUI_TYPE_RANDOM = 1
 ARENA_PERIOD_PREBATTLE = 2
 ARENA_PERIOD_BATTLE = 3
 ARENA_UPDATE_VEHICLE_LIST = 1
+ARENA_UPDATE_VEHICLE_ADDED = 2
 ARENA_UPDATE_PERIOD = 3
 ARENA_UPDATE_STATISTICS = 4
+ARENA_UPDATE_VEHICLE_STATISTICS = 5
 ARENA_UPDATE_AVATAR_READY = 7
 # Arena type IDs Р· res/scripts/arena_defs/_list_.xml:
 #   1=01_karelia, 2=02_malinovka, 4=04_himmelsdorf, 5=05_prohorovka,
@@ -990,6 +1161,8 @@ ARENA_UPDATE_AVATAR_READY = 7
 ARENA_TYPE_KARELIA   = 1
 PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
+MATCHMAKING_MIN_SECONDS = 15
+MATCHMAKING_MAX_SECONDS = 20
 BATTLE_MOTION_TICK = 0.05
 BATTLE_MAX_FORWARD_SPEED = 10.0
 BATTLE_MAX_BACKWARD_SPEED = 4.0
@@ -1262,6 +1435,9 @@ def build_vehicle_avatar_update(entity_id: int, pos, yaw: float) -> bytes:
 def build_vehicle_motion_update(pos, yaw: float) -> bytes:
     return build_detailed_position(PLAYER_VEHICLE_ID, pos, yaw)
 
+def build_vehicle_motion_update_for(vehicle_id: int, pos, yaw: float) -> bytes:
+    return build_detailed_position(vehicle_id, pos, yaw)
+
 
 def decode_client_coord_ypr(payload: bytes, offset: int = 0):
     if len(payload) < offset + 15:
@@ -1376,6 +1552,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                weather_preset_id: int = 0,
                                vehicle_compact_descr: bytes = None,
                                vehicle_data: dict = None,
+                               player_name: str = 'qwerty',
                                spawn_pos=None,
                                initial_period: int = ARENA_PERIOD_PREBATTLE,
                                period_end_time: int = PREBATTLE_TIMER_SECONDS,
@@ -1420,7 +1597,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     arena_extra = pickle.dumps({}, protocol=0)
 
     props = b''
-    props += bw_pack_string(b'qwerty')                  # name (STRING)
+    player_name_bytes = player_name.encode('utf-8', 'ignore') or b'player'
+    props += bw_pack_string(player_name_bytes)          # name (STRING)
     props += struct.pack('<i', arena_type_id)           # arenaTypeID (INT32)
     props += struct.pack('<B', arena_gui_type)          # arenaGuiType (UINT8)
     props += bw_pack_string(arena_extra)                # arenaExtraData (PYTHON)
@@ -1474,7 +1652,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
 
     veh_info = (
         PLAYER_VEHICLE_ID, vehicle_compact_descr or get_vehicle_compact_descr(),
-        'qwerty', 1, True, False, False, 1, '', 0, 0)
+        player_name, 1, True, False, False, 1, '', 0, 0)
     msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_LIST, [veh_info])
     msgs += build_avatar_update_arena(ARENA_UPDATE_STATISTICS,
                                       [(PLAYER_VEHICLE_ID, 0)])
@@ -1508,7 +1686,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                          veh_compact_descr,
                                          vehicle_data=vehicle_data,
                                          pos=spawn_pos,
-                                         team=1)
+                                         team=1,
+                                         player_name=player_name)
     return msgs
 
 
@@ -1522,7 +1701,8 @@ def build_vehicle_create_message(vehicle_id: int, type_id: int,
                                  compact_descr: bytes,
                                  vehicle_data: dict = None,
                                  pos=(0.0, 0.0, 0.0),
-                                 team: int = 1) -> bytes:
+                                 team: int = 1,
+                                 player_name: str = 'qwerty') -> bytes:
     """createEntity (msgID 0x08, varlen2). Р”РёРІРёСЃСЊ server_connection.cpp:1944.
     Property stream вЂ” С†Рµ 12 ALL_CLIENTS+CELL_PUBLIC РїРѕР»С–РІ Vehicle.def
     Сѓ def-РїРѕСЂСЏРґРєСѓ:
@@ -1561,7 +1741,7 @@ def build_vehicle_create_message(vehicle_id: int, type_id: int,
     # PUBLIC_VEHICLE_INFO = name(STRING) + compDescr(STRING) + team(UINT8)
     #                       + prebattleID(OBJECT_ID=uint32)
     public_info = b''
-    public_info += bw_pack_string(b'qwerty')
+    public_info += bw_pack_string(player_name.encode('utf-8', 'ignore') or b'player')
     public_info += bw_pack_string(compact_descr)
     public_info += struct.pack('<B', team)
     public_info += struct.pack('<I', 0)       # prebattleID
@@ -1587,10 +1767,92 @@ def build_vehicle_create_message(vehicle_id: int, type_id: int,
     payload += props
     return msg_varlen(0x08, payload)
 
+def get_remote_vehicle_id(sess: dict) -> int:
+    return 1000 + int(sess.get('account_id') or 0)
+
+def build_remote_vehicle_messages(remote_sess: dict) -> bytes:
+    remote_vehicle = remote_sess.get('battle_vehicle') or get_vehicle_by_inventory_id(
+        remote_sess.get('battle_vehicle_inv_id', 1))
+    veh_compact = (remote_vehicle or {}).get('compactDescr') or get_vehicle_compact_descr()
+    remote_id = get_remote_vehicle_id(remote_sess)
+    remote_name = remote_sess.get('username') or 'player'
+    remote_pos = remote_sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    remote_yaw = remote_sess.get('battle_yaw', 0.0)
+    veh_info = (
+        remote_id, veh_compact, remote_name, 2,
+        True, False, False, 1, '', 0, 0)
+    msgs = b''
+    msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_ADDED, veh_info)
+    msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_STATISTICS, (remote_id, 0))
+    msgs += msg_fixed(0x0A, struct.pack('<IB', remote_id, 0))
+    msgs += build_vehicle_create_message(remote_id,
+                                         VEHICLE_ENTITY_TYPE,
+                                         veh_compact,
+                                         vehicle_data=remote_vehicle,
+                                         pos=remote_pos,
+                                         team=2,
+                                         player_name=remote_name)
+    msgs += build_vehicle_motion_update_for(remote_id, remote_pos, remote_yaw)
+    return msgs
+
+def send_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
+    observer_addr = observer_sess.get('addr')
+    if not observer_addr:
+        return
+    if not observer_sess.get('battle_bundle_sent') or not remote_sess.get('battle_bundle_sent'):
+        return
+    if observer_sess is remote_sess:
+        return
+    known = observer_sess.setdefault('known_remote_accounts', set())
+    remote_account_id = remote_sess.get('account_id')
+    if not remote_account_id or remote_account_id in known:
+        return
+    if send_avatar_messages(sock, observer_addr, observer_sess,
+                            build_remote_vehicle_messages(remote_sess),
+                            f"remote Vehicle#{get_remote_vehicle_id(remote_sess)} "
+                            f"({remote_sess.get('username') or 'player'})",
+                            reliable=True):
+        known.add(remote_account_id)
+
+def announce_battle_player(sock, sess: dict):
+    with battle_lock:
+        active_battle_accounts[sess.get('account_id')] = sess
+        others = [other for account_id, other in active_battle_accounts.items()
+                  if account_id != sess.get('account_id')]
+    broadcast_account_server_counters(sock)
+    for other in others:
+        send_remote_vehicle(sock, sess, other)
+        send_remote_vehicle(sock, other, sess)
+
+def broadcast_remote_vehicle_position(sock, source_sess: dict, force: bool = False):
+    if not source_sess.get('battle_bundle_sent'):
+        return
+    now = time.time()
+    if not force and now - float(source_sess.get('last_remote_broadcast', 0.0)) < 0.05:
+        return
+    source_sess['last_remote_broadcast'] = now
+    source_account_id = source_sess.get('account_id')
+    remote_id = get_remote_vehicle_id(source_sess)
+    pos = source_sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    yaw = source_sess.get('battle_yaw', 0.0)
+    with battle_lock:
+        observers = [other for account_id, other in active_battle_accounts.items()
+                     if account_id != source_account_id]
+    for observer in observers:
+        if not observer.get('addr'):
+            continue
+        if source_account_id not in observer.setdefault('known_remote_accounts', set()):
+            send_remote_vehicle(sock, observer, source_sess)
+        send_avatar_messages(sock, observer.get('addr'), observer,
+                             build_vehicle_motion_update_for(remote_id, pos, yaw),
+                             '',
+                             reliable=False)
+
 
 def pick_spawn_pos(arena_type_id: int, sess: dict):
     if arena_type_id == ARENA_TYPE_KARELIA:
-        return KARELIA_TEAM1_SPAWNS[0]
+        account_id = int(sess.get('account_id') or 1)
+        return KARELIA_TEAM1_SPAWNS[(account_id - 1) % len(KARELIA_TEAM1_SPAWNS)]
     return ARENA_SPAWN_POS.get(arena_type_id, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
 
 
@@ -1881,6 +2143,7 @@ def ensure_battle_motion_loop(sock, addr, sess):
                              build_battle_motion_tick(pos, yaw),
                              label,
                              reliable=False)
+        broadcast_remote_vehicle_position(sock, sess)
         timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
         timer.daemon = True
         timer.start()
@@ -1942,6 +2205,7 @@ def schedule_battle_period(sock, addr, sess):
         return
     sess['battle_period_timer_started'] = True
     generation = sess.get('battle_generation', 0)
+    start_wall = float(sess.get('battle_start_wall', time.time() + PREBATTLE_TIMER_SECONDS))
 
     def _start_battle():
         if generation != sess.get('battle_generation', 0):
@@ -1964,7 +2228,8 @@ def schedule_battle_period(sock, addr, sess):
         send_avatar_messages(sock, addr, sess, msgs,
                              "PERIOD=BATTLE + server vehicle control")
 
-    timer = threading.Timer(PREBATTLE_TIMER_SECONDS, _start_battle)
+    delay = max(0.0, start_wall - time.time())
+    timer = threading.Timer(delay, _start_battle)
     timer.daemon = True
     timer.start()
 
@@ -1982,12 +2247,16 @@ def send_avatar_player(sock, addr, sess):
     spawn_pos = pick_spawn_pos(arena_type_id, sess)
     init_battle_state(sess, spawn_pos)
     now = current_server_time(sess)
+    prebattle_left = max(0, int(math.ceil(
+        float(sess.get('battle_start_wall', time.time() + PREBATTLE_TIMER_SECONDS)) -
+        time.time())))
     msgs = build_avatar_player_bundle(arena_type_id=arena_type_id,
                                       vehicle_compact_descr=veh_compact,
                                       vehicle_data=battle_vehicle,
+                                      player_name=sess.get('username') or 'player',
                                       spawn_pos=spawn_pos,
                                       initial_period=ARENA_PERIOD_PREBATTLE,
-                                      period_end_time=now + PREBATTLE_TIMER_SECONDS,
+                                      period_end_time=now + prebattle_left,
                                       period_length=PREBATTLE_TIMER_SECONDS)
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
@@ -1996,12 +2265,91 @@ def send_avatar_player(sock, addr, sess):
     except Exception:
         return
     sess['battle_bundle_sent'] = True
+    sess['known_remote_accounts'] = set()
+    announce_battle_player(sock, sess)
     print(f"    [>] battle-bundle: createBasePlayer(Avatar #{AVATAR_ENTITY_ID}) "
           f"+ spaceData(arenaType={arena_type_id}) "
           f"+ createCellPlayer(playerVeh=#{PLAYER_VEHICLE_ID}) + "
-          f"enterAoI + createEntity(Vehicle, invID={sess.get('battle_vehicle_inv_id', 1)}, "
+        f"enterAoI + createEntity(Vehicle, invID={sess.get('battle_vehicle_inv_id', 1)}, "
         f"spawn={spawn_pos}, health={get_vehicle_max_health(battle_vehicle)}, "
-        f"prebattle={PREBATTLE_TIMER_SECONDS}s)")
+        f"prebattle={prebattle_left}s)")
+
+def start_matchmaking_timer(sock):
+    global matchmaking_timer, next_battle_id
+    delay = random.uniform(MATCHMAKING_MIN_SECONDS, MATCHMAKING_MAX_SECONDS)
+
+    def _launch():
+        global matchmaking_timer, next_battle_id
+        with queue_lock:
+            batch = list(matchmaking_queue)
+            matchmaking_queue[:] = []
+            matchmaking_timer = None
+        if not batch:
+            return
+        with battle_lock:
+            battle_id = next_battle_id
+            next_battle_id += 1
+        valid_batch = []
+        start_wall = time.time() + PREBATTLE_TIMER_SECONDS
+        for queued in batch:
+            sess = queued.get('sess')
+            addr = queued.get('addr')
+            if not sess or not addr or not sess.get('queued_for_battle'):
+                continue
+            sess['queued_for_battle'] = False
+            sess['battle_match_id'] = battle_id
+            sess['battle_start_wall'] = start_wall
+            sess['battle_launch_wall'] = time.time()
+            valid_batch.append(queued)
+        if not valid_batch:
+            return
+        print(f"    [matchmaker] launching battle #{battle_id} for "
+              f"{len(valid_batch)} player(s), synced start in "
+              f"{PREBATTLE_TIMER_SECONDS}s")
+        for queued in valid_batch:
+            sess = queued.get('sess')
+            addr = queued.get('addr')
+            try:
+                send_account_event(sock, addr, sess,
+                                   ACCOUNT_ONARENACREATED_MSG_ID,
+                                   "Account.onArenaCreated()  [matchmaker]")
+            except Exception as e:
+                print(f"    [!] matchmaker arena event error: {e}")
+        for queued in valid_batch:
+            sess = queued.get('sess')
+            addr = queued.get('addr')
+            try:
+                send_avatar_player(sock, addr, sess)
+            except Exception as e:
+                print(f"    [!] matchmaker switch_to_avatar error: {e}")
+
+    matchmaking_timer = threading.Timer(delay, _launch)
+    matchmaking_timer.daemon = True
+    matchmaking_timer.start()
+    print(f"    [matchmaker] battle starts in {delay:.1f}s")
+
+def enqueue_for_matchmaking(sock, addr, sess):
+    global matchmaking_timer
+    with queue_lock:
+        for queued in matchmaking_queue:
+            if queued.get('sess') is sess:
+                return
+        sess['queued_for_battle'] = True
+        matchmaking_queue.append({'addr': addr, 'sess': sess})
+        queue_len = len(matchmaking_queue)
+        timer_needed = matchmaking_timer is None
+    print(f"    [matchmaker] queued {sess.get('username') or 'player'} "
+          f"({queue_len} in queue)")
+    if timer_needed:
+        start_matchmaking_timer(sock)
+
+def dequeue_from_matchmaking(sess):
+    with queue_lock:
+        matchmaking_queue[:] = [
+            queued for queued in matchmaking_queue
+            if queued.get('sess') is not sess
+        ]
+    sess['queued_for_battle'] = False
 
 
 def send_avatar_ready_and_prebattle(sock, addr, sess):
@@ -2020,9 +2368,12 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     send_avatar_messages(sock, addr, sess, msgs,
                          "Avatar ready + initial vehicle position/targeting")
     now = current_server_time(sess)
+    prebattle_left = max(0, int(math.ceil(
+        float(sess.get('battle_start_wall', time.time() + PREBATTLE_TIMER_SECONDS)) -
+        time.time())))
     send_avatar_arena_update(
         sock, addr, sess, ARENA_UPDATE_PERIOD,
-        (ARENA_PERIOD_PREBATTLE, now + PREBATTLE_TIMER_SECONDS,
+        (ARENA_PERIOD_PREBATTLE, now + prebattle_left,
          PREBATTLE_TIMER_SECONDS, None),
         "PERIOD=PREBATTLE")
     schedule_battle_period(sock, addr, sess)
@@ -2040,6 +2391,17 @@ def send_account_event(sock, addr, sess, msg_id: int, label: str,
     except Exception:
         return
     print(f"    [>] {label}  (msgID=0x{msg_id:02x})")
+
+def send_account_server_counters(sock, addr, sess, label: str = "server counters"):
+    send_avatar_messages(sock, addr, sess,
+                         build_account_server_counters_update(),
+                         label,
+                         reliable=True)
+
+def broadcast_account_server_counters(sock):
+    for addr, sess in list(baseapp_clients.items()):
+        if sess.get('init_sent'):
+            send_account_server_counters(sock, addr, sess, '')
 
 
 AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS = {0xc3, 0xcc}
@@ -2320,6 +2682,19 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         send_dossiers_stream(sock, addr, sess, req_id)
         return
 
+    if cmd == CMD_REQ_ARENA_LIST:
+        send_avatar_messages(sock, addr, sess,
+                             build_account_receive_active_arenas(),
+                             "Account.receiveActiveArenas()",
+                             reliable=True)
+        send_account_server_counters(sock, addr, sess)
+        return
+
+    if cmd == CMD_REQ_SERVER_STATS:
+        send_account_server_counters(sock, addr, sess,
+                                     "Account.receiveServerStats()")
+        return
+
     if cmd == CMD_ENQUEUE_FOR_ARENA:
         args = parse_doCmd_int3(payload) or (1, 0, 0)
         veh_inv_id, arena_type_id, queue_type = args
@@ -2331,38 +2706,26 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         sess['battle_vehicle'] = vehicle
         sess['battle_arena_type_id'] = arena_type_id if arena_type_id else ARENA_TYPE_KARELIA
         sess['battle_queue_type'] = queue_type
+        sess['battle_id'] = store_battle_entry(sess['battle_arena_type_id'],
+                                               sess.get('account_id') or 0,
+                                               veh_inv_id)
         print(f"    [battle] queued invID={veh_inv_id} "
               f"name={vehicle.get('name') if vehicle else 'unknown'} "
-              f"arenaType={sess['battle_arena_type_id']} queueType={queue_type}")
+              f"arenaType={sess['battle_arena_type_id']} queueType={queue_type} "
+              f"battleID={sess['battle_id']}")
 
         # REQUEST_ID_NO_RESPONSE в†’ cmd response РЅРµ РїРѕС‚СЂС–Р±РµРЅ. РќР°С‚РѕРјС–СЃС‚СЊ С€Р»РµРјРѕ
         # entity event onEnqueued, РїС–СЃР»СЏ СЏРєРѕРіРѕ РєР»С–С”РЅС‚ РїРѕРєР°Р·СѓС” "РЈ С‡РµСЂР·С–...".
         send_account_event(sock, addr, sess,
                            ACCOUNT_ONENQUEUED_MSG_ID, "Account.onEnqueued()")
-
-        # РЎРёРјСѓР»СЏС†С–СЏ "Р·РЅР°Р№РґРµРЅРѕ Р±С–Р№" вЂ” С‡РµСЂРµР· 1.5 СЃ С€Р»РµРјРѕ onArenaCreated,
-        # РѕРґСЂР°Р·Сѓ Р·Р° РЅРёРј РїРµСЂРµС…С–Рґ Account в†’ Avatar (resetEntities +
-        # createBasePlayer(Avatar)). Avatar.onBecomePlayer СЃС‚РІРѕСЂРёС‚СЊ
-        # ClientArena С– Р·Р°РїСѓСЃС‚РёС‚СЊ Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєР°СЂС‚Рё.
-        def _simulate_arena_created():
-            try:
-                send_account_event(sock, addr, sess,
-                                   ACCOUNT_ONARENACREATED_MSG_ID,
-                                   "Account.onArenaCreated()  [simulated]")
-            except Exception as e:
-                print(f"    [!] simulate_arena_created error: {e}")
-
-        def _switch_to_avatar():
-            try:
-                send_avatar_player(sock, addr, sess)
-            except Exception as e:
-                print(f"    [!] switch_to_avatar error: {e}")
-
-        threading.Timer(1.5, _simulate_arena_created).start()
-        threading.Timer(2.0, _switch_to_avatar).start()
+        enqueue_for_matchmaking(sock, addr, sess)
         return
 
     if cmd == CMD_DEQUEUE:
+        dequeue_from_matchmaking(sess)
+        with battle_lock:
+            active_battle_accounts.pop(sess.get('account_id'), None)
+        broadcast_account_server_counters(sock)
         send_account_event(sock, addr, sess,
                            ACCOUNT_ONDEQUEUED_MSG_ID, "Account.onDequeued()")
         return
@@ -2398,7 +2761,9 @@ def send_init_bundle(sock, addr, sess):
         return
 
     session_key_int = struct.unpack('<I', token)[0]
-    init_msgs = build_init_bundle(session_key_int)
+    init_msgs = build_init_bundle(session_key_int,
+                                  sess.get('username') or 'player',
+                                  sess.get('account_id') or 1)
     init_pkt = build_channel_packet(init_msgs, sess, reliable=True)
     init_pkt = bw_encrypt_packet(init_pkt, sess['bf_key'])
     sock.sendto(init_pkt, addr)
@@ -2406,6 +2771,8 @@ def send_init_bundle(sock, addr, sess):
     sess['server_time_zero_wall'] = time.time()
     print(f"[>] Init bundle: authenticate+bandwidth+setGameTime"
           f"+resetEntities+createBasePlayer+showGUI(0x90)")
+    send_account_server_counters(sock, addr, sess)
+    broadcast_account_server_counters(sock)
 
     if not sess.get('tick_started'):
         start_tick_thread(sock, addr, sess)
@@ -2451,10 +2818,18 @@ def handle_loginapp(sock):
 
     username, password, bf_key = parse_logon_params(dec)
     if not username: return
+    account = get_or_create_account(username, password)
 
     token = os.urandom(4)
-    active_sessions[token] = {'bf_key': bf_key, 'addr': None}
-    print(f"[+] Р›РѕРіС–РЅ: '{username}' | Token: {token.hex()}")
+    active_sessions[token] = {
+        'bf_key': bf_key,
+        'addr': None,
+        'username': account['username'],
+        'account_id': account['id'],
+        'known_remote_accounts': set(),
+    }
+    print(f"[+] Р›РѕРіС–РЅ: '{account['username']}' "
+          f"dbid={account['id']} | Token: {token.hex()}")
 
     # LoginReplyRecord: Mercury::Address(ip 4B + port 2B + salt 2B) + sessionKey(4B) = 12 B
     record  = socket.inet_aton('127.0.0.1')
@@ -2592,6 +2967,7 @@ def handle_baseapp(sock):
 # в”Ђв”Ђ Main loop в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 def main():
+    init_database()
     login_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     login_sock.bind(('0.0.0.0', LOGIN_PORT))
 
