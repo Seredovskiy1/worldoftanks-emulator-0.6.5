@@ -1067,6 +1067,10 @@ def build_battle_motion_sync(pos, yaw: float,
     return msgs
 
 
+def build_battle_motion_tick(pos, yaw: float) -> bytes:
+    return build_vehicle_motion_update(pos, yaw)
+
+
 def angle_to_int8(angle: float) -> int:
     value = int(math.floor((angle * 128.0) / math.pi + 0.5))
     return ((value + 128) % 256) - 128
@@ -1695,7 +1699,7 @@ def ensure_battle_motion_loop(sock, addr, sess):
                      f"pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}), "
                      f"yaw={yaw:.2f})")
         send_avatar_messages(sock, addr, sess,
-                             build_battle_motion_sync(pos, yaw, speed, rspeed),
+                             build_battle_motion_tick(pos, yaw),
                              label,
                              reliable=False)
         timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
@@ -1875,7 +1879,15 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             flags = payload[0]
         else:
             return True
+        prev_flags = sess.get('battle_motion_flags', 0)
+        was_idle = (
+            prev_flags == 0 and
+            abs(float(sess.get('battle_speed', 0.0))) < 0.01 and
+            abs(float(sess.get('battle_rspeed', 0.0))) < 0.01
+        )
         sess['battle_motion_flags'] = flags
+        if flags != 0 and was_idle:
+            sess['battle_last_motion_time'] = time.time()
         move_count = sess.get('battle_move_update_count', 0) + 1
         sess['battle_move_update_count'] = move_count
         if move_count % 20 == 1 or flags == 0:
