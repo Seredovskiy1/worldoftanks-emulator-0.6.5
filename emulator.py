@@ -48,6 +48,8 @@ active_battle_accounts = {}
 matchmaking_queue = []
 matchmaking_timer = None
 next_battle_id = 1
+battle_tick_started = False
+battle_tick_sock = None
 
 print("[*] Р—Р°РІР°РЅС‚Р°Р¶СѓС”РјРѕ RSA РєР»СЋС‡С–...")
 try:
@@ -539,7 +541,7 @@ CMD_SYNC_SHOP    = 300      # cmd=300 в†’ Р’Р•Р›РРљРР™ 
 CMD_BUY_ITEM     = 302
 CMD_SYNC_DOSSIERS = 600
 CMD_SET_LANGUAGE = 1000
-CMD_REQ_ARENA_LIST = 500
+CMD_REQ_ARENA_LIST = 502
 CMD_REQ_SERVER_STATS = 501
 CMD_ENQUEUE_FOR_ARENA = 700  # vehInvID, arenaTypeID, queueType
 CMD_DEQUEUE      = 701
@@ -1059,10 +1061,12 @@ def send_zlib_pickle_stream(sock, addr, sess, req_id: int, blob: bytes,
 
     msgs = build_oncmdrespext(req_id, RES_STREAM, ext_pickle)
     msgs += build_resource_header(req_id, desc)
-    pkt = build_channel_packet(msgs, sess, reliable=True)
-    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    send_lock = sess.setdefault('send_lock', threading.RLock())
     try:
-        sock.sendto(pkt, addr)
+        with send_lock:
+            pkt = build_channel_packet(msgs, sess, reliable=True)
+            pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+            sock.sendto(pkt, addr)
     except Exception:
         return
 
@@ -1071,10 +1075,11 @@ def send_zlib_pickle_stream(sock, addr, sess, req_id: int, blob: bytes,
     for i, chunk in enumerate(chunks):
         flags = 1 if i == len(chunks) - 1 else 0
         msg = build_resource_fragment(req_id, i, flags, chunk)
-        pkt = build_channel_packet(msg, sess, reliable=True)
-        pkt = bw_encrypt_packet(pkt, sess['bf_key'])
         try:
-            sock.sendto(pkt, addr)
+            with send_lock:
+                pkt = build_channel_packet(msg, sess, reliable=True)
+                pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+                sock.sendto(pkt, addr)
         except Exception:
             return
 
@@ -1124,10 +1129,12 @@ def send_shop_stream(sock, addr, sess, req_id: int):
         flags = 1 if is_last else 0
         msgs += build_resource_fragment(req_id, i, flags, chunk)
 
-    pkt = build_channel_packet(msgs, sess, reliable=True)
-    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    send_lock = sess.setdefault('send_lock', threading.RLock())
     try:
-        sock.sendto(pkt, addr)
+        with send_lock:
+            pkt = build_channel_packet(msgs, sess, reliable=True)
+            pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+            sock.sendto(pkt, addr)
     except Exception:
         return
     print(f"    [>] Shop STREAM: req={req_id}, blob={len(blob)}B "
@@ -1163,7 +1170,8 @@ PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
-BATTLE_MOTION_TICK = 0.05
+BATTLE_MOTION_TICK = 0.10
+TARGETING_UPDATE_INTERVAL = 0.08
 BATTLE_MAX_FORWARD_SPEED = 10.0
 BATTLE_MAX_BACKWARD_SPEED = 4.0
 BATTLE_MAX_ROTATION_SPEED = 1.15
@@ -1818,7 +1826,8 @@ def announce_battle_player(sock, sess: dict):
     with battle_lock:
         active_battle_accounts[sess.get('account_id')] = sess
         others = [other for account_id, other in active_battle_accounts.items()
-                  if account_id != sess.get('account_id')]
+                  if account_id != sess.get('account_id') and
+                  other.get('battle_match_id') == sess.get('battle_match_id')]
     broadcast_account_server_counters(sock)
     for other in others:
         send_remote_vehicle(sock, sess, other)
@@ -1848,6 +1857,70 @@ def broadcast_remote_vehicle_position(sock, source_sess: dict, force: bool = Fal
                              '',
                              reliable=False)
 
+def start_battle_tick_loop(sock):
+    global battle_tick_started, battle_tick_sock
+    battle_tick_sock = sock
+    if battle_tick_started:
+        return
+    battle_tick_started = True
+
+    def _loop():
+        next_tick = time.time()
+        while True:
+            try:
+                next_tick += BATTLE_MOTION_TICK
+                delay = next_tick - time.time()
+                if delay > 0:
+                    time.sleep(delay)
+                else:
+                    next_tick = time.time()
+                with battle_lock:
+                    sessions = [
+                        sess for sess in active_battle_accounts.values()
+                        if sess.get('battle_bundle_sent') and sess.get('battle_period_active')
+                    ]
+                if not sessions:
+                    continue
+                remote_payloads = []
+                for sess in sessions:
+                    flags = sess.get('battle_motion_flags', 0)
+                    pos, yaw, speed, rspeed = advance_battle_motion(sess, flags)
+                    addr = sess.get('addr')
+                    if addr:
+                        send_avatar_messages(sock, addr, sess,
+                                             build_battle_motion_tick(pos, yaw),
+                                             '',
+                                             reliable=False)
+                    source_account_id = sess.get('account_id')
+                    remote_id = get_remote_vehicle_id(sess)
+                    remote_msg = build_vehicle_motion_update_for(remote_id, pos, yaw)
+                    for observer in sessions:
+                        if observer is sess or not observer.get('addr'):
+                            continue
+                        if observer.get('battle_match_id') != sess.get('battle_match_id'):
+                            continue
+                        if source_account_id not in observer.setdefault('known_remote_accounts', set()):
+                            send_remote_vehicle(sock, observer, sess)
+                        payload = None
+                        for entry in remote_payloads:
+                            if entry[0] is observer:
+                                payload = entry[1]
+                                break
+                        if payload is None:
+                            payload = []
+                            remote_payloads.append((observer, payload))
+                        payload.append(remote_msg)
+                for observer, payload in remote_payloads:
+                    send_avatar_messages(sock, observer.get('addr'), observer,
+                                         b''.join(payload), '', reliable=False)
+            except Exception as exc:
+                print(f"[!] Battle tick loop error: {exc}")
+                time.sleep(0.1)
+
+    thread = threading.Thread(target=_loop, daemon=True)
+    thread.start()
+    print(f"[*] Battle tick loop started ({1.0 / BATTLE_MOTION_TICK:.0f} Hz)")
+
 
 def pick_spawn_pos(arena_type_id: int, sess: dict):
     if arena_type_id == ARENA_TYPE_KARELIA:
@@ -1865,10 +1938,12 @@ def current_server_time(sess: dict) -> int:
 
 def send_avatar_arena_update(sock, addr, sess, update_type: int, data, label: str):
     msg = build_avatar_update_arena(update_type, data)
-    pkt = build_channel_packet(msg, sess, reliable=True)
-    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    send_lock = sess.setdefault('send_lock', threading.RLock())
     try:
-        sock.sendto(pkt, addr)
+        with send_lock:
+            pkt = build_channel_packet(msg, sess, reliable=True)
+            pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+            sock.sendto(pkt, addr)
     except Exception:
         return
     print(f"    [>] Avatar.updateArena({label})")
@@ -1876,10 +1951,14 @@ def send_avatar_arena_update(sock, addr, sess, update_type: int, data, label: st
 
 def send_avatar_messages(sock, addr, sess, msgs: bytes, label: str,
                          reliable: bool = True):
-    pkt = build_channel_packet(msgs, sess, reliable=reliable)
-    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    if not addr:
+        return False
+    send_lock = sess.setdefault('send_lock', threading.RLock())
     try:
-        sock.sendto(pkt, addr)
+        with send_lock:
+            pkt = build_channel_packet(msgs, sess, reliable=reliable)
+            pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+            sock.sendto(pkt, addr)
     except Exception:
         return False
     if label:
@@ -2102,57 +2181,6 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
     return False
 
 
-def ensure_battle_motion_loop(sock, addr, sess):
-    if sess.get('battle_motion_loop_started'):
-        return
-    sess['battle_motion_loop_started'] = True
-    generation = sess.get('battle_generation', 0)
-
-    def _tick():
-        if generation != sess.get('battle_generation', 0):
-            return
-        flags = sess.get('battle_motion_flags', 0)
-        speed = abs(float(sess.get('battle_speed', 0.0)))
-        rspeed = abs(float(sess.get('battle_rspeed', 0.0)))
-        if (not sess.get('battle_period_active') or
-                (flags == 0 and speed < 0.01 and rspeed < 0.01)):
-            sess['battle_motion_loop_started'] = False
-            return
-
-        client_last_move = sess.get('client_vehicle_last_move_time', 0.0)
-        client_is_moving = (
-            not sess.get('server_vehicle_authoritative', True) and
-            flags != 0 and
-            (time.time() - client_last_move) < 0.30
-        )
-        if client_is_moving:
-            timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
-            timer.daemon = True
-            timer.start()
-            return
-
-        pos, yaw, speed, rspeed = advance_battle_motion(sess, flags)
-        count = sess.get('battle_move_tick_count', 0) + 1
-        sess['battle_move_tick_count'] = count
-        label = ''
-        if count % 20 == 1:
-            label = (f"ServerVehicle.tick(flags=0x{flags:02x}, "
-                     f"pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}), "
-                     f"yaw={yaw:.2f})")
-        send_avatar_messages(sock, addr, sess,
-                             build_battle_motion_tick(pos, yaw),
-                             label,
-                             reliable=False)
-        broadcast_remote_vehicle_position(sock, sess)
-        timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
-        timer.daemon = True
-        timer.start()
-
-    timer = threading.Timer(BATTLE_MOTION_TICK, _tick)
-    timer.daemon = True
-    timer.start()
-
-
 def normalize_vec(vec):
     x, y, z = vec
     length = math.sqrt(x * x + y * y + z * z)
@@ -2227,6 +2255,7 @@ def schedule_battle_period(sock, addr, sess):
         msgs += disable_client_vehicle_control_message(sess)
         send_avatar_messages(sock, addr, sess, msgs,
                              "PERIOD=BATTLE + server vehicle control")
+        start_battle_tick_loop(sock)
 
     delay = max(0.0, start_wall - time.time())
     timer = threading.Timer(delay, _start_battle)
@@ -2384,10 +2413,12 @@ def send_account_event(sock, addr, sess, msg_id: int, label: str,
     """Р’С–РґРїСЂР°РІР»СЏС” Account entity-method (Р±РµР· args Р°Р±Рѕ Р· extra payload)."""
     em = struct.pack('<I', PLAYER_ENTITY_ID) + extra
     msg = msg_varlen(msg_id, em)
-    pkt = build_channel_packet(msg, sess, reliable=True)
-    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+    send_lock = sess.setdefault('send_lock', threading.RLock())
     try:
-        sock.sendto(pkt, addr)
+        with send_lock:
+            pkt = build_channel_packet(msg, sess, reliable=True)
+            pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+            sock.sendto(pkt, addr)
     except Exception:
         return
     print(f"    [>] {label}  (msgID=0x{msg_id:02x})")
@@ -2516,11 +2547,6 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
                   f"[{mode}, target=({move:.1f},{turn:.2f})]")
         if not sess.get('server_vehicle_authoritative', True):
             return True
-        if flags != 0:
-            ensure_battle_motion_loop(sock, addr, sess)
-        elif abs(float(sess.get('battle_speed', 0.0))) > 0.01 or \
-                abs(float(sess.get('battle_rspeed', 0.0))) > 0.01:
-            ensure_battle_motion_loop(sock, addr, sess)
         return True
 
     if msg_id in AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS:
@@ -2530,11 +2556,14 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             target_pos = struct.unpack_from('<fff', payload, 0)
         else:
             return True
+        now = time.time()
+        if now - float(sess.get('last_targeting_update', 0.0)) < TARGETING_UPDATE_INTERVAL:
+            return True
+        sess['last_targeting_update'] = now
         msgs = build_targeting_for_point(sess, target_pos)
         send_avatar_messages(
             sock, addr, sess, msgs,
-            f"Avatar.targeting(point=({target_pos[0]:.1f},"
-            f"{target_pos[1]:.1f},{target_pos[2]:.1f}))",
+            '',
             reliable=False)
         return True
 
@@ -2629,16 +2658,18 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
     req_id, cmd = parse_doCmd_request(msg_id, payload)
     if req_id is None:
         return
-    print(f"    [doCmd] msg=0x{msg_id:02x} reqID={req_id} cmd={cmd}")
+    if cmd in (CMD_REQ_ARENA_LIST, CMD_REQ_SERVER_STATS):
+        stat_cmd_count = sess.get('stat_cmd_count', 0) + 1
+        sess['stat_cmd_count'] = stat_cmd_count
+        if stat_cmd_count % 50 == 1:
+            print(f"    [doCmd] msg=0x{msg_id:02x} reqID={req_id} cmd={cmd} x{stat_cmd_count}")
+    else:
+        print(f"    [doCmd] msg=0x{msg_id:02x} reqID={req_id} cmd={cmd}")
 
     if cmd == CMD_SYNC_DATA:
         if sess.get('sync_data_stream_sent'):
             msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_sync_pickle(0))
-            pkt = build_channel_packet(msg, sess, reliable=True)
-            pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-            try:
-                sock.sendto(pkt, addr)
-            except Exception:
+            if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
                 return
             print(f"    [>] onCmdResponseExt(req={req_id}, res=0, ext=empty_sync)")
             return
@@ -2652,11 +2683,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
 
     if cmd == CMD_BUY_ITEM:
         msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
-        pkt = build_channel_packet(msg, sess, reliable=True)
-        pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-        try:
-            sock.sendto(pkt, addr)
-        except Exception:
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
             return
         print(f"    [>] buyItem(req={req_id}) success")
         return
@@ -2669,11 +2696,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
             if vehicle is not None:
                 vehicle['defaultAmmo'] = arr[1:]
         msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
-        pkt = build_channel_packet(msg, sess, reliable=True)
-        pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-        try:
-            sock.sendto(pkt, addr)
-        except Exception:
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
             return
         print(f"    [>] equipShells(req={req_id}, items={len(arr)}) success")
         return
@@ -2683,6 +2706,10 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         return
 
     if cmd == CMD_REQ_ARENA_LIST:
+        now = time.time()
+        if now - sess.get('last_arena_list_response', 0.0) < 1.0:
+            return
+        sess['last_arena_list_response'] = now
         send_avatar_messages(sock, addr, sess,
                              build_account_receive_active_arenas(),
                              "Account.receiveActiveArenas()",
@@ -2691,6 +2718,10 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         return
 
     if cmd == CMD_REQ_SERVER_STATS:
+        now = time.time()
+        if now - sess.get('last_server_stats_response', 0.0) < 1.0:
+            return
+        sess['last_server_stats_response'] = now
         send_account_server_counters(sock, addr, sess,
                                      "Account.receiveServerStats()")
         return
@@ -2732,11 +2763,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
 
     if cmd == 0 and sess.get('battle_bundle_sent'):
         msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
-        pkt = build_channel_packet(msg, sess, reliable=True)
-        pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-        try:
-            sock.sendto(pkt, addr)
-        except Exception:
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
             return
         print(f"    [>] onCmdResponseExt(req={req_id}, res=0, ext=empty) "
               f"[Avatar.onClientReady]")
@@ -2744,11 +2771,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         return
 
     msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
-    pkt = build_channel_packet(msg, sess, reliable=True)
-    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-    try:
-        sock.sendto(pkt, addr)
-    except Exception:
+    if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
         return
     print(f"    [>] onCmdResponseExt(req={req_id}, res=0, ext=empty)")
 
@@ -2764,9 +2787,11 @@ def send_init_bundle(sock, addr, sess):
     init_msgs = build_init_bundle(session_key_int,
                                   sess.get('username') or 'player',
                                   sess.get('account_id') or 1)
-    init_pkt = build_channel_packet(init_msgs, sess, reliable=True)
-    init_pkt = bw_encrypt_packet(init_pkt, sess['bf_key'])
-    sock.sendto(init_pkt, addr)
+    send_lock = sess.setdefault('send_lock', threading.RLock())
+    with send_lock:
+        init_pkt = build_channel_packet(init_msgs, sess, reliable=True)
+        init_pkt = bw_encrypt_packet(init_pkt, sess['bf_key'])
+        sock.sendto(init_pkt, addr)
     sess['init_sent'] = True
     sess['server_time_zero_wall'] = time.time()
     print(f"[>] Init bundle: authenticate+bandwidth+setGameTime"
@@ -2793,8 +2818,13 @@ def start_tick_thread(sock, addr, sess=None):
             tick_counter += 1
             pkt = msg_fixed(0x0D, struct.pack('<B', tick_byte))
             if sess:
-                pkt = build_channel_packet(pkt, sess, reliable=False)
-                pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+                send_lock = sess.setdefault('send_lock', threading.RLock())
+                with send_lock:
+                    pkt = build_channel_packet(pkt, sess, reliable=False)
+                    pkt = bw_encrypt_packet(pkt, sess['bf_key'])
+                    try: sock.sendto(pkt, addr)
+                    except: break
+                continue
             else:
                 pkt = make_bundle(pkt)
             try: sock.sendto(pkt, addr)
@@ -2931,6 +2961,7 @@ def handle_baseapp(sock):
             # Spam filter: client sends authenticate + avatar/vehicle movement
             # updates almost every frame. Print only occasional samples.
             movement_msg_ids = (0x01, 0x02, 0x03, 0x04, 0x05)
+            high_rate_battle_msg_ids = movement_msg_ids + tuple(AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS) + tuple(AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS)
             avatar_update_only = all(m in movement_msg_ids for m, _, _ in messages) \
                 and any(m in (0x02, 0x03, 0x04, 0x05) for m, _, _ in messages)
             if avatar_update_only:
@@ -2940,6 +2971,13 @@ def handle_baseapp(sock):
                     summary = ", ".join(f"0x{m:02x}({len(p)}B)"
                                         for m, p, _ in messages)
                     print(f"[<] movementUpdate x{cnt}: {summary}")
+            elif all(m in high_rate_battle_msg_ids for m, _, _ in messages):
+                cnt = sess_for_addr.get('battle_input_count', 0) + 1
+                sess_for_addr['battle_input_count'] = cnt
+                if cnt % 100 == 1:
+                    summary = ", ".join(f"0x{m:02x}({len(p)}B)"
+                                        for m, p, _ in messages)
+                    print(f"[<] battleInput x{cnt}: {summary}")
             else:
                 summary = ", ".join(f"0x{m:02x}({len(p)}B)" for m, p, _ in messages)
                 print(f"[<] BaseAppExt: {summary or 'none'} | "
@@ -2954,7 +2992,8 @@ def handle_baseapp(sock):
             for m, p, _ in messages:
                 if m in movement_msg_ids:
                     continue
-                print(f"    [post-init] msg=0x{m:02x} payload={p.hex()}")
+                if m not in high_rate_battle_msg_ids:
+                    print(f"    [post-init] msg=0x{m:02x} payload={p.hex()}")
                 if sess_for_addr.get('battle_bundle_sent') and m in AVATAR_BASE_METHODS:
                     if handle_avatar_base_method(sock, addr, sess_for_addr, m, p):
                         continue
