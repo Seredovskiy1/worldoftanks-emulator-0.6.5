@@ -1,6 +1,6 @@
 """Парс list.xml + components/*.xml кожної нації, зібрати таблицю
 {nationID: {vehicleTypeID: {chassis, engine, fuelTank, radio, turret, gun}}}."""
-import struct, pathlib, os, json
+import struct, pathlib, os, json, math
 
 MASK = 0x0fffffff
 TM = 0xf0000000
@@ -53,6 +53,8 @@ def parse(blob, typ, name, strings):
 
 
 def find(n, name):
+    if n is None:
+        return None
     for c in n['children']:
         if c['name'] == name:
             return c
@@ -61,6 +63,13 @@ def find(n, name):
 
 def find_all(n, name):
     return [c for c in n['children'] if c['name'] == name]
+
+
+def find_path(n, path):
+    cur = n
+    for part in path.split('/'):
+        cur = find(cur, part) if cur is not None else None
+    return cur
 
 
 def load(fp):
@@ -94,7 +103,7 @@ def get_int(n, default=0):
         return int.from_bytes(d, 'little', signed=True)
     if t == DT_STRING:
         try:
-            return int(d.decode('latin1').strip())
+            return int(float(d.decode('latin1').strip()))
         except Exception:
             return default
     # Fallback — старе поводження для unknown типу
@@ -265,8 +274,23 @@ def parse_gun_shots(path, gun_name, nation_id, shells_map):
             'compactDescr': shell['compactDescr'],
             'defaultPortion': get_float(find(shot, 'defaultPortion'), 0.0),
             'price': shell['price'],
+            'speed': get_float(find(shot, 'speed'), 800.0),
+            'gravity': get_float(find(shot, 'gravity'), 9.81),
+            'effectsIndex': get_int(find(shot, 'effectsIndex'), 0),
         })
     return out
+
+
+def get_shared_component_node(path, name):
+    n = load(path)
+    shared = find(n, 'shared') if n is not None else None
+    return find(shared, name) if shared is not None and name else None
+
+
+def get_vehicle_speed_limits(veh_node):
+    forward = get_float(find_path(veh_node, 'speedLimits/forward'), 36.0) / 3.6
+    backward = get_float(find_path(veh_node, 'speedLimits/backward'), 14.0) / 3.6
+    return [forward, backward]
 
 
 def make_default_ammo(shots, max_ammo):
@@ -332,9 +356,19 @@ for nation in NATIONS:
         radio_id = radio_map.get(rd_name)
         turret_id = turret_map.get(tr_name)
         gun_id = gun_map.get(gn_name)
+        chassis_node = get_shared_component_node(os.path.join(comp_dir, 'chassis.xml'), ch_name)
+        turret_node = get_shared_component_node(os.path.join(comp_dir, 'turrets.xml'), tr_name)
+        gun_node = get_shared_component_node(os.path.join(comp_dir, 'guns.xml'), gn_name)
         gun_shots = parse_gun_shots(os.path.join(comp_dir, 'guns.xml'),
                                     gn_name, nid, shells_map) if gn_name else []
         max_ammo = get_gun_max_ammo(veh, tr_name, gn_name) if tr_name and gn_name else 0
+        max_health = get_int(find(veh, 'maxHealth'), get_int(find_path(veh, 'hull/maxHealth'), 1))
+        max_health += get_int(find(turret_node, 'maxHealth'), 0)
+        speed_limits = get_vehicle_speed_limits(veh)
+        chassis_rotation_speed = math.radians(get_float(find(chassis_node, 'rotationSpeed'), 30.0))
+        turret_rotation_speed = math.radians(get_float(find(turret_node, 'rotationSpeed'), 30.0))
+        gun_rotation_speed = math.radians(get_float(find(gun_node, 'rotationSpeed'), 30.0))
+        reload_time = get_float(find(gun_node, 'reloadTime'), 5.0)
 
         if None in (chassis_id, engine_id, fuel_id, radio_id, turret_id, gun_id):
             print(f"  [SKIP] {veh_name}: missing comp "
@@ -361,6 +395,12 @@ for nation in NATIONS:
             'crewSize': crew_size,
             'turretCompactDescr': make_int_compact_descr(3, nid, turret_id),
             'gunCompactDescr': make_int_compact_descr(4, nid, gun_id),
+            'maxHealth': max_health,
+            'speedLimits': speed_limits,
+            'chassisRotationSpeed': chassis_rotation_speed,
+            'turretRotationSpeed': turret_rotation_speed,
+            'gunRotationSpeed': gun_rotation_speed,
+            'reloadTime': reload_time,
             'maxAmmo': max_ammo,
             'defaultAmmo': make_default_ammo(gun_shots, max_ammo),
             'shells': gun_shots,
