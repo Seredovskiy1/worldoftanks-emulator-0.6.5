@@ -383,6 +383,7 @@ AVATAR_UPDATE_OWN_POSITION_MSG_ID   = 0x89
 AVATAR_SHOW_TRACER_MSG_ID           = 0x8c
 AVATAR_STOP_TRACER_MSG_ID           = 0x8d
 AVATAR_EXPLODE_PROJECTILE_MSG_ID    = 0x8e
+VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
 CLIENT_CONTROL_ENTITY_MSG_ID        = 0x33
@@ -524,6 +525,33 @@ def parse_doCmd_int_arr(payload: bytes):
 
 MAX_VEHICLES_INLINE = None  # None = all vehicles; full sync is streamed.
 
+VEHICLE_MAX_HEALTH_OVERRIDES = {
+    'Lowe': 1650,
+}
+
+
+def make_default_ammo_from_shells(shells, max_ammo):
+    shells = list(shells or [])
+    max_ammo = int(max_ammo or 0)
+    if max_ammo <= 0:
+        max_ammo = 60
+    ammo = []
+    current = 0
+    for shell in shells:
+        compact = int(shell.get('compactDescr', 0))
+        if not compact:
+            continue
+        count = int(float(shell.get('defaultPortion', 0.0)) * max_ammo + 0.5)
+        if current + count > max_ammo:
+            count = max_ammo - current
+        current += count
+        ammo.extend([compact, max(0, count)])
+    if ammo and current <= 0:
+        ammo[1] = max_ammo
+    elif ammo and current < max_ammo:
+        ammo[1] += max_ammo - current
+    return ammo
+
 
 def load_all_vehicles():
     """Р§РёС‚Р°С” _vehicles.json (РіРµРЅРµСЂСѓС”С‚СЊСЃСЏ _dump_vehicles.py) С– РїРѕРІРµСЂС‚Р°С”
@@ -544,6 +572,12 @@ def load_all_vehicles():
     for inv_id, v in enumerate(vehicles_data, start=1):
         cd = bytes.fromhex(v['compactDescr_hex'])
         crew_size = v.get('crewSize', 4)
+        shells = list(v.get('shells', []))
+        default_ammo = list(v.get('defaultAmmo', []))
+        if sum(int(q) for q in default_ammo[1::2]) <= 0 and shells:
+            default_ammo = make_default_ammo_from_shells(shells, v.get('maxAmmo', 0))
+        max_health = int(v.get('maxHealth', 1000))
+        max_health = max(max_health, int(VEHICLE_MAX_HEALTH_OVERRIDES.get(v['name'], 0)))
         out.append({
             'inv_id': inv_id,
             'compactDescr': cd,
@@ -551,14 +585,14 @@ def load_all_vehicles():
             'crewSize': crew_size,
             'turretCompactDescr': v.get('turretCompactDescr', 0),
             'gunCompactDescr': v.get('gunCompactDescr', 0),
-            'maxHealth': int(v.get('maxHealth', 1000)),
+            'maxHealth': max_health,
             'speedLimits': list(v.get('speedLimits', [])),
             'chassisRotationSpeed': float(v.get('chassisRotationSpeed', BATTLE_MAX_ROTATION_SPEED)),
             'turretRotationSpeed': float(v.get('turretRotationSpeed', 8.0)),
             'gunRotationSpeed': float(v.get('gunRotationSpeed', 8.0)),
             'reloadTime': float(v.get('reloadTime', 5.0)),
-            'defaultAmmo': list(v.get('defaultAmmo', [])),
-            'shells': list(v.get('shells', [])),
+            'defaultAmmo': default_ammo,
+            'shells': shells,
         })
     return out
 
@@ -610,6 +644,23 @@ def get_vehicle_shell_count(vehicle: dict, compact: int) -> int:
     for i in range(0, len(ammo), 2):
         if int(ammo[i]) == int(compact):
             return int(ammo[i + 1])
+    return 0
+
+
+def build_vehicle_ammo_stock(vehicle: dict):
+    stock = {}
+    ammo = list((vehicle or {}).get('defaultAmmo') or [])
+    for i in range(0, len(ammo), 2):
+        stock[int(ammo[i])] = max(0, int(ammo[i + 1]))
+    return stock
+
+
+def select_available_shell(stock: dict, preferred: int = 0):
+    if preferred and int(stock.get(int(preferred), 0)) > 0:
+        return int(preferred)
+    for compact, quantity in stock.items():
+        if int(quantity) > 0:
+            return int(compact)
     return 0
 
 
@@ -1315,6 +1366,11 @@ def build_avatar_stop_tracer(shot_id: int, end_pos) -> bytes:
     return msg_varlen(AVATAR_STOP_TRACER_MSG_ID, em)
 
 
+def build_vehicle_show_shooting() -> bytes:
+    return msg_varlen(VEHICLE_SHOW_SHOOTING_MSG_ID,
+                      struct.pack('<I', PLAYER_VEHICLE_ID))
+
+
 def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                arena_gui_type: int = ARENA_GUI_TYPE_RANDOM,
                                weather_preset_id: int = 0,
@@ -1570,6 +1626,7 @@ def send_avatar_messages(sock, addr, sess, msgs: bytes, label: str,
 
 
 def init_battle_state(sess: dict, spawn_pos):
+    vehicle = sess.get('battle_vehicle') or {}
     sess['battle_generation'] = sess.get('battle_generation', 0) + 1
     sess['battle_pos'] = tuple(float(v) for v in spawn_pos)
     sess['battle_yaw'] = 0.0
@@ -1587,6 +1644,9 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_gun_pitch'] = 0.0
     sess['battle_current_shell'] = 0
     sess['battle_next_shell'] = 0
+    sess['battle_ammo_stock'] = build_vehicle_ammo_stock(vehicle)
+    sess['battle_vehicle_health'] = get_vehicle_max_health(vehicle)
+    sess['battle_reload_until'] = 0.0
     sess['battle_shells_fired'] = {}
     sess['battle_last_shot_time'] = 0.0
     sess['battle_shot_id'] = 1
@@ -1861,15 +1921,13 @@ def build_targeting_for_point(sess: dict, target_pos):
 
 def build_battle_vehicle_state_messages(sess: dict):
     vehicle = sess.get('battle_vehicle') or {}
-    ammo = list(vehicle.get('defaultAmmo') or [])
-    msgs = build_avatar_update_vehicle_health(get_vehicle_max_health(vehicle), True)
-    for i in range(0, len(ammo), 2):
-        msgs += build_avatar_update_vehicle_ammo(ammo[i], ammo[i + 1], 0)
-    current_shell = 0
-    for i in range(0, len(ammo), 2):
-        if int(ammo[i + 1]) > 0:
-            current_shell = int(ammo[i])
-            break
+    stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
+    sess['battle_ammo_stock'] = stock
+    health = int(sess.get('battle_vehicle_health') or get_vehicle_max_health(vehicle))
+    msgs = build_avatar_update_vehicle_health(health, True)
+    for compact, quantity in stock.items():
+        msgs += build_avatar_update_vehicle_ammo(compact, quantity, 0)
+    current_shell = select_available_shell(stock, sess.get('battle_current_shell', 0))
     if current_shell:
         sess['battle_current_shell'] = current_shell
         sess['battle_next_shell'] = current_shell
@@ -1984,24 +2042,24 @@ def send_account_event(sock, addr, sess, msg_id: int, label: str,
     print(f"    [>] {label}  (msgID=0x{msg_id:02x})")
 
 
-AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN = 0x81
-AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH = 0xc3
-AVATAR_BASE_METHOD_VEHICLE_SHOOT = 0xc1
-AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN = 0xc2
-AVATAR_BASE_METHOD_CHANGE_SETTING = 0xc4
-AVATAR_BASE_METHOD_TELEPORT = 0xc5
-AVATAR_BASE_METHOD_USE_HORN = 0xc6
-AVATAR_BASE_METHOD_ON_CLIENT_READY = 0xc7
-AVATAR_BASE_METHODS = {
-    AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH,
-    AVATAR_BASE_METHOD_VEHICLE_SHOOT,
-    AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN,
-    AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN,
-    AVATAR_BASE_METHOD_CHANGE_SETTING,
-    AVATAR_BASE_METHOD_TELEPORT,
-    AVATAR_BASE_METHOD_USE_HORN,
-    AVATAR_BASE_METHOD_ON_CLIENT_READY,
-}
+AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS = {0xc3, 0xcc}
+AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS = {0xc1, 0xc4, 0xcd}
+AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS = {0x81, 0xce}
+AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN_IDS = {0xc2, 0xcf}
+AVATAR_BASE_METHOD_CHANGE_SETTING_IDS = {0xd0}
+AVATAR_BASE_METHOD_TELEPORT_IDS = {0xc5, 0xd1}
+AVATAR_BASE_METHOD_USE_HORN_IDS = {0xc6, 0xd2}
+AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS = {0xc7, 0xd4}
+AVATAR_BASE_METHODS = (
+    AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS |
+    AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS |
+    AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS |
+    AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN_IDS |
+    AVATAR_BASE_METHOD_CHANGE_SETTING_IDS |
+    AVATAR_BASE_METHOD_TELEPORT_IDS |
+    AVATAR_BASE_METHOD_USE_HORN_IDS |
+    AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS
+)
 
 
 def parse_exposed_request_id(payload: bytes):
@@ -2021,20 +2079,21 @@ def parse_vehicle_change_setting(payload: bytes):
 def build_vehicle_shot_messages(sess: dict):
     vehicle = sess.get('battle_vehicle') or {}
     shell_cd = int(sess.get('battle_current_shell') or 0)
+    stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
+    sess['battle_ammo_stock'] = stock
+    shell_cd = select_available_shell(stock, shell_cd)
     if not shell_cd:
         shell = get_vehicle_shell(vehicle)
         shell_cd = int(shell.get('compactDescr', 0))
         sess['battle_current_shell'] = shell_cd
-    count = get_vehicle_shell_count(vehicle, shell_cd)
-    fired = sess.setdefault('battle_shells_fired', {})
-    if count - int(fired.get(shell_cd, 0)) <= 0:
+    if not shell_cd or int(stock.get(shell_cd, 0)) <= 0:
         return b'', 0.0, shell_cd, False
     reload_time = float(vehicle.get('reloadTime', 5.0))
     now = time.time()
     if now < float(sess.get('battle_reload_until', 0.0)):
-        return b'', reload_time, shell_cd, False
-    fired[shell_cd] = int(fired.get(shell_cd, 0)) + 1
-    remaining = max(0, count - fired[shell_cd])
+        return b'', max(0.0, float(sess.get('battle_reload_until', 0.0)) - now), shell_cd, False
+    stock[shell_cd] = max(0, int(stock.get(shell_cd, 0)) - 1)
+    remaining = stock[shell_cd]
     shell = get_vehicle_shell(vehicle, shell_cd)
     speed = float(shell.get('speed', 800.0))
     gravity = float(shell.get('gravity', 9.81))
@@ -2053,6 +2112,7 @@ def build_vehicle_shot_messages(sess: dict):
     sess['battle_shot_id'] = shot_id + 1
     sess['battle_reload_until'] = now + reload_time
     msgs = b''
+    msgs += build_vehicle_show_shooting()
     msgs += build_avatar_update_vehicle_ammo(shell_cd, remaining, 0)
     msgs += build_avatar_update_vehicle_reload(reload_time)
     msgs += build_avatar_show_tracer(shot_id, shot_pos, velocity, gravity,
@@ -2063,12 +2123,12 @@ def build_vehicle_shot_messages(sess: dict):
 def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
     req_id = parse_exposed_request_id(payload)
 
-    if msg_id == AVATAR_BASE_METHOD_ON_CLIENT_READY:
+    if msg_id in AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS:
         print(f"    [avatar] onClientReady req={req_id}")
         send_avatar_ready_and_prebattle(sock, addr, sess)
         return True
 
-    if msg_id == AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH:
+    if msg_id in AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS:
         if len(payload) >= 5:
             flags = payload[4]
         elif len(payload) >= 1:
@@ -2101,7 +2161,7 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             ensure_battle_motion_loop(sock, addr, sess)
         return True
 
-    if msg_id == AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN:
+    if msg_id in AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS:
         if len(payload) >= 16 and struct.unpack_from('<I', payload, 0)[0] == PLAYER_VEHICLE_ID:
             target_pos = struct.unpack_from('<fff', payload, 4)
         elif len(payload) >= 12:
@@ -2116,7 +2176,7 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             reliable=False)
         return True
 
-    if msg_id == AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN:
+    if msg_id in AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN_IDS:
         pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
         yaw = sess.get('battle_yaw', 0.0)
         target_pos = (pos[0] + math.sin(yaw) * 100.0,
@@ -2128,28 +2188,14 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
                              reliable=False)
         return True
 
-    if msg_id == AVATAR_BASE_METHOD_CHANGE_SETTING:
-        parsed = parse_vehicle_change_setting(payload)
-        if parsed is None:
-            return True
-        code, value = parsed
-        if code == 0:
-            sess['battle_current_shell'] = value
-        elif code == 1:
-            sess['battle_next_shell'] = value
-        send_avatar_messages(sock, addr, sess,
-                             build_avatar_update_vehicle_setting(code, value),
-                             f"Vehicle.setting(code={code}, value={value})",
-                             reliable=False)
-        return True
-
-    if msg_id == AVATAR_BASE_METHOD_VEHICLE_SHOOT:
+    if msg_id in AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS and len(payload) == 0:
         msgs, reload_time, shell_cd, fired = build_vehicle_shot_messages(sess)
         if not fired:
+            print(f"    [>] Vehicle.shot blocked(shell={shell_cd}, reload={reload_time:.2f})")
             return True
         send_avatar_messages(sock, addr, sess, msgs,
                              f"Vehicle.shot(shell={shell_cd}, reload={reload_time:.2f})",
-                             reliable=False)
+                             reliable=True)
 
         def _reload_done():
             if time.time() + 0.05 < float(sess.get('battle_reload_until', 0.0)):
@@ -2157,15 +2203,54 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             send_avatar_messages(sock, addr, sess,
                                  build_avatar_update_vehicle_reload(0.0),
                                  "Vehicle.reload.done",
-                                 reliable=False)
+                                 reliable=True)
 
         timer = threading.Timer(max(0.05, reload_time), _reload_done)
         timer.daemon = True
         timer.start()
         return True
 
-    if msg_id in (AVATAR_BASE_METHOD_TELEPORT,
-                  AVATAR_BASE_METHOD_USE_HORN):
+    if msg_id in AVATAR_BASE_METHOD_CHANGE_SETTING_IDS or msg_id == 0xc4:
+        parsed = parse_vehicle_change_setting(payload)
+        if parsed is None:
+            return True
+        code, value = parsed
+        stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(
+            sess.get('battle_vehicle') or {})
+        if int(stock.get(int(value), 0)) > 0:
+            if code == 0:
+                sess['battle_current_shell'] = value
+            elif code == 1:
+                sess['battle_next_shell'] = value
+            send_avatar_messages(sock, addr, sess,
+                                 build_avatar_update_vehicle_setting(code, value),
+                                 f"Vehicle.setting(code={code}, value={value})",
+                                 reliable=False)
+        return True
+
+    if msg_id in AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS:
+        msgs, reload_time, shell_cd, fired = build_vehicle_shot_messages(sess)
+        if not fired:
+            return True
+        send_avatar_messages(sock, addr, sess, msgs,
+                             f"Vehicle.shot(shell={shell_cd}, reload={reload_time:.2f})",
+                             reliable=True)
+
+        def _reload_done():
+            if time.time() + 0.05 < float(sess.get('battle_reload_until', 0.0)):
+                return
+            send_avatar_messages(sock, addr, sess,
+                                 build_avatar_update_vehicle_reload(0.0),
+                                 "Vehicle.reload.done",
+                                 reliable=True)
+
+        timer = threading.Timer(max(0.05, reload_time), _reload_done)
+        timer.daemon = True
+        timer.start()
+        return True
+
+    if msg_id in (AVATAR_BASE_METHOD_TELEPORT_IDS |
+                  AVATAR_BASE_METHOD_USE_HORN_IDS):
         print(f"    [avatar] method=0x{msg_id:02x} req={req_id} "
               f"payload={payload.hex()}")
         return True

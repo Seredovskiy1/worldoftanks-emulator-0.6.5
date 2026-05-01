@@ -307,12 +307,27 @@ def make_default_ammo(shots, max_ammo):
     return ammo
 
 
-def get_gun_max_ammo(veh_node, turret_name, gun_name):
+def get_gun_max_ammo(veh_node, turret_name, gun_name, gun_node=None):
     turrets0 = find(veh_node, 'turrets0')
     turret = find(turrets0, turret_name) if turrets0 is not None else None
     guns = find(turret, 'guns') if turret is not None else None
     gun = find(guns, gun_name) if guns is not None else None
-    return get_int(find(gun, 'maxAmmo'), 0) if gun is not None else 0
+    value = get_int(find(gun, 'maxAmmo'), 0) if gun is not None else 0
+    if value <= 0 and gun_node is not None:
+        value = get_int(find(gun_node, 'maxAmmo'), 0)
+    return value
+
+
+def get_vehicle_max_health(veh_node, turret_node, turret_name):
+    value = get_int(find_path(veh_node, 'hull/maxHealth'), 0)
+    turrets0 = find(veh_node, 'turrets0')
+    turret = find(turrets0, turret_name) if turrets0 is not None else None
+    turret_value = get_int(find(turret, 'maxHealth'), 0) if turret is not None else 0
+    if turret_value <= 0:
+        turret_value = get_int(find(turret_node, 'maxHealth'), 0)
+    if value <= 0:
+        value = get_int(find(veh_node, 'maxHealth'), 1)
+    return value + turret_value
 
 
 result = {'vehicles': []}
@@ -361,9 +376,8 @@ for nation in NATIONS:
         gun_node = get_shared_component_node(os.path.join(comp_dir, 'guns.xml'), gn_name)
         gun_shots = parse_gun_shots(os.path.join(comp_dir, 'guns.xml'),
                                     gn_name, nid, shells_map) if gn_name else []
-        max_ammo = get_gun_max_ammo(veh, tr_name, gn_name) if tr_name and gn_name else 0
-        max_health = get_int(find(veh, 'maxHealth'), get_int(find_path(veh, 'hull/maxHealth'), 1))
-        max_health += get_int(find(turret_node, 'maxHealth'), 0)
+        max_ammo = get_gun_max_ammo(veh, tr_name, gn_name, gun_node) if tr_name and gn_name else 0
+        max_health = get_vehicle_max_health(veh, turret_node, tr_name)
         speed_limits = get_vehicle_speed_limits(veh)
         chassis_rotation_speed = math.radians(get_float(find(chassis_node, 'rotationSpeed'), 30.0))
         turret_rotation_speed = math.radians(get_float(find(turret_node, 'rotationSpeed'), 30.0))

@@ -1367,7 +1367,7 @@
       "crewSize": 4,
       "turretCompactDescr": 8707,
       "gunCompactDescr": 3588,
-      "maxHealth": 1000,
+      "maxHealth": 1650,
       "speedLimits": [
         10.555555555555555,
         4.166666666666667
