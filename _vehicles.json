@@ -9,7 +9,7 @@
       "crewSize": 4,
       "turretCompactDescr": 3,
       "gunCompactDescr": 4,
-      "maxHealth": 300,
+      "maxHealth": 400,
       "speedLimits": [
         15.555555555555555,
         5.555555555555555
@@ -36,6 +36,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 612.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -48,6 +53,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 490.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -60,6 +70,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 612.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -75,7 +90,7 @@
       "crewSize": 4,
       "turretCompactDescr": 515,
       "gunCompactDescr": 13572,
-      "maxHealth": 340,
+      "maxHealth": 350,
       "speedLimits": [
         15.277777777777777,
         3.888888888888889
@@ -102,6 +117,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 816.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -114,6 +134,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1020.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -126,6 +151,11 @@
             0,
             0
           ],
+          "damage": [
+            165.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 816.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -141,7 +171,7 @@
       "crewSize": 4,
       "turretCompactDescr": 771,
       "gunCompactDescr": 2820,
-      "maxHealth": 900,
+      "maxHealth": 1130,
       "speedLimits": [
         9.444444444444445,
         3.888888888888889
@@ -168,6 +198,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -180,6 +215,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            120.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -192,6 +232,11 @@
             0,
             0
           ],
+          "damage": [
+            280.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -207,7 +252,7 @@
       "crewSize": 3,
       "turretCompactDescr": 1283,
       "gunCompactDescr": 4868,
-      "maxHealth": 130,
+      "maxHealth": 180,
       "speedLimits": [
         18.333333333333332,
         5.555555555555555
@@ -234,6 +279,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -246,6 +296,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 946.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -258,6 +313,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -273,7 +333,7 @@
       "crewSize": 3,
       "turretCompactDescr": 2307,
       "gunCompactDescr": 5892,
-      "maxHealth": 110,
+      "maxHealth": 140,
       "speedLimits": [
         15.277777777777777,
         5.555555555555555
@@ -300,6 +360,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 442.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -312,6 +377,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 354.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -324,6 +394,11 @@
             0,
             0
           ],
+          "damage": [
+            36.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 442.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -339,7 +414,7 @@
       "crewSize": 5,
       "turretCompactDescr": 3075,
       "gunCompactDescr": 6916,
-      "maxHealth": 370,
+      "maxHealth": 560,
       "speedLimits": [
         9.444444444444445,
         2.7777777777777777
@@ -366,6 +441,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -378,6 +458,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -390,6 +475,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -405,7 +495,7 @@
       "crewSize": 6,
       "turretCompactDescr": 1795,
       "gunCompactDescr": 5380,
-      "maxHealth": 240,
+      "maxHealth": 320,
       "speedLimits": [
         12.5,
         5.555555555555555
@@ -432,6 +522,11 @@
             0,
             0
           ],
+          "damage": [
+            105.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 381.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -444,6 +539,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 305.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -456,6 +556,11 @@
             0,
             0
           ],
+          "damage": [
+            164.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 381.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -471,7 +576,7 @@
       "crewSize": 6,
       "turretCompactDescr": 2819,
       "gunCompactDescr": 6404,
-      "maxHealth": 370,
+      "maxHealth": 380,
       "speedLimits": [
         8.88888888888889,
         3.333333333333333
@@ -498,6 +603,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -510,6 +620,11 @@
             0,
             0
           ],
+          "damage": [
+            750.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -522,6 +637,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -537,7 +657,7 @@
       "crewSize": 4,
       "turretCompactDescr": 3587,
       "gunCompactDescr": 4868,
-      "maxHealth": 220,
+      "maxHealth": 290,
       "speedLimits": [
         20.0,
         5.555555555555555
@@ -564,6 +684,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -576,6 +701,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 946.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -588,6 +718,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -603,7 +738,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4099,
       "gunCompactDescr": 8196,
-      "maxHealth": 860,
+      "maxHealth": 870,
       "speedLimits": [
         11.944444444444445,
         3.0555555555555554
@@ -630,6 +765,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 600.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -642,6 +782,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -654,6 +799,11 @@
             0,
             0
           ],
+          "damage": [
+            910.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 600.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -669,7 +819,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4355,
       "gunCompactDescr": 1540,
-      "maxHealth": 460,
+      "maxHealth": 640,
       "speedLimits": [
         15.0,
         5.555555555555555
@@ -696,6 +846,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 816.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -708,6 +863,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1020.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -720,6 +880,11 @@
             0,
             0
           ],
+          "damage": [
+            165.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 816.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -735,7 +900,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4867,
       "gunCompactDescr": 6916,
-      "maxHealth": 550,
+      "maxHealth": 760,
       "speedLimits": [
         11.944444444444445,
         3.0555555555555554
@@ -762,6 +927,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -774,6 +944,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -786,6 +961,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -801,7 +981,7 @@
       "crewSize": 3,
       "turretCompactDescr": 5379,
       "gunCompactDescr": 4868,
-      "maxHealth": 180,
+      "maxHealth": 220,
       "speedLimits": [
         16.11111111111111,
         5.555555555555555
@@ -828,6 +1008,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -840,6 +1025,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 946.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -852,6 +1042,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -867,7 +1062,7 @@
       "crewSize": 2,
       "turretCompactDescr": 5891,
       "gunCompactDescr": 5892,
-      "maxHealth": 60,
+      "maxHealth": 90,
       "speedLimits": [
         8.88888888888889,
         1.9444444444444444
@@ -894,6 +1089,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 442.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -906,6 +1106,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 354.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -918,6 +1123,11 @@
             0,
             0
           ],
+          "damage": [
+            36.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 442.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -933,7 +1143,7 @@
       "crewSize": 4,
       "turretCompactDescr": 6403,
       "gunCompactDescr": 1796,
-      "maxHealth": 590,
+      "maxHealth": 600,
       "speedLimits": [
         13.88888888888889,
         3.888888888888889
@@ -960,6 +1170,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -972,6 +1187,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            120.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -984,6 +1204,11 @@
             0,
             0
           ],
+          "damage": [
+            280.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -999,7 +1224,7 @@
       "crewSize": 2,
       "turretCompactDescr": 6659,
       "gunCompactDescr": 10244,
-      "maxHealth": 130,
+      "maxHealth": 140,
       "speedLimits": [
         5.555555555555555,
         1.3888888888888888
@@ -1008,10 +1233,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.6981317007977318,
       "reloadTime": 6.1,
-      "maxAmmo": 0,
+      "maxAmmo": 20,
       "defaultAmmo": [
         8970,
-        0,
+        20,
         7434,
         0
       ],
@@ -1024,6 +1249,11 @@
             0,
             0
           ],
+          "damage": [
+            164.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 290.0,
           "effectsIndex": 0
@@ -1036,6 +1266,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 290.0,
           "effectsIndex": 0
@@ -1051,7 +1286,7 @@
       "crewSize": 6,
       "turretCompactDescr": 6915,
       "gunCompactDescr": 6404,
-      "maxHealth": 450,
+      "maxHealth": 460,
       "speedLimits": [
         8.61111111111111,
         2.2222222222222223
@@ -1078,6 +1313,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -1090,6 +1330,11 @@
             0,
             0
           ],
+          "damage": [
+            750.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -1102,6 +1347,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -1117,7 +1367,7 @@
       "crewSize": 4,
       "turretCompactDescr": 7171,
       "gunCompactDescr": 8964,
-      "maxHealth": 870,
+      "maxHealth": 1190,
       "speedLimits": [
         14.166666666666666,
         5.555555555555555
@@ -1144,6 +1394,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1156,6 +1411,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            120.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1168,6 +1428,11 @@
             0,
             0
           ],
+          "damage": [
+            280.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1183,7 +1448,7 @@
       "crewSize": 3,
       "turretCompactDescr": 7683,
       "gunCompactDescr": 4100,
-      "maxHealth": 110,
+      "maxHealth": 150,
       "speedLimits": [
         10.0,
         4.166666666666667
@@ -1210,6 +1475,11 @@
             0,
             0
           ],
+          "damage": [
+            36.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 670.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1222,6 +1492,11 @@
             0,
             0
           ],
+          "damage": [
+            36.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 838.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1234,6 +1509,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 670.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1249,7 +1529,7 @@
       "crewSize": 5,
       "turretCompactDescr": 8195,
       "gunCompactDescr": 10756,
-      "maxHealth": 220,
+      "maxHealth": 230,
       "speedLimits": [
         8.333333333333334,
         1.9444444444444444
@@ -1274,6 +1554,11 @@
             0,
             0
           ],
+          "damage": [
+            164.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 308.0,
           "effectsIndex": 0
@@ -1286,6 +1571,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 308.0,
           "effectsIndex": 0
@@ -1301,7 +1591,7 @@
       "crewSize": 3,
       "turretCompactDescr": 8451,
       "gunCompactDescr": 12036,
-      "maxHealth": 120,
+      "maxHealth": 130,
       "speedLimits": [
         8.333333333333334,
         1.9444444444444444
@@ -1328,6 +1618,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1340,6 +1635,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 956.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1352,6 +1652,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1367,7 +1672,7 @@
       "crewSize": 4,
       "turretCompactDescr": 8707,
       "gunCompactDescr": 3588,
-      "maxHealth": 1650,
+      "maxHealth": 1450,
       "speedLimits": [
         10.555555555555555,
         4.166666666666667
@@ -1394,6 +1699,11 @@
             0,
             0
           ],
+          "damage": [
+            390.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1406,6 +1716,11 @@
             0,
             0
           ],
+          "damage": [
+            390.0,
+            160.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1418,6 +1733,11 @@
             0,
             0
           ],
+          "damage": [
+            465.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1433,7 +1753,7 @@
       "crewSize": 6,
       "turretCompactDescr": 9219,
       "gunCompactDescr": 14084,
-      "maxHealth": 300,
+      "maxHealth": 310,
       "speedLimits": [
         9.166666666666666,
         2.7777777777777777
@@ -1442,10 +1762,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.5235987755982988,
       "reloadTime": 10.9,
-      "maxAmmo": 0,
+      "maxAmmo": 26,
       "defaultAmmo": [
         13578,
-        0,
+        26,
         13322,
         0
       ],
@@ -1458,6 +1778,11 @@
             0,
             0
           ],
+          "damage": [
+            465.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 180.0,
           "effectsIndex": 0
@@ -1470,6 +1795,11 @@
             0,
             0
           ],
+          "damage": [
+            390.0,
+            160.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 180.0,
           "effectsIndex": 0
@@ -1485,7 +1815,7 @@
       "crewSize": 6,
       "turretCompactDescr": 9475,
       "gunCompactDescr": 14596,
-      "maxHealth": 600,
+      "maxHealth": 840,
       "speedLimits": [
         8.88888888888889,
         2.7777777777777777
@@ -1512,6 +1842,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1524,6 +1859,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            120.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1536,6 +1876,11 @@
             0,
             0
           ],
+          "damage": [
+            280.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1551,7 +1896,7 @@
       "crewSize": 4,
       "turretCompactDescr": 9987,
       "gunCompactDescr": 3844,
-      "maxHealth": 1090,
+      "maxHealth": 1590,
       "speedLimits": [
         9.722222222222221,
         3.888888888888889
@@ -1578,6 +1923,11 @@
             0,
             0
           ],
+          "damage": [
+            390.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1590,6 +1940,11 @@
             0,
             0
           ],
+          "damage": [
+            390.0,
+            160.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1602,6 +1957,11 @@
             0,
             0
           ],
+          "damage": [
+            465.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1617,7 +1977,7 @@
       "crewSize": 4,
       "turretCompactDescr": 10499,
       "gunCompactDescr": 13316,
-      "maxHealth": 140,
+      "maxHealth": 150,
       "speedLimits": [
         13.333333333333332,
         3.888888888888889
@@ -1644,6 +2004,11 @@
             0,
             0
           ],
+          "damage": [
+            75.0,
+            90.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1656,6 +2021,11 @@
             0,
             0
           ],
+          "damage": [
+            75.0,
+            91.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1063.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1668,6 +2038,11 @@
             0,
             0
           ],
+          "damage": [
+            95.0,
+            91.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1683,7 +2058,7 @@
       "crewSize": 4,
       "turretCompactDescr": 10755,
       "gunCompactDescr": 8964,
-      "maxHealth": 750,
+      "maxHealth": 1000,
       "speedLimits": [
         14.166666666666666,
         5.555555555555555
@@ -1710,6 +2085,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1722,6 +2102,11 @@
             0,
             0
           ],
+          "damage": [
+            160.0,
+            120.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1734,6 +2119,11 @@
             0,
             0
           ],
+          "damage": [
+            280.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1749,7 +2139,7 @@
       "crewSize": 4,
       "turretCompactDescr": 11779,
       "gunCompactDescr": 15620,
-      "maxHealth": 250,
+      "maxHealth": 260,
       "speedLimits": [
         11.944444444444445,
         3.888888888888889
@@ -1776,6 +2166,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 662.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1788,6 +2183,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 828.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1800,6 +2200,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 662.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1815,7 +2220,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12035,
       "gunCompactDescr": 14852,
-      "maxHealth": 1200,
+      "maxHealth": 2200,
       "speedLimits": [
         13.88888888888889,
         4.166666666666667
@@ -1842,6 +2247,11 @@
             0,
             0
           ],
+          "damage": [
+            490.0,
+            175.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 900.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1854,6 +2264,11 @@
             0,
             0
           ],
+          "damage": [
+            490.0,
+            185.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1125.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1866,6 +2281,11 @@
             0,
             0
           ],
+          "damage": [
+            640.0,
+            175.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 900.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1881,7 +2301,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12547,
       "gunCompactDescr": 8452,
-      "maxHealth": 1000,
+      "maxHealth": 1010,
       "speedLimits": [
         11.944444444444445,
         3.333333333333333
@@ -1908,6 +2328,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 655.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1920,6 +2345,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 819.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1932,6 +2362,11 @@
             0,
             0
           ],
+          "damage": [
+            910.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 655.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -1947,7 +2382,7 @@
       "crewSize": 5,
       "turretCompactDescr": 13571,
       "gunCompactDescr": 10244,
-      "maxHealth": 140,
+      "maxHealth": 150,
       "speedLimits": [
         8.333333333333334,
         1.9444444444444444
@@ -1972,6 +2407,11 @@
             0,
             0
           ],
+          "damage": [
+            164.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 290.0,
           "effectsIndex": 0
@@ -1984,6 +2424,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 290.0,
           "effectsIndex": 0
@@ -1999,7 +2444,7 @@
       "crewSize": 4,
       "turretCompactDescr": 14339,
       "gunCompactDescr": 19460,
-      "maxHealth": 1150,
+      "maxHealth": 1570,
       "speedLimits": [
         15.555555555555555,
         5.555555555555555
@@ -2026,6 +2471,11 @@
             0,
             0
           ],
+          "damage": [
+            230.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 895.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2038,6 +2488,11 @@
             0,
             0
           ],
+          "damage": [
+            230.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1119.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2050,6 +2505,11 @@
             0,
             0
           ],
+          "damage": [
+            330.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 895.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2065,7 +2525,7 @@
       "crewSize": 5,
       "turretCompactDescr": 14851,
       "gunCompactDescr": 20484,
-      "maxHealth": 1500,
+      "maxHealth": 1600,
       "speedLimits": [
         10.277777777777777,
         3.611111111111111
@@ -2092,6 +2552,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 655.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2104,6 +2569,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 819.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2116,6 +2586,11 @@
             0,
             0
           ],
+          "damage": [
+            910.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 655.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2131,7 +2606,7 @@
       "crewSize": 6,
       "turretCompactDescr": 15107,
       "gunCompactDescr": 6404,
-      "maxHealth": 550,
+      "maxHealth": 560,
       "speedLimits": [
         8.88888888888889,
         2.7777777777777777
@@ -2158,6 +2633,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -2170,6 +2650,11 @@
             0,
             0
           ],
+          "damage": [
+            750.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -2182,6 +2667,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -2197,7 +2687,7 @@
       "crewSize": 5,
       "turretCompactDescr": 15363,
       "gunCompactDescr": 20740,
-      "maxHealth": 640,
+      "maxHealth": 650,
       "speedLimits": [
         13.88888888888889,
         3.611111111111111
@@ -2224,6 +2714,11 @@
             0,
             0
           ],
+          "damage": [
+            1700.0,
+            250.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 640.0,
           "gravity": 280.0,
           "effectsIndex": 0
@@ -2236,6 +2731,11 @@
             0,
             0
           ],
+          "damage": [
+            1100.0,
+            250.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 512.0,
           "gravity": 179.0,
           "effectsIndex": 0
@@ -2248,6 +2748,11 @@
             0,
             0
           ],
+          "damage": [
+            1700.0,
+            250.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 640.0,
           "gravity": 280.0,
           "effectsIndex": 0
@@ -2263,7 +2768,7 @@
       "crewSize": 4,
       "turretCompactDescr": 15619,
       "gunCompactDescr": 6916,
-      "maxHealth": 700,
+      "maxHealth": 1050,
       "speedLimits": [
         16.666666666666668,
         6.111111111111111
@@ -2290,6 +2795,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2302,6 +2812,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2314,6 +2829,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2329,7 +2849,7 @@
       "crewSize": 5,
       "turretCompactDescr": 11267,
       "gunCompactDescr": 18948,
-      "maxHealth": 500,
+      "maxHealth": 690,
       "speedLimits": [
         9.166666666666666,
         2.7777777777777777
@@ -2356,6 +2876,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2368,6 +2893,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2380,6 +2910,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2395,7 +2930,7 @@
       "crewSize": 4,
       "turretCompactDescr": 11523,
       "gunCompactDescr": 16644,
-      "maxHealth": 400,
+      "maxHealth": 610,
       "speedLimits": [
         6.944444444444445,
         2.7777777777777777
@@ -2404,14 +2939,14 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.7853981633974483,
       "reloadTime": 3.25,
-      "maxAmmo": 0,
+      "maxAmmo": 60,
       "defaultAmmo": [
         7178,
-        0,
+        48,
         8202,
         0,
         7690,
-        0
+        12
       ],
       "shells": [
         {
@@ -2422,6 +2957,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2434,6 +2974,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 850.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2446,6 +2991,11 @@
             8,
             0
           ],
+          "damage": [
+            156.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 680.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2461,7 +3011,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12291,
       "gunCompactDescr": 17668,
-      "maxHealth": 500,
+      "maxHealth": 700,
       "speedLimits": [
         7.777777777777778,
         3.888888888888889
@@ -2470,10 +3020,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8726646259971648,
       "reloadTime": 2.0,
-      "maxAmmo": 0,
+      "maxAmmo": 140,
       "defaultAmmo": [
         6410,
-        0,
+        140,
         6666,
         0
       ],
@@ -2486,6 +3036,11 @@
             0,
             0
           ],
+          "damage": [
+            75.0,
+            90.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 892.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2498,6 +3053,11 @@
             0,
             0
           ],
+          "damage": [
+            75.0,
+            91.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1115.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2513,7 +3073,7 @@
       "crewSize": 4,
       "turretCompactDescr": 13059,
       "gunCompactDescr": 18436,
-      "maxHealth": 140,
+      "maxHealth": 240,
       "speedLimits": [
         17.22222222222222,
         5.555555555555555
@@ -2540,6 +3100,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2552,6 +3117,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 956.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2564,6 +3134,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2579,7 +3154,7 @@
       "crewSize": 3,
       "turretCompactDescr": 13315,
       "gunCompactDescr": 18436,
-      "maxHealth": 200,
+      "maxHealth": 380,
       "speedLimits": [
         8.88888888888889,
         3.333333333333333
@@ -2606,6 +3181,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2618,6 +3198,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 956.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2630,6 +3215,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2645,7 +3235,7 @@
       "crewSize": 4,
       "turretCompactDescr": 13827,
       "gunCompactDescr": 18692,
-      "maxHealth": 130,
+      "maxHealth": 200,
       "speedLimits": [
         16.944444444444443,
         5.555555555555555
@@ -2672,6 +3262,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 765.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2684,6 +3279,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 956.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2696,6 +3296,11 @@
             0,
             0
           ],
+          "damage": [
+            50.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 765.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2711,7 +3316,7 @@
       "crewSize": 4,
       "turretCompactDescr": 14083,
       "gunCompactDescr": 19204,
-      "maxHealth": 300,
+      "maxHealth": 360,
       "speedLimits": [
         19.444444444444443,
         5.555555555555555
@@ -2738,6 +3343,11 @@
             0,
             0
           ],
+          "damage": [
+            105.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 558.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2750,6 +3360,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 446.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2762,6 +3377,11 @@
             0,
             0
           ],
+          "damage": [
+            164.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 558.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2777,7 +3397,7 @@
       "crewSize": 6,
       "turretCompactDescr": 16131,
       "gunCompactDescr": 20996,
-      "maxHealth": 1000,
+      "maxHealth": 1680,
       "speedLimits": [
         11.11111111111111,
         3.0555555555555554
@@ -2804,6 +3424,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 830.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2816,6 +3441,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1038.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2828,6 +3458,11 @@
             0,
             0
           ],
+          "damage": [
+            360.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 830.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2843,7 +3478,7 @@
       "crewSize": 4,
       "turretCompactDescr": 16387,
       "gunCompactDescr": 18436,
-      "maxHealth": 180,
+      "maxHealth": 250,
       "speedLimits": [
         10.555555555555555,
         4.166666666666667
@@ -2870,6 +3505,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2882,6 +3522,11 @@
             0,
             0
           ],
+          "damage": [
+            47.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 956.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2894,6 +3539,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            71.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 757.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2909,7 +3559,7 @@
       "crewSize": 5,
       "turretCompactDescr": 19,
       "gunCompactDescr": 20,
-      "maxHealth": 260,
+      "maxHealth": 390,
       "speedLimits": [
         13.333333333333332,
         5.0
@@ -2918,14 +3568,14 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8203047484373349,
       "reloadTime": 3.75,
-      "maxAmmo": 0,
+      "maxAmmo": 80,
       "defaultAmmo": [
         4634,
-        0,
+        64,
         4890,
         0,
         5914,
-        0
+        16
       ],
       "shells": [
         {
@@ -2936,6 +3586,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 385.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2948,6 +3603,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 308.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2960,6 +3620,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 385.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -2975,7 +3640,7 @@
       "crewSize": 6,
       "turretCompactDescr": 531,
       "gunCompactDescr": 1556,
-      "maxHealth": 310,
+      "maxHealth": 320,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -2984,10 +3649,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.5235987755982988,
       "reloadTime": 15.0,
-      "maxAmmo": 0,
+      "maxAmmo": 22,
       "defaultAmmo": [
         12058,
-        0,
+        22,
         12314,
         0
       ],
@@ -3000,6 +3665,11 @@
             0,
             0
           ],
+          "damage": [
+            680.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 160.0,
           "effectsIndex": 0
@@ -3012,6 +3682,11 @@
             0,
             0
           ],
+          "damage": [
+            680.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 160.0,
           "effectsIndex": 0
@@ -3027,7 +3702,7 @@
       "crewSize": 5,
       "turretCompactDescr": 787,
       "gunCompactDescr": 1044,
-      "maxHealth": 950,
+      "maxHealth": 1350,
       "speedLimits": [
         8.333333333333334,
         2.5
@@ -3054,6 +3729,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3066,6 +3746,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1156.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3078,6 +3763,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3093,7 +3783,7 @@
       "crewSize": 3,
       "turretCompactDescr": 1299,
       "gunCompactDescr": 2836,
-      "maxHealth": 110,
+      "maxHealth": 150,
       "speedLimits": [
         9.722222222222221,
         4.166666666666667
@@ -3102,10 +3792,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8726646259971648,
       "reloadTime": 2.0,
-      "maxAmmo": 0,
+      "maxAmmo": 42,
       "defaultAmmo": [
         1562,
-        0,
+        42,
         1818,
         0,
         2074,
@@ -3120,6 +3810,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 675.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3132,6 +3827,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 844.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3144,6 +3844,11 @@
             0,
             0
           ],
+          "damage": [
+            45.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 675.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3159,7 +3864,7 @@
       "crewSize": 4,
       "turretCompactDescr": 1811,
       "gunCompactDescr": 4372,
-      "maxHealth": 340,
+      "maxHealth": 350,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -3186,6 +3891,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3198,6 +3908,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3210,6 +3925,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3225,7 +3945,7 @@
       "crewSize": 5,
       "turretCompactDescr": 2067,
       "gunCompactDescr": 1044,
-      "maxHealth": 850,
+      "maxHealth": 1350,
       "speedLimits": [
         13.333333333333332,
         5.0
@@ -3252,6 +3972,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3264,6 +3989,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1156.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3276,6 +4006,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3291,7 +4026,7 @@
       "crewSize": 4,
       "turretCompactDescr": 2835,
       "gunCompactDescr": 4628,
-      "maxHealth": 590,
+      "maxHealth": 600,
       "speedLimits": [
         10.555555555555555,
         2.7777777777777777
@@ -3318,6 +4053,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3330,6 +4070,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 988.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3342,6 +4087,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3357,7 +4107,7 @@
       "crewSize": 4,
       "turretCompactDescr": 2579,
       "gunCompactDescr": 4372,
-      "maxHealth": 260,
+      "maxHealth": 270,
       "speedLimits": [
         11.666666666666666,
         3.0555555555555554
@@ -3384,6 +4134,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3396,6 +4151,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3408,6 +4168,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3423,7 +4188,7 @@
       "crewSize": 3,
       "turretCompactDescr": 3091,
       "gunCompactDescr": 2580,
-      "maxHealth": 95,
+      "maxHealth": 135,
       "speedLimits": [
         11.11111111111111,
         4.166666666666667
@@ -3448,6 +4213,11 @@
             0,
             0
           ],
+          "damage": [
+            11.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3460,6 +4230,11 @@
             0,
             0
           ],
+          "damage": [
+            11.0,
+            22.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3475,7 +4250,7 @@
       "crewSize": 5,
       "turretCompactDescr": 3603,
       "gunCompactDescr": 788,
-      "maxHealth": 550,
+      "maxHealth": 760,
       "speedLimits": [
         11.11111111111111,
         4.444444444444445
@@ -3484,14 +4259,14 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.6981317007977318,
       "reloadTime": 3.75,
-      "maxAmmo": 0,
+      "maxAmmo": 87,
       "defaultAmmo": [
         5402,
-        0,
+        70,
         5658,
         0,
         5914,
-        0
+        17
       ],
       "shells": [
         {
@@ -3502,6 +4277,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3514,6 +4294,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 988.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3526,6 +4311,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3541,7 +4331,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4115,
       "gunCompactDescr": 532,
-      "maxHealth": 470,
+      "maxHealth": 670,
       "speedLimits": [
         15.277777777777777,
         5.555555555555555
@@ -3568,6 +4358,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3580,6 +4375,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3592,6 +4392,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3607,7 +4412,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4627,
       "gunCompactDescr": 6164,
-      "maxHealth": 130,
+      "maxHealth": 140,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -3634,6 +4439,11 @@
             0,
             0
           ],
+          "damage": [
+            200.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -3646,6 +4456,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -3658,6 +4473,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -3673,7 +4493,7 @@
       "crewSize": 3,
       "turretCompactDescr": 4883,
       "gunCompactDescr": 5652,
-      "maxHealth": 80,
+      "maxHealth": 110,
       "speedLimits": [
         10.0,
         2.2222222222222223
@@ -3700,6 +4520,11 @@
             0,
             0
           ],
+          "damage": [
+            32.0,
+            52.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3712,6 +4537,11 @@
             0,
             0
           ],
+          "damage": [
+            38.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3724,6 +4554,11 @@
             0,
             0
           ],
+          "damage": [
+            42.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3739,7 +4574,7 @@
       "crewSize": 4,
       "turretCompactDescr": 5395,
       "gunCompactDescr": 3092,
-      "maxHealth": 140,
+      "maxHealth": 200,
       "speedLimits": [
         11.666666666666666,
         5.0
@@ -3766,6 +4601,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3778,6 +4618,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3790,6 +4635,11 @@
             0,
             0
           ],
+          "damage": [
+            45.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3805,7 +4655,7 @@
       "crewSize": 3,
       "turretCompactDescr": 5907,
       "gunCompactDescr": 6676,
-      "maxHealth": 110,
+      "maxHealth": 120,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -3832,6 +4682,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3844,6 +4699,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3856,6 +4716,11 @@
             0,
             0
           ],
+          "damage": [
+            45.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3871,7 +4736,7 @@
       "crewSize": 5,
       "turretCompactDescr": 6163,
       "gunCompactDescr": 4884,
-      "maxHealth": 840,
+      "maxHealth": 850,
       "speedLimits": [
         12.777777777777777,
         3.333333333333333
@@ -3898,6 +4763,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3910,6 +4780,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1156.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3922,6 +4797,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3937,7 +4817,7 @@
       "crewSize": 5,
       "turretCompactDescr": 6419,
       "gunCompactDescr": 788,
-      "maxHealth": 750,
+      "maxHealth": 1180,
       "speedLimits": [
         15.555555555555555,
         5.555555555555555
@@ -3964,6 +4844,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3976,6 +4861,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 988.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -3988,6 +4878,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4003,7 +4898,7 @@
       "crewSize": 5,
       "turretCompactDescr": 6931,
       "gunCompactDescr": 5652,
-      "maxHealth": 210,
+      "maxHealth": 310,
       "speedLimits": [
         17.77777777777778,
         5.555555555555555
@@ -4030,6 +4925,11 @@
             0,
             0
           ],
+          "damage": [
+            32.0,
+            52.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4042,6 +4942,11 @@
             0,
             0
           ],
+          "damage": [
+            38.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4054,6 +4959,11 @@
             0,
             0
           ],
+          "damage": [
+            42.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4069,7 +4979,7 @@
       "crewSize": 5,
       "turretCompactDescr": 7443,
       "gunCompactDescr": 6164,
-      "maxHealth": 150,
+      "maxHealth": 160,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -4096,6 +5006,11 @@
             0,
             0
           ],
+          "damage": [
+            200.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -4108,6 +5023,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -4120,6 +5040,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -4135,7 +5060,7 @@
       "crewSize": 5,
       "turretCompactDescr": 7699,
       "gunCompactDescr": 5652,
-      "maxHealth": 140,
+      "maxHealth": 180,
       "speedLimits": [
         18.88888888888889,
         5.555555555555555
@@ -4162,6 +5087,11 @@
             0,
             0
           ],
+          "damage": [
+            32.0,
+            52.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4174,6 +5104,11 @@
             0,
             0
           ],
+          "damage": [
+            38.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4186,6 +5121,11 @@
             0,
             0
           ],
+          "damage": [
+            42.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4201,7 +5141,7 @@
       "crewSize": 5,
       "turretCompactDescr": 8211,
       "gunCompactDescr": 2324,
-      "maxHealth": 900,
+      "maxHealth": 1400,
       "speedLimits": [
         7.777777777777778,
         3.333333333333333
@@ -4228,6 +5168,11 @@
             0,
             0
           ],
+          "damage": [
+            220.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1000.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4240,6 +5185,11 @@
             0,
             0
           ],
+          "damage": [
+            220.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1250.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4252,6 +5202,11 @@
             0,
             0
           ],
+          "damage": [
+            270.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1000.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4267,7 +5222,7 @@
       "crewSize": 4,
       "turretCompactDescr": 8723,
       "gunCompactDescr": 5652,
-      "maxHealth": 240,
+      "maxHealth": 390,
       "speedLimits": [
         18.88888888888889,
         5.555555555555555
@@ -4294,6 +5249,11 @@
             0,
             0
           ],
+          "damage": [
+            32.0,
+            52.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4306,6 +5266,11 @@
             0,
             0
           ],
+          "damage": [
+            38.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4318,6 +5283,11 @@
             0,
             0
           ],
+          "damage": [
+            42.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4333,7 +5303,7 @@
       "crewSize": 4,
       "turretCompactDescr": 8979,
       "gunCompactDescr": 6164,
-      "maxHealth": 230,
+      "maxHealth": 240,
       "speedLimits": [
         9.722222222222221,
         2.2222222222222223
@@ -4360,6 +5330,11 @@
             0,
             0
           ],
+          "damage": [
+            200.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -4372,6 +5347,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -4384,6 +5364,11 @@
             0,
             0
           ],
+          "damage": [
+            300.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 320.0,
           "effectsIndex": 0
@@ -4399,7 +5384,7 @@
       "crewSize": 5,
       "turretCompactDescr": 9491,
       "gunCompactDescr": 8468,
-      "maxHealth": 150,
+      "maxHealth": 160,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -4424,6 +5409,11 @@
             0,
             0
           ],
+          "damage": [
+            410.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 480.0,
           "gravity": 230.0,
           "effectsIndex": 0
@@ -4436,6 +5426,11 @@
             0,
             0
           ],
+          "damage": [
+            350.0,
+            180.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 450.0,
           "gravity": 200.0,
           "effectsIndex": 0
@@ -4451,7 +5446,7 @@
       "crewSize": 4,
       "turretCompactDescr": 9747,
       "gunCompactDescr": 5396,
-      "maxHealth": 120,
+      "maxHealth": 180,
       "speedLimits": [
         16.666666666666668,
         5.555555555555555
@@ -4476,6 +5471,11 @@
             0,
             0
           ],
+          "damage": [
+            11.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4488,6 +5488,11 @@
             0,
             0
           ],
+          "damage": [
+            11.0,
+            22.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4503,7 +5508,7 @@
       "crewSize": 5,
       "turretCompactDescr": 10771,
       "gunCompactDescr": 532,
-      "maxHealth": 280,
+      "maxHealth": 380,
       "speedLimits": [
         15.277777777777777,
         5.0
@@ -4512,14 +5517,14 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8028514559173916,
       "reloadTime": 3.75,
-      "maxAmmo": 0,
+      "maxAmmo": 87,
       "defaultAmmo": [
         5402,
-        0,
+        70,
         5658,
         0,
         5914,
-        0
+        17
       ],
       "shells": [
         {
@@ -4530,6 +5535,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4542,6 +5552,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4554,6 +5569,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 740.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4569,7 +5589,7 @@
       "crewSize": 3,
       "turretCompactDescr": 11283,
       "gunCompactDescr": 6932,
-      "maxHealth": 160,
+      "maxHealth": 170,
       "speedLimits": [
         11.11111111111111,
         3.0555555555555554
@@ -4596,6 +5616,11 @@
             0,
             0
           ],
+          "damage": [
+            70.0,
+            79.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 835.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4608,6 +5633,11 @@
             0,
             0
           ],
+          "damage": [
+            70.0,
+            80.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1044.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4620,6 +5650,11 @@
             0,
             0
           ],
+          "damage": [
+            90.0,
+            79.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 835.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4635,7 +5670,7 @@
       "crewSize": 6,
       "turretCompactDescr": 11539,
       "gunCompactDescr": 9492,
-      "maxHealth": 2200,
+      "maxHealth": 3200,
       "speedLimits": [
         5.555555555555555,
         4.166666666666667
@@ -4662,6 +5697,11 @@
             0,
             0
           ],
+          "damage": [
+            490.0,
+            175.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 920.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4674,6 +5714,11 @@
             0,
             0
           ],
+          "damage": [
+            490.0,
+            185.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1150.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4686,6 +5731,11 @@
             0,
             0
           ],
+          "damage": [
+            630.0,
+            175.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 920.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4701,7 +5751,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12307,
       "gunCompactDescr": 788,
-      "maxHealth": 410,
+      "maxHealth": 610,
       "speedLimits": [
         16.666666666666668,
         5.555555555555555
@@ -4728,6 +5778,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4740,6 +5795,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 988.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4752,6 +5812,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4767,7 +5832,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12819,
       "gunCompactDescr": 2324,
-      "maxHealth": 1250,
+      "maxHealth": 1850,
       "speedLimits": [
         8.333333333333334,
         4.166666666666667
@@ -4794,6 +5859,11 @@
             0,
             0
           ],
+          "damage": [
+            220.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1000.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4806,6 +5876,11 @@
             0,
             0
           ],
+          "damage": [
+            220.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1250.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4818,6 +5893,11 @@
             0,
             0
           ],
+          "damage": [
+            270.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1000.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4833,7 +5913,7 @@
       "crewSize": 6,
       "turretCompactDescr": 13843,
       "gunCompactDescr": 7444,
-      "maxHealth": 1100,
+      "maxHealth": 1200,
       "speedLimits": [
         8.333333333333334,
         2.7777777777777777
@@ -4860,6 +5940,11 @@
             0,
             0
           ],
+          "damage": [
+            220.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1000.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4872,6 +5957,11 @@
             0,
             0
           ],
+          "damage": [
+            220.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1250.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4884,6 +5974,11 @@
             0,
             0
           ],
+          "damage": [
+            270.0,
+            130.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1000.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4899,7 +5994,7 @@
       "crewSize": 6,
       "turretCompactDescr": 15123,
       "gunCompactDescr": 10260,
-      "maxHealth": 1700,
+      "maxHealth": 1800,
       "speedLimits": [
         7.777777777777778,
         3.333333333333333
@@ -4926,6 +6021,11 @@
             0,
             0
           ],
+          "damage": [
+            490.0,
+            175.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 920.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4938,6 +6038,11 @@
             0,
             0
           ],
+          "damage": [
+            490.0,
+            185.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1150.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4950,6 +6055,11 @@
             0,
             0
           ],
+          "damage": [
+            630.0,
+            175.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 920.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -4965,7 +6075,7 @@
       "crewSize": 4,
       "turretCompactDescr": 15635,
       "gunCompactDescr": 3092,
-      "maxHealth": 200,
+      "maxHealth": 300,
       "speedLimits": [
         17.22222222222222,
         5.555555555555555
@@ -4992,6 +6102,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5004,6 +6119,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 938.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5016,6 +6136,11 @@
             0,
             0
           ],
+          "damage": [
+            45.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5031,7 +6156,7 @@
       "crewSize": 5,
       "turretCompactDescr": 16147,
       "gunCompactDescr": 1044,
-      "maxHealth": 1100,
+      "maxHealth": 1650,
       "speedLimits": [
         15.277777777777777,
         5.555555555555555
@@ -5058,6 +6183,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5070,6 +6200,11 @@
             0,
             0
           ],
+          "damage": [
+            135.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1156.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5082,6 +6217,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 925.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5097,7 +6237,7 @@
       "crewSize": 6,
       "turretCompactDescr": 16659,
       "gunCompactDescr": 12308,
-      "maxHealth": 560,
+      "maxHealth": 570,
       "speedLimits": [
         9.722222222222221,
         2.7777777777777777
@@ -5122,6 +6262,11 @@
             0,
             0
           ],
+          "damage": [
+            1400.0,
+            227.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -5134,6 +6279,11 @@
             0,
             0
           ],
+          "damage": [
+            1400.0,
+            227.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -5149,7 +6299,7 @@
       "crewSize": 5,
       "turretCompactDescr": 16915,
       "gunCompactDescr": 1812,
-      "maxHealth": 400,
+      "maxHealth": 410,
       "speedLimits": [
         13.333333333333332,
         3.888888888888889
@@ -5174,6 +6324,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 490.0,
           "gravity": 190.0,
           "effectsIndex": 0
@@ -5186,6 +6341,11 @@
             0,
             0
           ],
+          "damage": [
+            750.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 420.0,
           "gravity": 140.0,
           "effectsIndex": 0
@@ -5201,7 +6361,7 @@
       "crewSize": 6,
       "turretCompactDescr": 17427,
       "gunCompactDescr": 13332,
-      "maxHealth": 650,
+      "maxHealth": 660,
       "speedLimits": [
         11.11111111111111,
         3.0555555555555554
@@ -5228,6 +6388,11 @@
             0,
             0
           ],
+          "damage": [
+            2000.0,
+            300.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 510.0,
           "gravity": 222.0,
           "effectsIndex": 0
@@ -5240,6 +6405,11 @@
             0,
             0
           ],
+          "damage": [
+            1550.0,
+            300.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 408.0,
           "gravity": 142.0,
           "effectsIndex": 0
@@ -5252,6 +6422,11 @@
             0,
             0
           ],
+          "damage": [
+            2000.0,
+            300.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 510.0,
           "gravity": 222.0,
           "effectsIndex": 0
@@ -5267,7 +6442,7 @@
       "crewSize": 5,
       "turretCompactDescr": 10259,
       "gunCompactDescr": 11028,
-      "maxHealth": 740,
+      "maxHealth": 870,
       "speedLimits": [
         15.277777777777777,
         5.555555555555555
@@ -5294,6 +6469,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5306,6 +6486,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 988.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5318,6 +6503,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5333,7 +6523,7 @@
       "crewSize": 3,
       "turretCompactDescr": 10515,
       "gunCompactDescr": 11284,
-      "maxHealth": 160,
+      "maxHealth": 260,
       "speedLimits": [
         8.61111111111111,
         3.333333333333333
@@ -5358,6 +6548,11 @@
             0,
             0
           ],
+          "damage": [
+            11.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 780.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5370,6 +6565,11 @@
             0,
             0
           ],
+          "damage": [
+            11.0,
+            22.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5385,7 +6585,7 @@
       "crewSize": 3,
       "turretCompactDescr": 11795,
       "gunCompactDescr": 9748,
-      "maxHealth": 180,
+      "maxHealth": 260,
       "speedLimits": [
         10.277777777777777,
         3.333333333333333
@@ -5394,10 +6594,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.7853981633974483,
       "reloadTime": 1.9,
-      "maxAmmo": 0,
+      "maxAmmo": 112,
       "defaultAmmo": [
         3098,
-        0,
+        112,
         3354,
         0,
         3610,
@@ -5412,6 +6612,11 @@
             0,
             0
           ],
+          "damage": [
+            52.0,
+            63.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 660.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5424,6 +6629,11 @@
             0,
             0
           ],
+          "damage": [
+            52.0,
+            63.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 825.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5436,6 +6646,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            63.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 700.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5451,7 +6666,7 @@
       "crewSize": 4,
       "turretCompactDescr": 12051,
       "gunCompactDescr": 9748,
-      "maxHealth": 300,
+      "maxHealth": 400,
       "speedLimits": [
         8.333333333333334,
         2.7777777777777777
@@ -5460,10 +6675,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.7853981633974483,
       "reloadTime": 1.9,
-      "maxAmmo": 0,
+      "maxAmmo": 112,
       "defaultAmmo": [
         3098,
-        0,
+        112,
         3354,
         0,
         3610,
@@ -5478,6 +6693,11 @@
             0,
             0
           ],
+          "damage": [
+            52.0,
+            63.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 660.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5490,6 +6710,11 @@
             0,
             0
           ],
+          "damage": [
+            52.0,
+            63.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 825.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5502,6 +6727,11 @@
             0,
             0
           ],
+          "damage": [
+            62.0,
+            63.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 700.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5517,7 +6747,7 @@
       "crewSize": 2,
       "turretCompactDescr": 13331,
       "gunCompactDescr": 10004,
-      "maxHealth": 100,
+      "maxHealth": 160,
       "speedLimits": [
         10.277777777777777,
         4.444444444444445
@@ -5526,10 +6756,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8726646259971648,
       "reloadTime": 2.0,
-      "maxAmmo": 0,
+      "maxAmmo": 100,
       "defaultAmmo": [
         1562,
-        0,
+        100,
         1818,
         0,
         2074,
@@ -5544,6 +6774,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 705.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5556,6 +6791,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 881.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5568,6 +6808,11 @@
             0,
             0
           ],
+          "damage": [
+            45.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 705.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5583,7 +6828,7 @@
       "crewSize": 5,
       "turretCompactDescr": 15379,
       "gunCompactDescr": 11028,
-      "maxHealth": 740,
+      "maxHealth": 870,
       "speedLimits": [
         15.277777777777777,
         5.555555555555555
@@ -5610,6 +6855,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5622,6 +6872,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 988.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5634,6 +6889,11 @@
             0,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 790.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5649,7 +6909,7 @@
       "crewSize": 5,
       "turretCompactDescr": 17171,
       "gunCompactDescr": 13076,
-      "maxHealth": 1000,
+      "maxHealth": 1650,
       "speedLimits": [
         9.722222222222221,
         4.166666666666667
@@ -5676,6 +6936,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1150.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5688,6 +6953,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            165.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1438.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5700,6 +6970,11 @@
             0,
             0
           ],
+          "damage": [
+            420.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1150.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5715,7 +6990,7 @@
       "crewSize": 5,
       "turretCompactDescr": 35,
       "gunCompactDescr": 7716,
-      "maxHealth": 500,
+      "maxHealth": 690,
       "speedLimits": [
         9.444444444444445,
         2.7777777777777777
@@ -5724,14 +6999,14 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8028514559173916,
       "reloadTime": 3.33,
-      "maxAmmo": 0,
+      "maxAmmo": 90,
       "defaultAmmo": [
         3626,
-        0,
+        72,
         3882,
         0,
         4138,
-        0
+        18
       ],
       "shells": [
         {
@@ -5742,6 +7017,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5754,6 +7034,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 774.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5766,6 +7051,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5781,7 +7071,7 @@
       "crewSize": 4,
       "turretCompactDescr": 291,
       "gunCompactDescr": 292,
-      "maxHealth": 130,
+      "maxHealth": 200,
       "speedLimits": [
         16.944444444444443,
         5.555555555555555
@@ -5806,6 +7096,11 @@
             0,
             0
           ],
+          "damage": [
+            12.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 770.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5818,6 +7113,11 @@
             0,
             0
           ],
+          "damage": [
+            12.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 963.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5833,7 +7133,7 @@
       "crewSize": 2,
       "turretCompactDescr": 803,
       "gunCompactDescr": 1060,
-      "maxHealth": 80,
+      "maxHealth": 110,
       "speedLimits": [
         11.38888888888889,
         2.7777777777777777
@@ -5842,10 +7142,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 1.0471975511965976,
       "reloadTime": 2.0,
-      "maxAmmo": 0,
+      "maxAmmo": 90,
       "defaultAmmo": [
         1578,
-        0,
+        90,
         1834,
         0,
         2090,
@@ -5860,6 +7160,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 600.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5872,6 +7177,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5884,6 +7194,11 @@
             0,
             0
           ],
+          "damage": [
+            36.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 600.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5899,7 +7214,7 @@
       "crewSize": 6,
       "turretCompactDescr": 1571,
       "gunCompactDescr": 1828,
-      "maxHealth": 600,
+      "maxHealth": 840,
       "speedLimits": [
         9.722222222222221,
         2.7777777777777777
@@ -5926,6 +7241,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5938,6 +7258,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5950,6 +7275,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -5965,7 +7295,7 @@
       "crewSize": 5,
       "turretCompactDescr": 2083,
       "gunCompactDescr": 36,
-      "maxHealth": 300,
+      "maxHealth": 400,
       "speedLimits": [
         13.333333333333332,
         5.0
@@ -5992,6 +7322,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6004,6 +7339,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 820.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6016,6 +7356,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6031,7 +7376,7 @@
       "crewSize": 5,
       "turretCompactDescr": 2595,
       "gunCompactDescr": 36,
-      "maxHealth": 490,
+      "maxHealth": 720,
       "speedLimits": [
         13.333333333333332,
         5.0
@@ -6058,6 +7403,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6070,6 +7420,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 820.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6082,6 +7437,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6097,7 +7457,7 @@
       "crewSize": 5,
       "turretCompactDescr": 3107,
       "gunCompactDescr": 2084,
-      "maxHealth": 750,
+      "maxHealth": 1000,
       "speedLimits": [
         15.555555555555555,
         5.555555555555555
@@ -6124,6 +7484,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6136,6 +7501,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6148,6 +7518,11 @@
             8,
             0
           ],
+          "damage": [
+            185.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6163,7 +7538,7 @@
       "crewSize": 4,
       "turretCompactDescr": 3619,
       "gunCompactDescr": 3108,
-      "maxHealth": 110,
+      "maxHealth": 140,
       "speedLimits": [
         16.11111111111111,
         5.555555555555555
@@ -6186,6 +7561,11 @@
             0,
             0
           ],
+          "damage": [
+            8.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 887.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6201,7 +7581,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4131,
       "gunCompactDescr": 3364,
-      "maxHealth": 130,
+      "maxHealth": 140,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -6210,10 +7590,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.6981317007977318,
       "reloadTime": 6.6,
-      "maxAmmo": 0,
+      "maxAmmo": 40,
       "defaultAmmo": [
         5162,
-        0,
+        40,
         5418,
         0
       ],
@@ -6226,6 +7606,11 @@
             0,
             0
           ],
+          "damage": [
+            170.0,
+            105.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 290.0,
           "effectsIndex": 0
@@ -6238,6 +7623,11 @@
             0,
             0
           ],
+          "damage": [
+            130.0,
+            115.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 400.0,
           "gravity": 290.0,
           "effectsIndex": 0
@@ -6253,7 +7643,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4387,
       "gunCompactDescr": 2084,
-      "maxHealth": 990,
+      "maxHealth": 1310,
       "speedLimits": [
         15.555555555555555,
         5.555555555555555
@@ -6280,6 +7670,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6292,6 +7687,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6304,6 +7704,11 @@
             8,
             0
           ],
+          "damage": [
+            185.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6319,7 +7724,7 @@
       "crewSize": 6,
       "turretCompactDescr": 5155,
       "gunCompactDescr": 3876,
-      "maxHealth": 1250,
+      "maxHealth": 2250,
       "speedLimits": [
         9.722222222222221,
         3.333333333333333
@@ -6328,14 +7733,14 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.47123889803846897,
       "reloadTime": 16.5,
-      "maxAmmo": 0,
+      "maxAmmo": 30,
       "defaultAmmo": [
         8490,
-        0,
+        6,
         8746,
         0,
         9002,
-        0
+        24
       ],
       "shells": [
         {
@@ -6346,6 +7751,11 @@
             0,
             0
           ],
+          "damage": [
+            750.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 870.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6358,6 +7768,11 @@
             0,
             0
           ],
+          "damage": [
+            750.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1088.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6370,6 +7785,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 870.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6385,7 +7805,7 @@
       "crewSize": 6,
       "turretCompactDescr": 5411,
       "gunCompactDescr": 4132,
-      "maxHealth": 1200,
+      "maxHealth": 1700,
       "speedLimits": [
         9.722222222222221,
         3.333333333333333
@@ -6412,6 +7832,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6424,6 +7849,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1219.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6436,6 +7866,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6451,7 +7886,7 @@
       "crewSize": 6,
       "turretCompactDescr": 9507,
       "gunCompactDescr": 7204,
-      "maxHealth": 240,
+      "maxHealth": 310,
       "speedLimits": [
         10.555555555555555,
         4.444444444444445
@@ -6478,6 +7913,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 588.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6490,6 +7930,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 735.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6502,6 +7947,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 588.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6517,7 +7967,7 @@
       "crewSize": 6,
       "turretCompactDescr": 6435,
       "gunCompactDescr": 1828,
-      "maxHealth": 390,
+      "maxHealth": 600,
       "speedLimits": [
         9.833333333333332,
         2.7777777777777777
@@ -6544,6 +7994,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6556,6 +8011,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6568,6 +8028,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6583,7 +8048,7 @@
       "crewSize": 6,
       "turretCompactDescr": 6947,
       "gunCompactDescr": 4900,
-      "maxHealth": 230,
+      "maxHealth": 240,
       "speedLimits": [
         10.722222222222223,
         3.888888888888889
@@ -6608,6 +8073,11 @@
             0,
             0
           ],
+          "damage": [
+            410.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 311.0,
           "gravity": 220.0,
           "effectsIndex": 0
@@ -6620,6 +8090,11 @@
             0,
             0
           ],
+          "damage": [
+            350.0,
+            180.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 311.0,
           "gravity": 200.0,
           "effectsIndex": 0
@@ -6635,7 +8110,7 @@
       "crewSize": 6,
       "turretCompactDescr": 7203,
       "gunCompactDescr": 2340,
-      "maxHealth": 900,
+      "maxHealth": 1150,
       "speedLimits": [
         9.722222222222221,
         3.333333333333333
@@ -6662,6 +8137,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6674,6 +8154,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6686,6 +8171,11 @@
             8,
             0
           ],
+          "damage": [
+            185.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6701,7 +8191,7 @@
       "crewSize": 5,
       "turretCompactDescr": 7715,
       "gunCompactDescr": 5412,
-      "maxHealth": 290,
+      "maxHealth": 300,
       "speedLimits": [
         15.555555555555555,
         3.888888888888889
@@ -6726,6 +8216,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            206.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 160.0,
           "effectsIndex": 0
@@ -6738,6 +8233,11 @@
             0,
             0
           ],
+          "damage": [
+            700.0,
+            206.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 160.0,
           "effectsIndex": 0
@@ -6753,7 +8253,7 @@
       "crewSize": 6,
       "turretCompactDescr": 7971,
       "gunCompactDescr": 4132,
-      "maxHealth": 850,
+      "maxHealth": 1400,
       "speedLimits": [
         9.722222222222221,
         3.888888888888889
@@ -6780,6 +8280,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6792,6 +8297,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1219.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6804,6 +8314,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6819,7 +8334,7 @@
       "crewSize": 6,
       "turretCompactDescr": 8483,
       "gunCompactDescr": 4900,
-      "maxHealth": 150,
+      "maxHealth": 160,
       "speedLimits": [
         15.555555555555555,
         4.444444444444445
@@ -6844,6 +8359,11 @@
             0,
             0
           ],
+          "damage": [
+            410.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 311.0,
           "gravity": 220.0,
           "effectsIndex": 0
@@ -6856,6 +8376,11 @@
             0,
             0
           ],
+          "damage": [
+            350.0,
+            180.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 311.0,
           "gravity": 200.0,
           "effectsIndex": 0
@@ -6871,7 +8396,7 @@
       "crewSize": 6,
       "turretCompactDescr": 8739,
       "gunCompactDescr": 548,
-      "maxHealth": 120,
+      "maxHealth": 180,
       "speedLimits": [
         11.944444444444445,
         5.0
@@ -6898,6 +8423,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 782.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6910,6 +8440,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 978.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6922,6 +8457,11 @@
             0,
             0
           ],
+          "damage": [
+            50.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 782.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6937,7 +8477,7 @@
       "crewSize": 5,
       "turretCompactDescr": 9763,
       "gunCompactDescr": 292,
-      "maxHealth": 220,
+      "maxHealth": 290,
       "speedLimits": [
         16.11111111111111,
         5.555555555555555
@@ -6962,6 +8502,11 @@
             0,
             0
           ],
+          "damage": [
+            12.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 770.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6974,6 +8519,11 @@
             0,
             0
           ],
+          "damage": [
+            12.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 963.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -6989,7 +8539,7 @@
       "crewSize": 5,
       "turretCompactDescr": 10275,
       "gunCompactDescr": 804,
-      "maxHealth": 280,
+      "maxHealth": 380,
       "speedLimits": [
         16.666666666666668,
         5.555555555555555
@@ -7016,6 +8566,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7028,6 +8583,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7040,6 +8600,11 @@
             0,
             0
           ],
+          "damage": [
+            50.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7055,7 +8620,7 @@
       "crewSize": 3,
       "turretCompactDescr": 10787,
       "gunCompactDescr": 1316,
-      "maxHealth": 120,
+      "maxHealth": 150,
       "speedLimits": [
         11.11111111111111,
         4.722222222222222
@@ -7064,10 +8629,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8726646259971648,
       "reloadTime": 1.9,
-      "maxAmmo": 0,
+      "maxAmmo": 90,
       "defaultAmmo": [
         1578,
-        0,
+        90,
         1834,
         0,
         2090,
@@ -7082,6 +8647,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 600.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7094,6 +8664,11 @@
             0,
             0
           ],
+          "damage": [
+            30.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 750.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7106,6 +8681,11 @@
             0,
             0
           ],
+          "damage": [
+            36.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 600.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7121,7 +8701,7 @@
       "crewSize": 5,
       "turretCompactDescr": 11299,
       "gunCompactDescr": 2084,
-      "maxHealth": 1030,
+      "maxHealth": 1350,
       "speedLimits": [
         13.333333333333332,
         5.555555555555555
@@ -7148,6 +8728,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7160,6 +8745,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7172,6 +8762,11 @@
             8,
             0
           ],
+          "damage": [
+            185.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7187,7 +8782,7 @@
       "crewSize": 4,
       "turretCompactDescr": 11811,
       "gunCompactDescr": 8228,
-      "maxHealth": 120,
+      "maxHealth": 130,
       "speedLimits": [
         13.333333333333332,
         2.7777777777777777
@@ -7214,6 +8809,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7226,6 +8826,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7238,6 +8843,11 @@
             0,
             0
           ],
+          "damage": [
+            50.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7253,7 +8863,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12067,
       "gunCompactDescr": 8484,
-      "maxHealth": 155,
+      "maxHealth": 165,
       "speedLimits": [
         13.333333333333332,
         3.333333333333333
@@ -7278,6 +8888,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 381.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7290,6 +8905,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 305.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7305,7 +8925,7 @@
       "crewSize": 5,
       "turretCompactDescr": 12579,
       "gunCompactDescr": 9508,
-      "maxHealth": 240,
+      "maxHealth": 340,
       "speedLimits": [
         13.333333333333332,
         3.333333333333333
@@ -7332,6 +8952,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7344,6 +8969,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7356,6 +8986,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7371,7 +9006,7 @@
       "crewSize": 5,
       "turretCompactDescr": 13347,
       "gunCompactDescr": 10020,
-      "maxHealth": 500,
+      "maxHealth": 560,
       "speedLimits": [
         11.666666666666666,
         3.0555555555555554
@@ -7398,6 +9033,11 @@
             8,
             0
           ],
+          "damage": [
+            115.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7410,6 +9050,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7422,6 +9067,11 @@
             8,
             0
           ],
+          "damage": [
+            185.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7437,7 +9087,7 @@
       "crewSize": 6,
       "turretCompactDescr": 13859,
       "gunCompactDescr": 10788,
-      "maxHealth": 520,
+      "maxHealth": 530,
       "speedLimits": [
         10.833333333333334,
         3.333333333333333
@@ -7462,6 +9112,11 @@
             0,
             0
           ],
+          "damage": [
+            1250.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -7474,6 +9129,11 @@
             0,
             0
           ],
+          "damage": [
+            1250.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -7489,7 +9149,7 @@
       "crewSize": 5,
       "turretCompactDescr": 14115,
       "gunCompactDescr": 8484,
-      "maxHealth": 265,
+      "maxHealth": 275,
       "speedLimits": [
         10.555555555555555,
         3.888888888888889
@@ -7514,6 +9174,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 381.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7526,6 +9191,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 305.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7541,7 +9211,7 @@
       "crewSize": 6,
       "turretCompactDescr": 14371,
       "gunCompactDescr": 5668,
-      "maxHealth": 390,
+      "maxHealth": 400,
       "speedLimits": [
         10.833333333333334,
         3.333333333333333
@@ -7566,6 +9236,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 440.0,
           "gravity": 160.0,
           "effectsIndex": 0
@@ -7578,6 +9253,11 @@
             0,
             0
           ],
+          "damage": [
+            950.0,
+            203.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 460.0,
           "gravity": 160.81,
           "effectsIndex": 0
@@ -7593,7 +9273,7 @@
       "crewSize": 4,
       "turretCompactDescr": 14627,
       "gunCompactDescr": 11300,
-      "maxHealth": 1140,
+      "maxHealth": 1150,
       "speedLimits": [
         5.0,
         1.9444444444444444
@@ -7620,6 +9300,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7632,6 +9317,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1219.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7644,6 +9334,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 975.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7659,7 +9354,7 @@
       "crewSize": 6,
       "turretCompactDescr": 14883,
       "gunCompactDescr": 12068,
-      "maxHealth": 620,
+      "maxHealth": 630,
       "speedLimits": [
         11.11111111111111,
         2.7777777777777777
@@ -7686,6 +9381,11 @@
             0,
             0
           ],
+          "damage": [
+            2250.0,
+            320.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 530.0,
           "gravity": 225.0,
           "effectsIndex": 0
@@ -7698,6 +9398,11 @@
             0,
             0
           ],
+          "damage": [
+            1800.0,
+            320.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 424.0,
           "gravity": 144.0,
           "effectsIndex": 0
@@ -7710,6 +9415,11 @@
             0,
             0
           ],
+          "damage": [
+            2250.0,
+            320.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 530.0,
           "gravity": 225.0,
           "effectsIndex": 0
@@ -7725,7 +9435,7 @@
       "crewSize": 4,
       "turretCompactDescr": 15139,
       "gunCompactDescr": 11556,
-      "maxHealth": 1690,
+      "maxHealth": 1700,
       "speedLimits": [
         3.611111111111111,
         1.6666666666666665
@@ -7752,6 +9462,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 945.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7764,6 +9479,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1181.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7776,6 +9496,11 @@
             0,
             0
           ],
+          "damage": [
+            420.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 945.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7791,7 +9516,7 @@
       "crewSize": 5,
       "turretCompactDescr": 15907,
       "gunCompactDescr": 2596,
-      "maxHealth": 1250,
+      "maxHealth": 1600,
       "speedLimits": [
         13.333333333333332,
         5.555555555555555
@@ -7818,6 +9543,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 853.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7830,6 +9560,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1066.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7842,6 +9577,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 853.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7857,7 +9597,7 @@
       "crewSize": 4,
       "turretCompactDescr": 16419,
       "gunCompactDescr": 10532,
-      "maxHealth": 830,
+      "maxHealth": 840,
       "speedLimits": [
         15.555555555555555,
         4.166666666666667
@@ -7884,6 +9624,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 853.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7896,6 +9641,11 @@
             0,
             0
           ],
+          "damage": [
+            240.0,
+            150.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1066.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7908,6 +9658,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            140.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 853.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7923,7 +9678,7 @@
       "crewSize": 3,
       "turretCompactDescr": 1315,
       "gunCompactDescr": 6948,
-      "maxHealth": 100,
+      "maxHealth": 150,
       "speedLimits": [
         20.0,
         5.555555555555555
@@ -7948,6 +9703,11 @@
             0,
             0
           ],
+          "damage": [
+            12.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 770.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7960,6 +9720,11 @@
             0,
             0
           ],
+          "damage": [
+            12.0,
+            20.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 963.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -7975,7 +9740,7 @@
       "crewSize": 5,
       "turretCompactDescr": 4899,
       "gunCompactDescr": 7460,
-      "maxHealth": 380,
+      "maxHealth": 610,
       "speedLimits": [
         10.555555555555555,
         3.888888888888889
@@ -7984,10 +9749,10 @@
       "turretRotationSpeed": 0.5235987755982988,
       "gunRotationSpeed": 0.8726646259971648,
       "reloadTime": 2.0,
-      "maxAmmo": 0,
+      "maxAmmo": 92,
       "defaultAmmo": [
         3114,
-        0,
+        92,
         3370,
         0
       ],
@@ -8000,6 +9765,11 @@
             0,
             0
           ],
+          "damage": [
+            75.0,
+            90.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 821.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8012,6 +9782,11 @@
             0,
             0
           ],
+          "damage": [
+            75.0,
+            91.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1026.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8027,7 +9802,7 @@
       "crewSize": 5,
       "turretCompactDescr": 13091,
       "gunCompactDescr": 7716,
-      "maxHealth": 280,
+      "maxHealth": 480,
       "speedLimits": [
         14.444444444444445,
         5.0
@@ -8054,6 +9829,11 @@
             8,
             0
           ],
+          "damage": [
+            110.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8066,6 +9846,11 @@
             0,
             0
           ],
+          "damage": [
+            110.0,
+            110.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 774.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8078,6 +9863,11 @@
             8,
             0
           ],
+          "damage": [
+            175.0,
+            100.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 619.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8093,7 +9883,7 @@
       "crewSize": 5,
       "turretCompactDescr": 15395,
       "gunCompactDescr": 12836,
-      "maxHealth": 1050,
+      "maxHealth": 1500,
       "speedLimits": [
         8.055555555555555,
         2.7777777777777777
@@ -8120,6 +9910,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 945.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8132,6 +9927,11 @@
             0,
             0
           ],
+          "damage": [
+            320.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 1181.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8144,6 +9944,11 @@
             0,
             0
           ],
+          "damage": [
+            420.0,
+            155.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 945.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8159,7 +9964,7 @@
       "crewSize": 3,
       "turretCompactDescr": 15651,
       "gunCompactDescr": 13092,
-      "maxHealth": 140,
+      "maxHealth": 250,
       "speedLimits": [
         17.77777777777778,
         5.555555555555555
@@ -8186,6 +9991,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8198,6 +10008,11 @@
             0,
             0
           ],
+          "damage": [
+            40.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 990.0,
           "gravity": 9.81,
           "effectsIndex": 0
@@ -8210,6 +10025,11 @@
             0,
             0
           ],
+          "damage": [
+            50.0,
+            50.0
+          ],
+          "damageRandomization": 0.25,
           "speed": 792.0,
           "gravity": 9.81,
           "effectsIndex": 0

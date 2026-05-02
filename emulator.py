@@ -11,6 +11,7 @@ import math
 import sqlite3
 import hashlib
 import random
+import re
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, Blowfish
 
@@ -843,6 +844,49 @@ def get_vehicle_shell(vehicle: dict, compact: int = None):
     return shells[0] if shells else {}
 
 
+def get_current_vehicle_shell(sess: dict):
+    vehicle = sess.get('battle_vehicle') or {}
+    shell_cd = int(sess.get('battle_current_shell') or 0)
+    stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
+    shell_cd = select_available_shell(stock, shell_cd)
+    return get_vehicle_shell(vehicle, shell_cd)
+
+
+def get_shell_damage(shell: dict) -> int:
+    damage = (shell or {}).get('damage') or ()
+    if damage:
+        base = float(damage[0])
+    else:
+        match = re.search(r'(\d+)mm', str((shell or {}).get('name', '')))
+        caliber = int(match.group(1)) if match else 75
+        base = max(20.0, caliber * 1.6)
+    randomization = float((shell or {}).get('damageRandomization', 0.25))
+    return max(1, int(round(base * random.uniform(1.0 - randomization,
+                                                  1.0 + randomization))))
+
+
+def ballistic_shot_vec(shot_pos, target_pos, speed: float, gravity: float):
+    dx = float(target_pos[0]) - float(shot_pos[0])
+    dy = float(target_pos[1]) - float(shot_pos[1])
+    dz = float(target_pos[2]) - float(shot_pos[2])
+    horizontal = math.sqrt(dx * dx + dz * dz)
+    if horizontal <= 0.001 or speed <= 0.001 or gravity <= 0.001:
+        return normalize_vec((dx, dy, dz))
+    v2 = speed * speed
+    g = gravity
+    disc = v2 * v2 - g * (g * horizontal * horizontal + 2.0 * dy * v2)
+    if disc < 0.0:
+        return normalize_vec((dx, dy, dz))
+    tan_theta = (v2 - math.sqrt(disc)) / (g * horizontal)
+    cos_theta = 1.0 / math.sqrt(1.0 + tan_theta * tan_theta)
+    sin_theta = tan_theta * cos_theta
+    return normalize_vec((
+        dx / horizontal * cos_theta,
+        sin_theta,
+        dz / horizontal * cos_theta,
+    ))
+
+
 def make_full_sync_pickle() -> bytes:
     """РџРѕРІРЅРёР№ (full-sync) diff РґР»СЏ Account._update. Р‘РµР· 'prevRev' в†’
     isFullSync=True в†’ РєР»С–С”РЅС‚ С‡РёСЃС‚РёС‚СЊ __cache С– Р·Р°СЃС‚РѕСЃРѕРІСѓС” РЅР°С€ diff.
@@ -1183,6 +1227,8 @@ BATTLE_ROT_DECELERATION = 5.5
 BATTLE_MIN_TURN_FACTOR = 0.7
 REMOTE_GUN_PITCH_SCALE = 0.35
 REMOTE_GUN_PITCH_LIMIT = math.radians(12.0)
+TARGET_HIT_RADIUS = 8.0
+TARGET_AIM_RADIUS = 8.0
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -1573,6 +1619,15 @@ def build_avatar_stop_tracer(shot_id: int, end_pos) -> bytes:
 def build_vehicle_show_shooting(vehicle_id: int = PLAYER_VEHICLE_ID) -> bytes:
     return msg_varlen(VEHICLE_SHOW_SHOOTING_MSG_ID,
                       struct.pack('<I', vehicle_id))
+
+
+def build_vehicle_health_property_update(vehicle_id: int, health: int,
+                                         is_crew_active: bool = True) -> bytes:
+    payload = struct.pack('<I', vehicle_id)
+    payload += struct.pack('<B', 2)
+    payload += struct.pack('<Bh', 1, int(health))
+    payload += struct.pack('<BB', 2, 1 if is_crew_active else 0)
+    return msg_varlen(0x09, payload)
 
 
 def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
@@ -2078,6 +2133,7 @@ def init_battle_state(sess: dict, spawn_pos):
     spawn_yaw = spawn_yaw_for_base(get_session_spawn_base(sess))
     sess['battle_generation'] = sess.get('battle_generation', 0) + 1
     sess['battle_pos'] = tuple(float(v) for v in spawn_pos)
+    sess['battle_prev_pos'] = sess['battle_pos']
     sess['battle_yaw'] = spawn_yaw
     sess['battle_speed'] = 0.0
     sess['battle_rspeed'] = 0.0
@@ -2091,6 +2147,7 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_period_active'] = False
     sess['battle_turret_yaw'] = spawn_yaw
     sess['battle_gun_pitch'] = 0.0
+    sess['battle_targeting_state_time'] = time.time()
     sess['battle_current_shell'] = 0
     sess['battle_next_shell'] = 0
     sess['battle_ammo_stock'] = build_vehicle_ammo_stock(vehicle)
@@ -2149,6 +2206,7 @@ def advance_battle_motion(sess: dict, flags: int = None):
     sess['battle_last_motion_time'] = now
 
     x, y, z = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    prev_pos = (x, y, z)
     yaw = float(sess.get('battle_yaw', 0.0))
     if flags is None:
         flags = sess.get('battle_motion_flags', 0)
@@ -2183,6 +2241,7 @@ def advance_battle_motion(sess: dict, flags: int = None):
         x += math.sin(yaw) * speed * dt
         z += math.cos(yaw) * speed * dt
 
+    sess['battle_prev_pos'] = prev_pos
     sess['battle_pos'] = (x, y, z)
     sess['battle_yaw'] = yaw
     sess['battle_speed'] = speed
@@ -2257,6 +2316,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             sess['client_vehicle_pos'] = pos
             sess['client_vehicle_last_update_time'] = time.time()
             if not sess.get('server_vehicle_authoritative', True):
+                sess['battle_prev_pos'] = sess.get('battle_pos', pos)
                 sess['battle_pos'] = pos
                 sess['battle_yaw'] = yaw
             count = sess.get('client_vehicle_update_count', 0) + 1
@@ -2286,6 +2346,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             sess['client_vehicle_pos'] = pos
             sess['client_vehicle_last_update_time'] = time.time()
             if not sess.get('server_vehicle_authoritative', True):
+                sess['battle_prev_pos'] = sess.get('battle_pos', pos)
                 sess['battle_pos'] = pos
                 sess['battle_yaw'] = yaw
         return True
@@ -2304,20 +2365,40 @@ def normalize_vec(vec):
 def build_targeting_for_point(sess: dict, target_pos):
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     shot_pos = (pos[0], pos[1] + 2.0, pos[2])
+    now = time.time()
     dx = target_pos[0] - shot_pos[0]
     dy = target_pos[1] - shot_pos[1]
     dz = target_pos[2] - shot_pos[2]
-    shot_vec = normalize_vec((dx, dy, dz))
-    turret_yaw = normalize_angle(math.atan2(dx, dz))
-    gun_pitch = math.atan2(dy, max(0.001, math.sqrt(dx * dx + dz * dz)))
+    shell = get_current_vehicle_shell(sess)
+    shot_vec = ballistic_shot_vec(
+        shot_pos, target_pos,
+        float(shell.get('speed', 800.0)),
+        float(shell.get('gravity', 9.81)))
+    desired_turret_yaw = normalize_angle(math.atan2(dx, dz))
+    desired_gun_pitch = math.atan2(dy, max(0.001, math.sqrt(dx * dx + dz * dz)))
+    vehicle = sess.get('battle_vehicle') or {}
+    last = float(sess.get('battle_targeting_state_time', now))
+    dt = max(0.001, min(0.2, now - last))
+    sess['battle_targeting_state_time'] = now
+    turret_speed = float(vehicle.get('turretRotationSpeed', 0.5235987755982988))
+    gun_speed = float(vehicle.get('gunRotationSpeed', 0.5235987755982988))
+    current_turret_yaw = float(sess.get('battle_turret_yaw', sess.get('battle_yaw', 0.0)))
+    current_gun_pitch = float(sess.get('battle_gun_pitch', 0.0))
+    turret_delta = normalize_angle(desired_turret_yaw - current_turret_yaw)
+    gun_delta = desired_gun_pitch - current_gun_pitch
+    turret_step = clamp(turret_delta, -turret_speed * dt, turret_speed * dt)
+    gun_step = clamp(gun_delta, -gun_speed * dt, gun_speed * dt)
+    turret_yaw = normalize_angle(current_turret_yaw + turret_step)
+    gun_pitch = current_gun_pitch + gun_step
     sess['battle_turret_yaw'] = turret_yaw
     sess['battle_gun_pitch'] = gun_pitch
-    vehicle = sess.get('battle_vehicle') or {}
+    sess['battle_target_pos'] = tuple(float(v) for v in target_pos)
+    sess['battle_shot_pos'] = shot_pos
+    sess['battle_shot_vec'] = shot_vec
     return (
         build_avatar_update_targeting_info(
             turret_yaw, gun_pitch,
-            float(vehicle.get('turretRotationSpeed', 8.0)),
-            float(vehicle.get('gunRotationSpeed', 8.0))) +
+            turret_speed, gun_speed) +
         build_avatar_update_gun_marker(shot_pos, shot_vec)
     )
 
@@ -2326,7 +2407,7 @@ def build_battle_vehicle_state_messages(sess: dict):
     vehicle = sess.get('battle_vehicle') or {}
     stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
     sess['battle_ammo_stock'] = stock
-    health = int(sess.get('battle_vehicle_health') or get_vehicle_max_health(vehicle))
+    health = int(sess['battle_vehicle_health']) if 'battle_vehicle_health' in sess else get_vehicle_max_health(vehicle)
     msgs = build_avatar_update_vehicle_health(health, True)
     for compact, quantity in stock.items():
         msgs += build_avatar_update_vehicle_ammo(compact, quantity, 0)
@@ -2594,6 +2675,14 @@ def parse_vehicle_change_setting(payload: bytes):
     return None
 
 
+def parse_vector3_exposed(payload: bytes):
+    if len(payload) >= 16:
+        return struct.unpack_from('<fff', payload, 4)
+    if len(payload) >= 12:
+        return struct.unpack_from('<fff', payload, 0)
+    return None
+
+
 def build_vehicle_shot_messages(sess: dict):
     sess['battle_last_shot_info'] = None
     vehicle = sess.get('battle_vehicle') or {}
@@ -2618,20 +2707,20 @@ def build_vehicle_shot_messages(sess: dict):
     gravity = float(shell.get('gravity', 9.81))
     effects_index = int(shell.get('effectsIndex', 0))
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
-    turret_yaw = float(sess.get('battle_turret_yaw', sess.get('battle_yaw', 0.0)))
-    gun_pitch = float(sess.get('battle_gun_pitch', 0.0))
     shot_pos = (pos[0], pos[1] + 2.0, pos[2])
-    shot_vec = (
-        math.sin(turret_yaw) * math.cos(gun_pitch),
-        math.sin(gun_pitch),
-        math.cos(turret_yaw) * math.cos(gun_pitch),
-    )
+    target_pos = sess.get('battle_target_pos')
+    if target_pos is not None:
+        shot_vec = ballistic_shot_vec(shot_pos, target_pos, speed, gravity)
+    else:
+        shot_vec = get_session_shot_direction(sess)
     velocity = (shot_vec[0] * speed, shot_vec[1] * speed, shot_vec[2] * speed)
     shot_id = int(sess.get('battle_shot_id', 1))
     sess['battle_shot_id'] = shot_id + 1
     sess['battle_reload_until'] = now + reload_time
     sess['battle_last_shot_info'] = (
         shot_id, shot_pos, velocity, gravity, effects_index)
+    sess['battle_last_shot_shell'] = shell
+    sess['battle_last_shot_vec'] = shot_vec
     msgs = b''
     msgs += build_vehicle_show_shooting()
     msgs += build_avatar_update_vehicle_ammo(shell_cd, remaining, 0)
@@ -2675,6 +2764,160 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
                              msg, '', reliable=True)
 
 
+def get_session_shot_direction(sess: dict):
+    shot_vec = sess.get('battle_shot_vec')
+    if shot_vec is not None:
+        return normalize_vec(shot_vec)
+    turret_yaw = float(sess.get('battle_turret_yaw', sess.get('battle_yaw', 0.0)))
+    gun_pitch = float(sess.get('battle_gun_pitch', 0.0))
+    return normalize_vec((
+        math.sin(turret_yaw) * math.cos(gun_pitch),
+        math.sin(gun_pitch),
+        math.cos(turret_yaw) * math.cos(gun_pitch),
+    ))
+
+
+def unique_positions(points):
+    out = []
+    for point in points:
+        if not point:
+            continue
+        pos = tuple(float(v) for v in point)
+        if all(sum((pos[i] - other[i]) ** 2 for i in range(3)) > 0.01 for other in out):
+            out.append(pos)
+    return out
+
+
+def ray_miss_distance(shot_pos, shot_vec, point):
+    dx = point[0] - shot_pos[0]
+    dy = point[1] - shot_pos[1]
+    dz = point[2] - shot_pos[2]
+    distance = dx * shot_vec[0] + dy * shot_vec[1] + dz * shot_vec[2]
+    if distance < 0.0 or distance > 720.0:
+        return None
+    miss_x = dx - shot_vec[0] * distance
+    miss_y = dy - shot_vec[1] * distance
+    miss_z = dz - shot_vec[2] * distance
+    return distance, math.sqrt(miss_x * miss_x + miss_y * miss_y + miss_z * miss_z)
+
+
+def aim_point_miss(target_pos, center):
+    if target_pos is None:
+        return None
+    dx = center[0] - float(target_pos[0])
+    dz = center[2] - float(target_pos[2])
+    horizontal = math.sqrt(dx * dx + dz * dz)
+    vertical = abs(center[1] - float(target_pos[1]))
+    if horizontal <= TARGET_AIM_RADIUS and vertical <= TARGET_AIM_RADIUS:
+        return horizontal + vertical * 0.25
+    return None
+
+
+def find_shot_target(source_sess: dict, shot_pos, shot_vec):
+    source_account_id = source_sess.get('account_id')
+    source_team = source_sess.get('battle_team')
+    match_id = source_sess.get('battle_match_id')
+    target_pos = source_sess.get('battle_target_pos')
+    best = None
+    with battle_lock:
+        candidates = list(active_battle_accounts.values())
+    for target in candidates:
+        if target.get('account_id') == source_account_id:
+            continue
+        if target.get('battle_match_id') != match_id:
+            continue
+        if source_team is not None and target.get('battle_team') == source_team:
+            continue
+        health = int(target.get('battle_vehicle_health') or 0)
+        if health <= 0:
+            continue
+        positions = unique_positions((
+            target.get('battle_pos'),
+            target.get('battle_prev_pos'),
+            target.get('client_vehicle_pos'),
+        ))
+        if not positions:
+            continue
+        best_distance = None
+        best_miss = None
+        for pos in positions:
+            center = (pos[0], pos[1] + 1.3, pos[2])
+            ray_hit = ray_miss_distance(shot_pos, shot_vec, center)
+            aim_miss = aim_point_miss(target_pos, center)
+            if ray_hit is None and aim_miss is None:
+                continue
+            if ray_hit is None:
+                dx = center[0] - shot_pos[0]
+                dy = center[1] - shot_pos[1]
+                dz = center[2] - shot_pos[2]
+                distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+                miss = aim_miss
+            else:
+                distance, miss = ray_hit
+                if aim_miss is not None:
+                    miss = min(miss, aim_miss)
+            if best_miss is None or miss < best_miss:
+                best_distance = distance
+                best_miss = miss
+        if best_miss is None or best_miss > TARGET_HIT_RADIUS:
+            continue
+        score = (best_distance, best_miss)
+        if best is None or score < best[0]:
+            best = (score, target)
+    return best[1] if best else None
+
+
+def build_health_update_for_viewer(viewer_sess: dict, target_sess: dict) -> bytes:
+    health = int(target_sess.get('battle_vehicle_health') or 0)
+    is_crew_active = health > 0
+    if viewer_sess is target_sess:
+        return (
+            build_avatar_update_vehicle_health(health, is_crew_active) +
+            build_vehicle_health_property_update(PLAYER_VEHICLE_ID, health,
+                                                 is_crew_active)
+        )
+    return build_vehicle_health_property_update(get_remote_vehicle_id(target_sess),
+                                                health, is_crew_active)
+
+
+def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
+                             damage: int):
+    match_id = target_sess.get('battle_match_id')
+    target_account_id = target_sess.get('account_id')
+    with battle_lock:
+        viewers = [sess for sess in active_battle_accounts.values()
+                   if sess.get('battle_match_id') == match_id]
+    for viewer in viewers:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        if viewer is not target_sess:
+            known = viewer.setdefault('known_remote_accounts', set())
+            if target_account_id not in known:
+                send_remote_vehicle(sock, viewer, target_sess)
+        send_avatar_messages(sock, addr, viewer,
+                             build_health_update_for_viewer(viewer, target_sess),
+                             '',
+                             reliable=True)
+    print(f"    [damage] {source_sess.get('username') or 'player'} -> "
+          f"{target_sess.get('username') or 'player'} -{damage} hp "
+          f"({max(0, int(target_sess.get('battle_vehicle_health') or 0))} left)")
+
+
+def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
+    target = find_shot_target(source_sess, shot_pos, shot_vec)
+    if target is None:
+        return None, 0
+    health = int(target.get('battle_vehicle_health') or get_vehicle_max_health(
+        target.get('battle_vehicle') or {}))
+    if health <= 0:
+        return None, 0
+    damage = min(health, get_shell_damage(shell))
+    target['battle_vehicle_health'] = max(0, health - damage)
+    broadcast_vehicle_health(sock, target, source_sess, damage)
+    return target, damage
+
+
 def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
     msgs, reload_time, shell_cd, fired = build_vehicle_shot_messages(sess)
     if not fired:
@@ -2687,6 +2930,9 @@ def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
     shot_info = sess.get('battle_last_shot_info')
     if shot_info:
         broadcast_remote_vehicle_shot(sock, sess, *shot_info)
+        shell = sess.get('battle_last_shot_shell') or {}
+        shot_vec = sess.get('battle_last_shot_vec') or get_session_shot_direction(sess)
+        apply_shot_damage(sock, sess, shell, shot_info[1], normalize_vec(shot_vec))
 
     def _reload_done():
         if time.time() + 0.05 < float(sess.get('battle_reload_until', 0.0)):
@@ -2739,17 +2985,14 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
         return True
 
     if msg_id in AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS:
-        if len(payload) >= 16 and struct.unpack_from('<I', payload, 0)[0] == PLAYER_VEHICLE_ID:
-            target_pos = struct.unpack_from('<fff', payload, 4)
-        elif len(payload) >= 12:
-            target_pos = struct.unpack_from('<fff', payload, 0)
-        else:
+        target_pos = parse_vector3_exposed(payload)
+        if target_pos is None:
             return True
         now = time.time()
+        msgs = build_targeting_for_point(sess, target_pos)
         if now - float(sess.get('last_targeting_update', 0.0)) < TARGETING_UPDATE_INTERVAL:
             return True
         sess['last_targeting_update'] = now
-        msgs = build_targeting_for_point(sess, target_pos)
         send_avatar_messages(
             sock, addr, sess, msgs,
             '',

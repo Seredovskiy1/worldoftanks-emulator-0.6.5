@@ -251,6 +251,11 @@ def parse_shells_xml(path, nation_id):
             'id': shell_id,
             'compactDescr': make_int_compact_descr(10, nation_id, shell_id),
             'price': get_price(find(c, 'price')),
+            'damage': [
+                get_float(find_path(c, 'damage/armor'), 0.0),
+                get_float(find_path(c, 'damage/devices'), 0.0),
+            ],
+            'damageRandomization': 0.25,
         }
     return out
 
@@ -274,6 +279,8 @@ def parse_gun_shots(path, gun_name, nation_id, shells_map):
             'compactDescr': shell['compactDescr'],
             'defaultPortion': get_float(find(shot, 'defaultPortion'), 0.0),
             'price': shell['price'],
+            'damage': shell.get('damage', [0.0, 0.0]),
+            'damageRandomization': shell.get('damageRandomization', 0.25),
             'speed': get_float(find(shot, 'speed'), 800.0),
             'gravity': get_float(find(shot, 'gravity'), 9.81),
             'effectsIndex': get_int(find(shot, 'effectsIndex'), 0),
