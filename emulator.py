@@ -1229,6 +1229,8 @@ REMOTE_GUN_PITCH_SCALE = 0.35
 REMOTE_GUN_PITCH_LIMIT = math.radians(12.0)
 TARGET_HIT_RADIUS = 8.0
 TARGET_AIM_RADIUS = 8.0
+SHOT_TRACE_DISTANCE = 720.0
+SHOT_TARGET_OVERSHOOT = 5.5
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -1298,6 +1300,16 @@ ARENA_SPAWN_POS = {
     37: (-350.0, 80.0, -350.0),
     38: (-350.0, 80.0, -350.0),
 }
+
+
+def normalize_arena_type_id(arena_type_id) -> int:
+    try:
+        arena_type_id = int(arena_type_id)
+    except (TypeError, ValueError):
+        return ARENA_TYPE_KARELIA
+    if arena_type_id not in ARENA_GEOMETRY_PATH:
+        return ARENA_TYPE_KARELIA
+    return arena_type_id
 
 # spaceData keys (Р· common/space_data_types.hpp)
 SPACE_DATA_TOD_KEY                  = 0    # SpaceData_ToDData (8B: 2 floats)
@@ -2397,7 +2409,8 @@ def build_targeting_for_point(sess: dict, target_pos):
     sess['battle_shot_vec'] = shot_vec
     return (
         build_avatar_update_targeting_info(
-            turret_yaw, gun_pitch,
+            normalize_angle(turret_yaw - float(sess.get('battle_yaw', 0.0))),
+            gun_pitch,
             turret_speed, gun_speed) +
         build_avatar_update_gun_marker(shot_pos, shot_vec)
     )
@@ -2463,9 +2476,8 @@ def send_avatar_player(sock, addr, sess):
     battle_vehicle = sess.get('battle_vehicle') or get_vehicle_by_inventory_id(
         sess.get('battle_vehicle_inv_id', 1))
     veh_compact = (battle_vehicle or {}).get('compactDescr') or get_vehicle_compact_descr()
-    arena_type_id = sess.get('battle_arena_type_id') or ARENA_TYPE_KARELIA
-    if arena_type_id not in ARENA_GEOMETRY_PATH:
-        arena_type_id = ARENA_TYPE_KARELIA
+    arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
+    sess['battle_arena_type_id'] = arena_type_id
     spawn_pos = pick_spawn_pos(arena_type_id, sess)
     init_battle_state(sess, spawn_pos)
     spawn_yaw = sess.get('battle_yaw', 0.0)
@@ -2593,7 +2605,9 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     sess['avatar_ready_sent'] = True
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = sess.get('battle_yaw', 0.0)
-    initial_target = (pos[0], pos[1] + 2.0, pos[2] + 100.0)
+    initial_target = (pos[0] + math.sin(yaw) * 100.0,
+                      pos[1] + 2.0,
+                      pos[2] + math.cos(yaw) * 100.0)
     msgs = b''
     msgs += build_avatar_update_arena(ARENA_UPDATE_AVATAR_READY, PLAYER_VEHICLE_ID)
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
@@ -2793,12 +2807,24 @@ def ray_miss_distance(shot_pos, shot_vec, point):
     dy = point[1] - shot_pos[1]
     dz = point[2] - shot_pos[2]
     distance = dx * shot_vec[0] + dy * shot_vec[1] + dz * shot_vec[2]
-    if distance < 0.0 or distance > 720.0:
+    if distance < 0.0 or distance > SHOT_TRACE_DISTANCE:
         return None
     miss_x = dx - shot_vec[0] * distance
     miss_y = dy - shot_vec[1] * distance
     miss_z = dz - shot_vec[2] * distance
     return distance, math.sqrt(miss_x * miss_x + miss_y * miss_y + miss_z * miss_z)
+
+
+def target_point_ray_distance(shot_pos, shot_vec, target_pos):
+    if target_pos is None:
+        return None
+    dx = float(target_pos[0]) - shot_pos[0]
+    dy = float(target_pos[1]) - shot_pos[1]
+    dz = float(target_pos[2]) - shot_pos[2]
+    distance = dx * shot_vec[0] + dy * shot_vec[1] + dz * shot_vec[2]
+    if distance < 0.0:
+        return None
+    return distance
 
 
 def aim_point_miss(target_pos, center):
@@ -2818,6 +2844,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     source_team = source_sess.get('battle_team')
     match_id = source_sess.get('battle_match_id')
     target_pos = source_sess.get('battle_target_pos')
+    target_ray_distance = target_point_ray_distance(shot_pos, shot_vec, target_pos)
     best = None
     with battle_lock:
         candidates = list(active_battle_accounts.values())
@@ -2856,6 +2883,9 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 distance, miss = ray_hit
                 if aim_miss is not None:
                     miss = min(miss, aim_miss)
+            if (target_ray_distance is not None and
+                    distance > target_ray_distance + SHOT_TARGET_OVERSHOOT):
+                continue
             if best_miss is None or miss < best_miss:
                 best_distance = distance
                 best_miss = miss
@@ -3133,7 +3163,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
             veh_inv_id = 1
         sess['battle_vehicle_inv_id'] = veh_inv_id
         sess['battle_vehicle'] = vehicle
-        sess['battle_arena_type_id'] = arena_type_id if arena_type_id else ARENA_TYPE_KARELIA
+        sess['battle_arena_type_id'] = normalize_arena_type_id(arena_type_id)
         sess['battle_queue_type'] = queue_type
         sess['battle_id'] = store_battle_entry(sess['battle_arena_type_id'],
                                                sess.get('account_id') or 0,
