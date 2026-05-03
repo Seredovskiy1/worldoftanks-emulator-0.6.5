@@ -510,6 +510,7 @@ AVATAR_UPDATE_OWN_POSITION_MSG_ID   = 0x89
 AVATAR_SHOW_TRACER_MSG_ID           = 0x8c
 AVATAR_STOP_TRACER_MSG_ID           = 0x8d
 AVATAR_EXPLODE_PROJECTILE_MSG_ID    = 0x8e
+AVATAR_ON_VEHICLE_LEFT_ARENA_MSG_ID = 0x91
 VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
@@ -1197,12 +1198,15 @@ def build_account_event_noargs(msg_id: int) -> bytes:
 ARENA_GUI_TYPE_RANDOM = 1
 ARENA_PERIOD_PREBATTLE = 2
 ARENA_PERIOD_BATTLE = 3
+ARENA_PERIOD_AFTERBATTLE = 4
 ARENA_UPDATE_VEHICLE_LIST = 1
 ARENA_UPDATE_VEHICLE_ADDED = 2
 ARENA_UPDATE_PERIOD = 3
 ARENA_UPDATE_STATISTICS = 4
 ARENA_UPDATE_VEHICLE_STATISTICS = 5
+ARENA_UPDATE_VEHICLE_KILLED = 6
 ARENA_UPDATE_AVATAR_READY = 7
+BATTLE_FINISH_REASON_EXTERMINATION = 1
 # Arena type IDs Р· res/scripts/arena_defs/_list_.xml:
 #   1=01_karelia, 2=02_malinovka, 4=04_himmelsdorf, 5=05_prohorovka,
 #   6=06_ensk, 7=07_lakeville, 8=08_ruinberg, 10=10_hills, 11=11_murovanka,
@@ -1227,10 +1231,21 @@ BATTLE_ROT_DECELERATION = 5.5
 BATTLE_MIN_TURN_FACTOR = 0.7
 REMOTE_GUN_PITCH_SCALE = 0.35
 REMOTE_GUN_PITCH_LIMIT = math.radians(12.0)
+SHOT_TRACE_DISTANCE = 1200.0
+TARGET_MARKER_OCCLUSION_MAX_AGE = 3.0
+CLIENT_POSITION_MAX_AGE = 0.75
+CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = 80.0
+SHOT_TANK_CENTER_HEIGHT = 1.3
+SHOT_TANK_HALF_LENGTH = 5.2
+SHOT_TANK_HALF_WIDTH = 2.4
+SHOT_TANK_MIN_HEIGHT = 0.15
+SHOT_TANK_MAX_HEIGHT = 3.8
+SHOT_TANK_HIT_RADIUS_H = 6.5
+SHOT_TANK_HIT_RADIUS_V = 25.0
 TARGET_HIT_RADIUS = 8.0
-TARGET_AIM_RADIUS = 8.0
-SHOT_TRACE_DISTANCE = 720.0
-SHOT_TARGET_OVERSHOOT = 5.5
+SHOT_TARGET_OVERSHOOT = 10.0
+STATIC_OBSTACLE_RADIUS_PAD = 2.0
+STATIC_OBSTACLE_TARGET_GAP = 8.0
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -1300,6 +1315,10 @@ ARENA_SPAWN_POS = {
     37: (-350.0, 80.0, -350.0),
     38: (-350.0, 80.0, -350.0),
 }
+
+KARELIA_STONE_MODEL_RE = re.compile(
+    rb'content/Environment/[^\x00]{0,160}Stones[^\x00]{0,160}\.modelx?')
+STATIC_OBSTACLE_CACHE = {}
 
 
 def normalize_arena_type_id(arena_type_id) -> int:
@@ -1876,8 +1895,57 @@ def get_display_team(observer_sess: dict, subject_sess: dict) -> int:
     return 1 if observer_team == subject_team else 2
 
 
+def is_recent_client_vehicle_position(sess: dict) -> bool:
+    if sess.get('client_vehicle_pos') is None:
+        return False
+    last = float(sess.get('client_vehicle_last_update_time', 0.0))
+    return time.time() - last <= CLIENT_POSITION_MAX_AGE
+
+
+def get_effective_vehicle_pos(sess: dict, fallback=None):
+    if is_recent_client_vehicle_position(sess):
+        return sess.get('client_vehicle_pos')
+    pos = sess.get('battle_pos')
+    if pos is not None:
+        return pos
+    if fallback is not None:
+        return fallback
+    return ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]
+
+
+def record_client_vehicle_position(sess: dict, pos, yaw: float):
+    prev = sess.get('client_vehicle_pos')
+    now = time.time()
+    if prev is not None:
+        dx = pos[0] - prev[0]
+        dy = pos[1] - prev[1]
+        dz = pos[2] - prev[2]
+        if dx * dx + dy * dy + dz * dz > 0.0001:
+            sess['client_vehicle_last_move_time'] = now
+    sess['client_vehicle_pos'] = pos
+    sess['client_vehicle_yaw'] = yaw
+    sess['client_vehicle_last_update_time'] = now
+    if not sess.get('server_vehicle_authoritative', True):
+        sess['battle_prev_pos'] = sess.get('battle_pos', pos)
+        sess['battle_pos'] = pos
+        sess['battle_yaw'] = yaw
+
+
+def is_plausible_avatar_vehicle_position(sess: dict, pos) -> bool:
+    base = sess.get('client_vehicle_pos') or sess.get('battle_pos')
+    if base is None:
+        return True
+    dx = float(pos[0]) - float(base[0])
+    dy = float(pos[1]) - float(base[1])
+    dz = float(pos[2]) - float(base[2])
+    return dx * dx + dy * dy + dz * dz <= CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA * CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA
+
+
 def get_remote_vehicle_angles(remote_sess: dict):
-    yaw = float(remote_sess.get('battle_yaw', 0.0))
+    if is_recent_client_vehicle_position(remote_sess):
+        yaw = float(remote_sess.get('client_vehicle_yaw', remote_sess.get('battle_yaw', 0.0)))
+    else:
+        yaw = float(remote_sess.get('battle_yaw', 0.0))
     turret_yaw = float(remote_sess.get('battle_turret_yaw', yaw))
     gun_pitch = -float(remote_sess.get('battle_gun_pitch', 0.0))
     gun_pitch = clamp(gun_pitch * REMOTE_GUN_PITCH_SCALE,
@@ -1896,7 +1964,8 @@ def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> byt
     veh_compact = (remote_vehicle or {}).get('compactDescr') or get_vehicle_compact_descr()
     remote_id = get_remote_vehicle_id(remote_sess)
     remote_name = remote_sess.get('username') or 'player'
-    remote_pos = remote_sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    remote_pos = get_effective_vehicle_pos(
+        remote_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     remote_yaw, remote_gun_pitch, remote_turret_yaw = get_remote_vehicle_angles(remote_sess)
     display_team = get_display_team(observer_sess, remote_sess)
     veh_info = (
@@ -1957,7 +2026,8 @@ def broadcast_remote_vehicle_position(sock, source_sess: dict, force: bool = Fal
     source_sess['last_remote_broadcast'] = now
     source_account_id = source_sess.get('account_id')
     remote_id = get_remote_vehicle_id(source_sess)
-    pos = source_sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    pos = get_effective_vehicle_pos(
+        source_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw, gun_pitch, turret_yaw = get_remote_vehicle_angles(source_sess)
     update_msg = build_vehicle_motion_update_for(remote_id, pos, yaw,
                                                  gun_pitch, turret_yaw)
@@ -2012,7 +2082,10 @@ def start_battle_tick_loop(sock):
                     source_account_id = sess.get('account_id')
                     remote_id = get_remote_vehicle_id(sess)
                     _yaw, gun_pitch, turret_yaw = get_remote_vehicle_angles(sess)
-                    remote_msg = build_vehicle_motion_update_for(remote_id, pos, yaw,
+                    remote_pos = get_effective_vehicle_pos(sess, pos)
+                    if is_recent_client_vehicle_position(sess):
+                        yaw = float(sess.get('client_vehicle_yaw', yaw))
+                    remote_msg = build_vehicle_motion_update_for(remote_id, remote_pos, yaw,
                                                                  gun_pitch, turret_yaw)
                     for observer in sessions:
                         if observer is sess or not observer.get('addr'):
@@ -2168,6 +2241,17 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_shells_fired'] = {}
     sess['battle_last_shot_time'] = 0.0
     sess['battle_shot_id'] = 1
+    sess['battle_shots'] = 0
+    sess['battle_hits'] = 0
+    sess['battle_shots_received'] = 0
+    sess['battle_damage_dealt'] = 0
+    sess['battle_damage_received'] = 0
+    sess['battle_damaged_vehicle_ids'] = set()
+    sess['battle_killed_vehicle_ids'] = set()
+    sess['battle_spotted_vehicle_ids'] = set()
+    sess['battle_frags'] = 0
+    sess['battle_killer_account_id'] = 0
+    sess['battle_ended'] = False
     sess['avatar_ready_sent'] = False
     sess['battle_period_timer_started'] = False
 
@@ -2299,6 +2383,9 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
         pos, yaw, _pitch, _roll = decoded
         sess['avatar_pos'] = pos
         sess['avatar_yaw'] = yaw
+        if (sess.get('battle_bundle_sent') and
+                is_plausible_avatar_vehicle_position(sess, pos)):
+            record_client_vehicle_position(sess, pos, yaw)
         return True
 
     if msg_id == 3:
@@ -2307,6 +2394,9 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
         pos, yaw, _pitch, _roll = decode_client_coord_ypr(payload, 8)
         sess['avatar_pos'] = pos
         sess['avatar_yaw'] = yaw
+        if (sess.get('battle_bundle_sent') and
+                is_plausible_avatar_vehicle_position(sess, pos)):
+            record_client_vehicle_position(sess, pos, yaw)
         return True
 
     if msg_id == 4:
@@ -2318,19 +2408,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             return False
         pos, yaw, _pitch, _roll = decoded
         if ward_id == PLAYER_VEHICLE_ID:
-            prev = sess.get('client_vehicle_pos')
-            if prev is not None:
-                dx = pos[0] - prev[0]
-                dy = pos[1] - prev[1]
-                dz = pos[2] - prev[2]
-                if dx * dx + dy * dy + dz * dz > 0.0001:
-                    sess['client_vehicle_last_move_time'] = time.time()
-            sess['client_vehicle_pos'] = pos
-            sess['client_vehicle_last_update_time'] = time.time()
-            if not sess.get('server_vehicle_authoritative', True):
-                sess['battle_prev_pos'] = sess.get('battle_pos', pos)
-                sess['battle_pos'] = pos
-                sess['battle_yaw'] = yaw
+            record_client_vehicle_position(sess, pos, yaw)
             count = sess.get('client_vehicle_update_count', 0) + 1
             sess['client_vehicle_update_count'] = count
             if count % 100 == 1:
@@ -2348,19 +2426,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             return False
         pos, yaw, _pitch, _roll = decoded
         if ward_id == PLAYER_VEHICLE_ID:
-            prev = sess.get('client_vehicle_pos')
-            if prev is not None:
-                dx = pos[0] - prev[0]
-                dy = pos[1] - prev[1]
-                dz = pos[2] - prev[2]
-                if dx * dx + dy * dy + dz * dz > 0.0001:
-                    sess['client_vehicle_last_move_time'] = time.time()
-            sess['client_vehicle_pos'] = pos
-            sess['client_vehicle_last_update_time'] = time.time()
-            if not sess.get('server_vehicle_authoritative', True):
-                sess['battle_prev_pos'] = sess.get('battle_pos', pos)
-                sess['battle_pos'] = pos
-                sess['battle_yaw'] = yaw
+            record_client_vehicle_position(sess, pos, yaw)
         return True
 
     return False
@@ -2375,7 +2441,8 @@ def normalize_vec(vec):
 
 
 def build_targeting_for_point(sess: dict, target_pos):
-    pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    pos = get_effective_vehicle_pos(
+        sess, sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
     shot_pos = (pos[0], pos[1] + 2.0, pos[2])
     now = time.time()
     dx = target_pos[0] - shot_pos[0]
@@ -2405,6 +2472,7 @@ def build_targeting_for_point(sess: dict, target_pos):
     sess['battle_turret_yaw'] = turret_yaw
     sess['battle_gun_pitch'] = gun_pitch
     sess['battle_target_pos'] = tuple(float(v) for v in target_pos)
+    sess['battle_target_pos_time'] = now
     sess['battle_shot_pos'] = shot_pos
     sess['battle_shot_vec'] = shot_vec
     return (
@@ -2720,9 +2788,12 @@ def build_vehicle_shot_messages(sess: dict):
     speed = float(shell.get('speed', 800.0))
     gravity = float(shell.get('gravity', 9.81))
     effects_index = int(shell.get('effectsIndex', 0))
-    pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    pos = get_effective_vehicle_pos(
+        sess, sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
     shot_pos = (pos[0], pos[1] + 2.0, pos[2])
     target_pos = sess.get('battle_target_pos')
+    sess['battle_last_shot_target_pos'] = tuple(float(v) for v in target_pos) if target_pos is not None else None
+    sess['battle_last_shot_target_pos_time'] = sess.get('battle_target_pos_time', 0.0)
     if target_pos is not None:
         shot_vec = ballistic_shot_vec(shot_pos, target_pos, speed, gravity)
     else:
@@ -2730,6 +2801,7 @@ def build_vehicle_shot_messages(sess: dict):
     velocity = (shot_vec[0] * speed, shot_vec[1] * speed, shot_vec[2] * speed)
     shot_id = int(sess.get('battle_shot_id', 1))
     sess['battle_shot_id'] = shot_id + 1
+    sess['battle_shots'] = int(sess.get('battle_shots', 0)) + 1
     sess['battle_reload_until'] = now + reload_time
     sess['battle_last_shot_info'] = (
         shot_id, shot_pos, velocity, gravity, effects_index)
@@ -2815,16 +2887,127 @@ def ray_miss_distance(shot_pos, shot_vec, point):
     return distance, math.sqrt(miss_x * miss_x + miss_y * miss_y + miss_z * miss_z)
 
 
-def target_point_ray_distance(shot_pos, shot_vec, target_pos):
-    if target_pos is None:
+def marker_vehicle_box_score(marker_pos, pos, yaw):
+    dx = float(marker_pos[0]) - float(pos[0])
+    dy = float(marker_pos[1]) - float(pos[1])
+    dz = float(marker_pos[2]) - float(pos[2])
+    sin_yaw = math.sin(float(yaw))
+    cos_yaw = math.cos(float(yaw))
+    local_x = dx * cos_yaw - dz * sin_yaw
+    local_z = dx * sin_yaw + dz * cos_yaw
+    if abs(local_x) > SHOT_TANK_HALF_WIDTH:
         return None
-    dx = float(target_pos[0]) - shot_pos[0]
-    dy = float(target_pos[1]) - shot_pos[1]
-    dz = float(target_pos[2]) - shot_pos[2]
-    distance = dx * shot_vec[0] + dy * shot_vec[1] + dz * shot_vec[2]
-    if distance < 0.0:
+    if abs(local_z) > SHOT_TANK_HALF_LENGTH:
         return None
-    return distance
+    if dy < SHOT_TANK_MIN_HEIGHT or dy > SHOT_TANK_MAX_HEIGHT:
+        return None
+    return abs(local_x) + abs(local_z) * 0.25 + abs(dy - SHOT_TANK_CENTER_HEIGHT) * 0.2
+
+
+def signed_chunk_coord(value: str) -> int:
+    coord = int(value, 16)
+    return coord - 0x10000 if coord >= 0x8000 else coord
+
+
+def find_client_space_dir(arena_type_id: int):
+    geometry = ARENA_GEOMETRY_PATH.get(arena_type_id)
+    if not geometry:
+        return None
+    relative = geometry.decode('ascii', 'ignore').strip('/').replace('/', os.sep)
+    roots = [
+        os.environ.get('WOT_CLIENT_ROOT'),
+        r'C:\Users\qwerty\Desktop\World_of_Tanks',
+    ]
+    for root in roots:
+        if not root:
+            continue
+        path = os.path.join(root, 'res', relative)
+        if os.path.isdir(path):
+            return path
+    return None
+
+
+def stone_obstacle_radius(model_path: bytes) -> float:
+    name = model_path.lower()
+    if b'stones5' in name or b'stones7' in name:
+        return 14.0
+    if b'stones1' in name or b'stones4' in name:
+        return 12.0
+    if b'stones2' in name:
+        return 11.0
+    return 10.0
+
+
+def load_static_obstacles_for_arena(arena_type_id: int):
+    arena_type_id = normalize_arena_type_id(arena_type_id)
+    if arena_type_id in STATIC_OBSTACLE_CACHE:
+        return STATIC_OBSTACLE_CACHE[arena_type_id]
+    obstacles = []
+    if arena_type_id == ARENA_TYPE_KARELIA:
+        space_dir = find_client_space_dir(arena_type_id)
+        if space_dir:
+            for name in os.listdir(space_dir):
+                if not name.endswith('.chunk') or len(name) < 14:
+                    continue
+                stem = os.path.splitext(name)[0]
+                if len(stem) < 9 or not stem.endswith('o'):
+                    continue
+                try:
+                    chunk_x = signed_chunk_coord(stem[:4])
+                    chunk_z = signed_chunk_coord(stem[4:8])
+                    with open(os.path.join(space_dir, name), 'rb') as fh:
+                        data = fh.read()
+                except (OSError, ValueError):
+                    continue
+                for match in KARELIA_STONE_MODEL_RE.finditer(data):
+                    offset = match.end()
+                    if offset + 48 > len(data):
+                        continue
+                    values = struct.unpack_from('<12f', data, offset)
+                    local_x, local_y, local_z = values[9], values[10], values[11]
+                    if not (-80.0 <= local_x <= 180.0 and
+                            -80.0 <= local_z <= 180.0 and
+                            -20.0 <= local_y <= 120.0):
+                        continue
+                    x = chunk_x * 100.0 + local_x
+                    z = chunk_z * 100.0 + local_z
+                    radius = stone_obstacle_radius(match.group()) + STATIC_OBSTACLE_RADIUS_PAD
+                    if any((x - other[0]) ** 2 + (z - other[2]) ** 2 < 4.0
+                           for other in obstacles):
+                        continue
+                    obstacles.append((x, local_y, z, radius))
+    STATIC_OBSTACLE_CACHE[arena_type_id] = obstacles
+    if obstacles:
+        print(f"    [battle] loaded {len(obstacles)} static obstacle(s) for arenaType={arena_type_id}")
+    return obstacles
+
+
+def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
+                            target_gap: float = STATIC_OBSTACLE_TARGET_GAP):
+    horizontal = shot_vec[0] * shot_vec[0] + shot_vec[2] * shot_vec[2]
+    if horizontal <= 0.000001:
+        return None
+    arena_type_id = int(source_sess.get('battle_arena_type_id') or ARENA_TYPE_KARELIA)
+    best = None
+    for x, y, z, radius in load_static_obstacles_for_arena(arena_type_id):
+        dx = x - shot_pos[0]
+        dz = z - shot_pos[2]
+        distance = (dx * shot_vec[0] + dz * shot_vec[2]) / horizontal
+        if distance <= -radius or distance - radius >= hit_distance - target_gap:
+            continue
+        closest_x = shot_pos[0] + shot_vec[0] * distance
+        closest_z = shot_pos[2] + shot_vec[2] * distance
+        miss_x = x - closest_x
+        miss_z = z - closest_z
+        if miss_x * miss_x + miss_z * miss_z > radius * radius:
+            continue
+        ray_y = shot_pos[1] + shot_vec[1] * distance
+        if ray_y < y - 6.0 or ray_y > y + 24.0:
+            continue
+        score = (distance, x, y, z, radius)
+        if best is None or score[0] < best[0]:
+            best = score
+    return best
 
 
 def aim_point_miss(target_pos, center):
@@ -2839,15 +3022,44 @@ def aim_point_miss(target_pos, center):
     return None
 
 
+def is_target_marker_fresh(source_sess: dict, marker_time=None) -> bool:
+    last = float(source_sess.get('battle_target_pos_time', 0.0) if marker_time is None else marker_time)
+    return last > 0.0 and time.time() - last <= TARGET_MARKER_OCCLUSION_MAX_AGE
+
+
+def marker_blocks_shot(source_sess: dict, target_ray_distance, hit_distance,
+                       marker_time=None, ray_miss=None, aim_miss=None) -> bool:
+    if target_ray_distance is None:
+        return False
+    if not is_target_marker_fresh(source_sess, marker_time):
+        return False
+    if aim_miss is not None:
+        return False
+    if ray_miss is not None and ray_miss <= TARGET_HIT_RADIUS:
+        return False
+    return hit_distance > target_ray_distance + SHOT_TARGET_OVERSHOOT
+
+
 def find_shot_target(source_sess: dict, shot_pos, shot_vec):
+    """Hit detection: trust the client's trackPointWithGun marker.
+    If a live enemy tank center is within SHOT_TANK_HIT_RADIUS_H/V of the
+    shot-time marker, it's a hit.  shot_vec is unused (kept for compat)."""
     source_account_id = source_sess.get('account_id')
     source_team = source_sess.get('battle_team')
     match_id = source_sess.get('battle_match_id')
-    target_pos = source_sess.get('battle_target_pos')
-    target_ray_distance = target_point_ray_distance(shot_pos, shot_vec, target_pos)
-    best = None
+
+    marker_pos = source_sess.get('battle_last_shot_target_pos')
+    marker_time = source_sess.get('battle_last_shot_target_pos_time',
+                                  source_sess.get('battle_target_pos_time', 0.0))
+    if marker_pos is None or not is_target_marker_fresh(source_sess, marker_time):
+        print("    [shot] miss: no fresh client aim marker")
+        return None
+
     with battle_lock:
         candidates = list(active_battle_accounts.values())
+
+    best_target = None
+    best_h = None
     for target in candidates:
         if target.get('account_id') == source_account_id:
             continue
@@ -2865,36 +3077,48 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
         ))
         if not positions:
             continue
-        best_distance = None
-        best_miss = None
         for pos in positions:
-            center = (pos[0], pos[1] + 1.3, pos[2])
-            ray_hit = ray_miss_distance(shot_pos, shot_vec, center)
-            aim_miss = aim_point_miss(target_pos, center)
-            if ray_hit is None and aim_miss is None:
+            center = (float(pos[0]), float(pos[1]) + SHOT_TANK_CENTER_HEIGHT, float(pos[2]))
+            dx = center[0] - float(marker_pos[0])
+            dz = center[2] - float(marker_pos[2])
+            horizontal = math.sqrt(dx * dx + dz * dz)
+            vertical = abs(center[1] - float(marker_pos[1]))
+            if horizontal > SHOT_TANK_HIT_RADIUS_H or vertical > SHOT_TANK_HIT_RADIUS_V:
                 continue
-            if ray_hit is None:
-                dx = center[0] - shot_pos[0]
-                dy = center[1] - shot_pos[1]
-                dz = center[2] - shot_pos[2]
-                distance = math.sqrt(dx * dx + dy * dy + dz * dz)
-                miss = aim_miss
-            else:
-                distance, miss = ray_hit
-                if aim_miss is not None:
-                    miss = min(miss, aim_miss)
-            if (target_ray_distance is not None and
-                    distance > target_ray_distance + SHOT_TARGET_OVERSHOOT):
+            if best_target is None or horizontal < best_h:
+                best_target = target
+                best_h = horizontal
+
+    if best_target is None:
+        print(f"    [shot] miss: no tank near client aim marker")
+        print(f"    [shot] debug: marker_pos={marker_pos} marker_time={marker_time:.3f} age={time.time()-marker_time:.3f}")
+        print(f"    [shot] debug: candidates={len(candidates)} match_id={match_id} source_team={source_team}")
+        for target in candidates:
+            if target.get('account_id') == source_account_id:
                 continue
-            if best_miss is None or miss < best_miss:
-                best_distance = distance
-                best_miss = miss
-        if best_miss is None or best_miss > TARGET_HIT_RADIUS:
-            continue
-        score = (best_distance, best_miss)
-        if best is None or score < best[0]:
-            best = (score, target)
-    return best[1] if best else None
+            if target.get('battle_match_id') != match_id:
+                continue
+            if source_team is not None and target.get('battle_team') == source_team:
+                continue
+            health = int(target.get('battle_vehicle_health') or 0)
+            if health <= 0:
+                continue
+            positions = unique_positions((
+                target.get('battle_pos'),
+                target.get('battle_prev_pos'),
+                target.get('client_vehicle_pos'),
+            ))
+            uname = target.get('username') or 'bot'
+            for pos in positions:
+                center = (float(pos[0]), float(pos[1]) + SHOT_TANK_CENTER_HEIGHT, float(pos[2]))
+                dx = center[0] - float(marker_pos[0])
+                dz = center[2] - float(marker_pos[2])
+                horizontal = math.sqrt(dx * dx + dz * dz)
+                vertical = abs(center[1] - float(marker_pos[1]))
+                print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v={vertical:.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V={SHOT_TANK_HIT_RADIUS_V})")
+        return None
+    print(f"    [shot] hit: marker_h={best_h:.2f}m")
+    return best_target
 
 
 def build_health_update_for_viewer(viewer_sess: dict, target_sess: dict) -> bytes:
@@ -2934,6 +3158,296 @@ def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
           f"({max(0, int(target_sess.get('battle_vehicle_health') or 0))} left)")
 
 
+def viewer_vehicle_id(viewer_sess: dict, subject_sess: dict) -> int:
+    if viewer_sess is subject_sess:
+        return PLAYER_VEHICLE_ID
+    return get_remote_vehicle_id(subject_sess)
+
+
+def session_by_account_id(account_id, sessions):
+    for sess in sessions:
+        if sess.get('account_id') == account_id:
+            return sess
+    return None
+
+
+def build_battle_results_for_viewer(viewer_sess: dict, sessions) -> dict:
+    winner = bool(viewer_sess.get('battle_winner'))
+    killed = []
+    damaged = []
+    spotted = []
+    for account_id in viewer_sess.get('battle_killed_vehicle_ids', set()):
+        target = session_by_account_id(account_id, sessions)
+        if target is not None:
+            killed.append(viewer_vehicle_id(viewer_sess, target))
+    for account_id in viewer_sess.get('battle_damaged_vehicle_ids', set()):
+        target = session_by_account_id(account_id, sessions)
+        if target is not None:
+            damaged.append(viewer_vehicle_id(viewer_sess, target))
+    for account_id in viewer_sess.get('battle_spotted_vehicle_ids', set()):
+        target = session_by_account_id(account_id, sessions)
+        if target is not None:
+            spotted.append(viewer_vehicle_id(viewer_sess, target))
+    killer = session_by_account_id(viewer_sess.get('battle_killer_account_id'), sessions)
+    killer_id = viewer_vehicle_id(viewer_sess, killer) if killer is not None else 0
+    battle_start = float(viewer_sess.get('battle_start_wall',
+                                         viewer_sess.get('battle_launch_wall', time.time())))
+    life_time = max(0, int(time.time() - battle_start))
+    return {
+        'xp': 750 if winner else 250,
+        'credits': 3000 if winner else 1000,
+        'freeXP': 0,
+        'xpFactor': 1,
+        'repair': 0,
+        'health': int(viewer_sess.get('battle_vehicle_health') or 0),
+        'ammo': [],
+        'crewActivityFlags': [],
+        'vehicleID': PLAYER_VEHICLE_ID,
+        'arenaUniqueID': int(viewer_sess.get('battle_match_id') or 0),
+        'isWinner': winner,
+        'bonusType': 1,
+        'killerID': killer_id,
+        'damaged': damaged,
+        'killed': killed,
+        'killedTypeCompDescrs': [0 for _ in killed],
+        'spotted': spotted,
+        'shots': int(viewer_sess.get('battle_shots', 0)),
+        'hits': int(viewer_sess.get('battle_hits', 0)),
+        'damageDealt': int(viewer_sess.get('battle_damage_dealt', 0)),
+        'potentialDamageDealt': int(viewer_sess.get('battle_damage_dealt', 0)),
+        'shotsReceived': int(viewer_sess.get('battle_shots_received', 0)),
+        'damageReceived': int(viewer_sess.get('battle_damage_received', 0)),
+        'potentialDamageReceived': int(viewer_sess.get('battle_damage_received', 0)),
+        'capturePoints': 0,
+        'droppedCapturePoints': 0,
+        'lifeTime': life_time,
+        'arenaTypeID': normalize_arena_type_id(viewer_sess.get('battle_arena_type_id')),
+        'arenaCreateTime': int(viewer_sess.get('battle_launch_wall', time.time())),
+        'achieveIndices': [],
+        'heroVehicleIDs': [],
+        'epicAchievements': [],
+        'honorTitles': [],
+        'tkillRating': 0.0,
+        'tkillLog': [],
+        'xpPenalty': 0,
+        'creditsPenalty': 0,
+        'creditsContributionIn': 0,
+        'creditsContributionOut': 0,
+    }
+
+
+def pack_int32_array(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<i', int(value))
+    return out
+
+
+def pack_uint8_array(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<B', int(value) & 0xff)
+    return out
+
+
+def pack_uint32_array(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<I', int(value) & 0xffffffff)
+    return out
+
+
+def pack_bool_array(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<B', 1 if value else 0)
+    return out
+
+
+def pack_tkill_log(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<q', int(value.get('targetID', 0)))
+        out += struct.pack('<B', 1 if value.get('isKill') else 0)
+        out += struct.pack('<B', int(value.get('means', 0)) & 0xff)
+        out += struct.pack('<I', int(value.get('creditsContribution', 0)) & 0xffffffff)
+        out += struct.pack('<I', int(value.get('creditsPenalty', 0)) & 0xffffffff)
+        out += struct.pack('<I', int(value.get('xpPenalty', 0)) & 0xffffffff)
+    return out
+
+
+def pack_battle_results_ext(results: dict) -> bytes:
+    out = struct.pack('<B', 1)
+    out += struct.pack('<I', int(results.get('xp', 0)) & 0xffffffff)
+    out += struct.pack('<I', int(results.get('credits', 0)) & 0xffffffff)
+    out += struct.pack('<I', int(results.get('freeXP', 0)) & 0xffffffff)
+    out += struct.pack('<B', int(results.get('xpFactor', 1)) & 0xff)
+    out += struct.pack('<I', int(results.get('repair', 0)) & 0xffffffff)
+    out += struct.pack('<h', int(results.get('health', 0)))
+    out += pack_int32_array(results.get('ammo', []))
+    out += pack_bool_array(results.get('crewActivityFlags', []))
+    out += struct.pack('<i', int(results.get('vehicleID', 0)))
+    out += struct.pack('<Q', int(results.get('arenaUniqueID', 0)) & 0xffffffffffffffff)
+    out += struct.pack('<B', 1 if results.get('isWinner') else 0)
+    out += struct.pack('<B', int(results.get('bonusType', 1)) & 0xff)
+    out += struct.pack('<i', int(results.get('killerID', 0)))
+    out += pack_int32_array(results.get('killed', []))
+    out += pack_uint32_array(results.get('killedTypeCompDescrs', []))
+    out += pack_int32_array(results.get('damaged', []))
+    out += pack_int32_array(results.get('spotted', []))
+    out += struct.pack('<H', int(results.get('shots', 0)) & 0xffff)
+    out += struct.pack('<H', int(results.get('hits', 0)) & 0xffff)
+    out += struct.pack('<I', int(results.get('damageDealt', 0)) & 0xffffffff)
+    out += struct.pack('<I', int(results.get('potentialDamageDealt', 0)) & 0xffffffff)
+    out += struct.pack('<H', int(results.get('shotsReceived', 0)) & 0xffff)
+    out += struct.pack('<I', int(results.get('damageReceived', 0)) & 0xffffffff)
+    out += struct.pack('<I', int(results.get('potentialDamageReceived', 0)) & 0xffffffff)
+    out += struct.pack('<H', int(results.get('capturePoints', 0)) & 0xffff)
+    out += struct.pack('<H', int(results.get('droppedCapturePoints', 0)) & 0xffff)
+    out += struct.pack('<H', int(results.get('lifeTime', 0)) & 0xffff)
+    out += struct.pack('<I', int(results.get('arenaTypeID', ARENA_TYPE_KARELIA)) & 0xffffffff)
+    out += struct.pack('<I', int(results.get('arenaCreateTime', 0)) & 0xffffffff)
+    out += pack_uint8_array(results.get('achieveIndices', []))
+    out += pack_int32_array(results.get('heroVehicleIDs', []))
+    out += pack_uint8_array(results.get('epicAchievements', []))
+    out += pack_uint32_array(results.get('honorTitles', []))
+    out += struct.pack('<f', float(results.get('tkillRating', 0.0)))
+    out += pack_tkill_log(results.get('tkillLog', []))
+    out += struct.pack('<i', int(results.get('xpPenalty', 0)))
+    out += struct.pack('<i', int(results.get('creditsPenalty', 0)))
+    out += struct.pack('<i', int(results.get('creditsContributionIn', 0)))
+    out += struct.pack('<i', int(results.get('creditsContributionOut', 0)))
+    return out
+
+
+def build_avatar_on_vehicle_left_arena(is_active_vehicle: bool,
+                                       veh_inv_id: int,
+                                       results: dict) -> bytes:
+    em = struct.pack('<I', AVATAR_ENTITY_ID)
+    em += struct.pack('<B', 1 if is_active_vehicle else 0)
+    em += struct.pack('<i', int(veh_inv_id))
+    em += pack_battle_results_ext(results)
+    return msg_varlen(AVATAR_ON_VEHICLE_LEFT_ARENA_MSG_ID, em)
+
+
+def send_delayed_battle_results(sock, viewer_sess: dict, sessions,
+                                winner_display_team: int, reason: int,
+                                period_end_time: int):
+    addr = viewer_sess.get('addr')
+    if not addr:
+        return
+    results = build_battle_results_for_viewer(viewer_sess, sessions)
+    msg = build_avatar_on_vehicle_left_arena(
+        True,
+        int(viewer_sess.get('battle_vehicle_inv_id') or 0),
+        results)
+    send_avatar_messages(sock, addr, viewer_sess, msg,
+                         "Battle results",
+                         reliable=True)
+    send_afterbattle_period(sock, viewer_sess, winner_display_team,
+                            reason, period_end_time)
+
+
+def send_afterbattle_period(sock, viewer_sess: dict, winner_display_team: int,
+                            reason: int, period_end_time: int):
+    addr = viewer_sess.get('addr')
+    if not addr:
+        return
+    msg = build_avatar_update_arena(
+        ARENA_UPDATE_PERIOD,
+        (ARENA_PERIOD_AFTERBATTLE, period_end_time, 30,
+         (winner_display_team, reason)))
+    send_avatar_messages(sock, addr, viewer_sess, msg,
+                         "Avatar.updateArena(PERIOD=AFTERBATTLE)",
+                         reliable=True)
+
+
+def send_afterbattle_music_nudge(sock, viewer_sess: dict,
+                                 winner_display_team: int, reason: int,
+                                 period_end_time: int):
+    addr = viewer_sess.get('addr')
+    if not addr:
+        return
+    now = current_server_time(viewer_sess)
+    msg = build_avatar_update_arena(
+        ARENA_UPDATE_PERIOD,
+        (ARENA_PERIOD_BATTLE, now + 1, 1, None))
+    send_avatar_messages(sock, addr, viewer_sess, msg,
+                         "Avatar.updateArena(PERIOD=BATTLE music nudge)",
+                         reliable=True)
+    timer = threading.Timer(
+        0.2,
+        lambda: send_afterbattle_period(sock, viewer_sess,
+                                        winner_display_team, reason,
+                                        period_end_time))
+    timer.daemon = True
+    timer.start()
+
+
+def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
+    match_id = source_sess.get('battle_match_id')
+    with battle_lock:
+        sessions = [sess for sess in active_battle_accounts.values()
+                    if sess.get('battle_match_id') == match_id]
+    if not sessions or any(sess.get('battle_ended') for sess in sessions):
+        return
+    alive_teams = set()
+    for sess in sessions:
+        if int(sess.get('battle_vehicle_health') or 0) > 0:
+            alive_teams.add(sess.get('battle_team'))
+    if len(alive_teams) > 1:
+        return
+    winner_team = next(iter(alive_teams), source_sess.get('battle_team'))
+    now = current_server_time(source_sess)
+    victim_account_id = target_sess.get('account_id')
+    killer_account_id = source_sess.get('account_id')
+    source_sess['battle_frags'] = int(source_sess.get('battle_frags', 0)) + 1
+    source_sess.setdefault('battle_killed_vehicle_ids', set()).add(victim_account_id)
+    target_sess['battle_killer_account_id'] = killer_account_id
+    for sess in sessions:
+        sess['battle_ended'] = True
+        sess['battle_period_active'] = False
+        sess['battle_motion_flags'] = 0
+        sess['battle_speed'] = 0.0
+        sess['battle_rspeed'] = 0.0
+        sess['battle_winner'] = sess.get('battle_team') == winner_team
+    for viewer in sessions:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        victim_id = viewer_vehicle_id(viewer, target_sess)
+        killer_id = viewer_vehicle_id(viewer, source_sess)
+        winner_display_team = 1 if viewer.get('battle_team') == winner_team else 2
+        msgs = b''
+        msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_KILLED,
+                                          (victim_id, killer_id, 0))
+        msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_STATISTICS,
+                                          (killer_id, int(source_sess.get('battle_frags', 0))))
+        msgs += build_avatar_update_arena(
+            ARENA_UPDATE_PERIOD,
+            (ARENA_PERIOD_AFTERBATTLE, now + 30, 30,
+             (winner_display_team, BATTLE_FINISH_REASON_EXTERMINATION)))
+        send_avatar_messages(sock, addr, viewer, msgs,
+                             "Battle finished",
+                             reliable=True)
+        period_timer = threading.Timer(
+            0.75,
+            lambda v=viewer, w=winner_display_team, t=now + 30:
+                send_afterbattle_music_nudge(sock, v, w,
+                                             BATTLE_FINISH_REASON_EXTERMINATION, t))
+        period_timer.daemon = True
+        period_timer.start()
+        timer_sessions = list(sessions)
+        timer = threading.Timer(
+            1.5,
+            lambda v=viewer, ss=timer_sessions, w=winner_display_team, t=now + 30:
+                send_delayed_battle_results(sock, v, ss, w,
+                                            BATTLE_FINISH_REASON_EXTERMINATION, t))
+        timer.daemon = True
+        timer.start()
+    print(f"    [battle] finished match={match_id} winnerTeam={winner_team}")
+
+
 def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
     target = find_shot_target(source_sess, shot_pos, shot_vec)
     if target is None:
@@ -2943,12 +3457,23 @@ def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
     if health <= 0:
         return None, 0
     damage = min(health, get_shell_damage(shell))
+    source_sess['battle_hits'] = int(source_sess.get('battle_hits', 0)) + 1
+    source_sess['battle_damage_dealt'] = int(source_sess.get(
+        'battle_damage_dealt', 0)) + damage
+    source_sess.setdefault('battle_damaged_vehicle_ids', set()).add(target.get('account_id'))
+    target['battle_shots_received'] = int(target.get('battle_shots_received', 0)) + 1
+    target['battle_damage_received'] = int(target.get(
+        'battle_damage_received', 0)) + damage
     target['battle_vehicle_health'] = max(0, health - damage)
     broadcast_vehicle_health(sock, target, source_sess, damage)
+    if target['battle_vehicle_health'] <= 0:
+        finish_battle_if_needed(sock, source_sess, target)
     return target, damage
 
 
 def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
+    if sess.get('battle_ended'):
+        return True
     msgs, reload_time, shell_cd, fired = build_vehicle_shot_messages(sess)
     if not fired:
         if log_blocked:
@@ -3417,16 +3942,24 @@ def handle_baseapp(sock):
 
             # Р‘СѓРґСЊ-СЏРєРёР№ РЅР°СЃС‚СѓРїРЅРёР№ РїР°РєРµС‚ РїС–СЃР»СЏ init вЂ“ РґР°РјРїРёРјРѕ + РІС–РґРїРѕРІС–РґР°С”РјРѕ
             # РЅР° exposed Account base-methods (doCmdStr/Int3/Int4/Int2Str/IntArr).
+            deferred_avatar_shots = []
             for m, p, _ in messages:
                 if m in movement_msg_ids:
                     continue
                 if m not in high_rate_battle_msg_ids:
                     print(f"    [post-init] msg=0x{m:02x} payload={p.hex()}")
+                if (sess_for_addr.get('battle_bundle_sent') and
+                        m in AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS and
+                        len(p) == 0):
+                    deferred_avatar_shots.append((m, p))
+                    continue
                 if sess_for_addr.get('battle_bundle_sent') and m in AVATAR_BASE_METHODS:
                     if handle_avatar_base_method(sock, addr, sess_for_addr, m, p):
                         continue
                 if m in ACCOUNT_DOCMD_MSG_IDS:
                     handle_account_doCmd(sock, addr, sess_for_addr, m, p)
+            for m, p in deferred_avatar_shots:
+                handle_avatar_base_method(sock, addr, sess_for_addr, m, p)
             return
 
         print(f"[!!!] BaseApp РїР°РєРµС‚ MsgID=0x{msg_id:02x} ({len(body)}B): {body.hex()}")
