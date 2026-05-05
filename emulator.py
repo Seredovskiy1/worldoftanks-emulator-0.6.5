@@ -1241,11 +1241,15 @@ SHOT_TANK_HALF_WIDTH = 2.4
 SHOT_TANK_MIN_HEIGHT = 0.15
 SHOT_TANK_MAX_HEIGHT = 3.8
 SHOT_TANK_HIT_RADIUS_H = 6.5
-SHOT_TANK_HIT_RADIUS_V = 25.0
+SHOT_TANK_HIT_RADIUS_V = 4.0
+SHOT_TANK_MARKER_VERT_ABOVE = 25.0
 TARGET_HIT_RADIUS = 8.0
 SHOT_TARGET_OVERSHOOT = 10.0
 STATIC_OBSTACLE_RADIUS_PAD = 2.0
-STATIC_OBSTACLE_TARGET_GAP = 8.0
+STATIC_OBSTACLE_SHOOTER_GAP = 4.0
+STATIC_OBSTACLE_TARGET_GAP = 4.0
+STATIC_OBSTACLE_Y_BELOW = 1.5
+STATIC_OBSTACLE_Y_HEIGHT = 5.0
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -2985,17 +2989,31 @@ def load_static_obstacles_for_arena(arena_type_id: int):
 
 
 def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
+                            shooter_gap: float = STATIC_OBSTACLE_SHOOTER_GAP,
                             target_gap: float = STATIC_OBSTACLE_TARGET_GAP):
     horizontal = shot_vec[0] * shot_vec[0] + shot_vec[2] * shot_vec[2]
     if horizontal <= 0.000001:
         return None
     arena_type_id = int(source_sess.get('battle_arena_type_id') or ARENA_TYPE_KARELIA)
+    end_x = shot_pos[0] + shot_vec[0] * hit_distance
+    end_y = shot_pos[1] + shot_vec[1] * hit_distance
+    end_z = shot_pos[2] + shot_vec[2] * hit_distance
     best = None
     for x, y, z, radius in load_static_obstacles_for_arena(arena_type_id):
+        dx_s = x - shot_pos[0]
+        dy_s = y - shot_pos[1]
+        dz_s = z - shot_pos[2]
+        if dx_s * dx_s + dy_s * dy_s + dz_s * dz_s < (radius + shooter_gap) ** 2:
+            continue
+        dx_t = x - end_x
+        dy_t = y - end_y
+        dz_t = z - end_z
+        if dx_t * dx_t + dy_t * dy_t + dz_t * dz_t < (radius + target_gap) ** 2:
+            continue
         dx = x - shot_pos[0]
         dz = z - shot_pos[2]
         distance = (dx * shot_vec[0] + dz * shot_vec[2]) / horizontal
-        if distance <= -radius or distance - radius >= hit_distance - target_gap:
+        if distance <= 0.0 or distance >= hit_distance:
             continue
         closest_x = shot_pos[0] + shot_vec[0] * distance
         closest_z = shot_pos[2] + shot_vec[2] * distance
@@ -3004,12 +3022,24 @@ def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
         if miss_x * miss_x + miss_z * miss_z > radius * radius:
             continue
         ray_y = shot_pos[1] + shot_vec[1] * distance
-        if ray_y < y - 6.0 or ray_y > y + 24.0:
+        if ray_y < y - STATIC_OBSTACLE_Y_BELOW or ray_y > y + STATIC_OBSTACLE_Y_HEIGHT:
             continue
         score = (distance, x, y, z, radius)
         if best is None or score[0] < best[0]:
             best = score
     return best
+
+
+def marker_static_obstacle_hit(source_sess: dict, shot_pos, marker_pos):
+    dx = float(marker_pos[0]) - float(shot_pos[0])
+    dy = float(marker_pos[1]) - float(shot_pos[1])
+    dz = float(marker_pos[2]) - float(shot_pos[2])
+    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if distance <= 0.001:
+        return None
+    marker_vec = (dx / distance, dy / distance, dz / distance)
+    return ray_static_obstacle_hit(source_sess, shot_pos, marker_vec, distance,
+                                   target_gap=0.0)
 
 
 def aim_point_miss(target_pos, center):
@@ -3062,6 +3092,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
 
     best_target = None
     best_h = None
+    best_center = None
     for target in candidates:
         if target.get('account_id') == source_account_id:
             continue
@@ -3084,12 +3115,17 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
             dx = center[0] - float(marker_pos[0])
             dz = center[2] - float(marker_pos[2])
             horizontal = math.sqrt(dx * dx + dz * dz)
-            vertical = abs(center[1] - float(marker_pos[1]))
-            if horizontal > SHOT_TANK_HIT_RADIUS_H or vertical > SHOT_TANK_HIT_RADIUS_V:
+            vertical_signed = center[1] - float(marker_pos[1])
+            if horizontal > SHOT_TANK_HIT_RADIUS_H:
+                continue
+            if vertical_signed < -SHOT_TANK_HIT_RADIUS_V:
+                continue
+            if vertical_signed > SHOT_TANK_MARKER_VERT_ABOVE:
                 continue
             if best_target is None or horizontal < best_h:
                 best_target = target
                 best_h = horizontal
+                best_center = center
 
     if best_target is None:
         print(f"    [shot] miss: no tank near client aim marker")
@@ -3116,9 +3152,31 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 dx = center[0] - float(marker_pos[0])
                 dz = center[2] - float(marker_pos[2])
                 horizontal = math.sqrt(dx * dx + dz * dz)
-                vertical = abs(center[1] - float(marker_pos[1]))
-                print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v={vertical:.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V={SHOT_TANK_HIT_RADIUS_V})")
+                vertical_signed = center[1] - float(marker_pos[1])
+                print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v_signed={vertical_signed:+.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V_below={SHOT_TANK_HIT_RADIUS_V} V_above={SHOT_TANK_MARKER_VERT_ABOVE})")
         return None
+
+    if best_center is not None:
+        dx = best_center[0] - shot_pos[0]
+        dy = best_center[1] - shot_pos[1]
+        dz = best_center[2] - shot_pos[2]
+        target_distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if target_distance > 0.001:
+            target_vec = (dx / target_distance, dy / target_distance, dz / target_distance)
+            obstacle = ray_static_obstacle_hit(source_sess, shot_pos, target_vec, target_distance)
+            if obstacle is not None:
+                obstacle_distance, obstacle_x, obstacle_y, obstacle_z, obstacle_radius = obstacle
+                ox = float(obstacle_x); oz = float(obstacle_z)
+                horizontal = target_vec[0] * target_vec[0] + target_vec[2] * target_vec[2]
+                closest_x = shot_pos[0] + target_vec[0] * obstacle_distance
+                closest_z = shot_pos[2] + target_vec[2] * obstacle_distance
+                ray_y_at = shot_pos[1] + target_vec[1] * obstacle_distance
+                miss_xz = math.sqrt((ox - closest_x) ** 2 + (oz - closest_z) ** 2)
+                print(f"    [shot] miss: static obstacle blocks line of fire dist={obstacle_distance:.1f}/{target_distance:.1f} obstacle=({obstacle_x:.1f},{obstacle_y:.1f},{obstacle_z:.1f}) r={obstacle_radius:.1f}")
+                print(f"    [shot] debug: shot_pos={shot_pos} target_vec=({target_vec[0]:.3f},{target_vec[1]:.3f},{target_vec[2]:.3f}) best_center={best_center}")
+                print(f"    [shot] debug: ray_at_obstacle=({closest_x:.1f},{ray_y_at:.1f},{closest_z:.1f}) miss_xz={miss_xz:.2f} y_band=[{obstacle_y - STATIC_OBSTACLE_Y_BELOW:.1f},{obstacle_y + STATIC_OBSTACLE_Y_HEIGHT:.1f}]")
+                return None
+
     print(f"    [shot] hit: marker_h={best_h:.2f}m")
     return best_target
 
