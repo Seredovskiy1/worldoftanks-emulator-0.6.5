@@ -2731,6 +2731,7 @@ AVATAR_BASE_METHOD_CHANGE_SETTING_IDS = {0xd0}
 AVATAR_BASE_METHOD_TELEPORT_IDS = {0xc5, 0xd1}
 AVATAR_BASE_METHOD_USE_HORN_IDS = {0xc6, 0xd2}
 AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS = {0xc7, 0xd4}
+AVATAR_BASE_METHOD_LEAVE_ARENA_IDS = {0xc8, 0xcb, 0xd6}
 AVATAR_BASE_METHODS = (
     AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS |
     AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS |
@@ -2739,7 +2740,8 @@ AVATAR_BASE_METHODS = (
     AVATAR_BASE_METHOD_CHANGE_SETTING_IDS |
     AVATAR_BASE_METHOD_TELEPORT_IDS |
     AVATAR_BASE_METHOD_USE_HORN_IDS |
-    AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS
+    AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS |
+    AVATAR_BASE_METHOD_LEAVE_ARENA_IDS
 )
 
 
@@ -3503,8 +3505,103 @@ def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
     return True
 
 
+def build_leave_arena_to_hangar_bundle(account_name: str,
+                                       database_id: int) -> bytes:
+    """Avatar -> Account transition bundle (no per-session header msgs).
+
+    Mirrors the tail of `build_init_bundle` (without authenticate/bandwidth/
+    updateFrequency/setGameTime which are session-level): resetEntities(False)
+    -> createBasePlayer(Account) -> Account.showGUI(lobby ctx).  The client's
+    PlayerAvatar.onLeaveWorld() runs on entitiesReset, then Account.onBecome
+    Player + showGUI bring the Hangar UI back."""
+    msgs = b''
+
+    # 0x04 resetEntities(keepPlayer=False) - drops Avatar and any AoI vehicles
+    msgs += msg_fixed(0x04, struct.pack('<B', 0))
+
+    # 0x05 createBasePlayer(Account) - same Account properties as init bundle
+    server_settings_pickle = pickle.dumps({
+        'vivoxDomain':  '',
+        'vivoxIssuer':  '',
+        'voipDomain':   '',
+        'serverUTC':    0,
+    }, protocol=0)
+    account_name_bytes = (account_name or 'player').encode('utf-8', 'ignore') \
+        or b'player'
+    props  = bw_pack_string(account_name_bytes)
+    props += bw_pack_string(account_name_bytes.lower())
+    props += bw_pack_string(server_settings_pickle)
+    cbp_payload = struct.pack('<I', PLAYER_ENTITY_ID) + \
+                  struct.pack('<H', ACCOUNT_ENTITY_TYPE) + \
+                  props
+    msgs += msg_varlen(0x05, cbp_payload)
+
+    # Account.showGUI(ctx) - WindowsManager.showLobby -> CommonPage.processLobby
+    showgui_ctx = (
+        f"(dp0\nS'databaseID'\np1\nL{int(database_id)}L\n"
+        "sS'serverUTC'\np2\nL0L\ns."
+    ).encode('ascii')
+    em = struct.pack('<I', PLAYER_ENTITY_ID) + bw_pack_string(showgui_ctx)
+    msgs += msg_varlen(ACCOUNT_SHOWGUI_MSG_ID, em)
+
+    return msgs
+
+
+def send_player_back_to_hangar(sock, addr, sess: dict):
+    """Handle Avatar.base.leaveArena() - migrate the proxy back to Account.
+
+    Idempotent: silently no-ops if the session has no battle bundle.  Sends
+    entitiesReset(False)+createBasePlayer(Account)+showGUI then resets all
+    battle/match state so the client's Hangar (and the matchmaker) see a
+    clean account again."""
+    if not sess.get('battle_bundle_sent'):
+        return
+    if not addr:
+        return
+
+    account_name = sess.get('username') or 'player'
+    database_id = sess.get('account_id') or 1
+    msgs = build_leave_arena_to_hangar_bundle(account_name, database_id)
+    if not send_avatar_messages(sock, addr, sess, msgs,
+                                "leaveArena -> hangar "
+                                "(entitiesReset+createBasePlayer Account+showGUI)",
+                                reliable=True):
+        return
+
+    account_id = sess.get('account_id')
+    with battle_lock:
+        active_battle_accounts.pop(account_id, None)
+    dequeue_from_matchmaking(sess)
+
+    sess['battle_bundle_sent'] = False
+    sess['battle_ended'] = True
+    sess['battle_period_active'] = False
+    sess['battle_period_timer_started'] = False
+    sess['battle_motion_loop_started'] = False
+    sess['battle_match_id'] = None
+    sess['avatar_ready_sent'] = False
+    sess['battle_motion_flags'] = 0
+    sess['battle_speed'] = 0.0
+    sess['battle_rspeed'] = 0.0
+    sess['battle_target_speed'] = 0.0
+    sess['battle_target_rspeed'] = 0.0
+    sess['known_remote_accounts'] = set()
+    sess['queued_for_battle'] = False
+    sess['sync_data_stream_sent'] = False
+    sess['stat_cmd_count'] = 0
+    sess['avatar_update_count'] = 0
+    sess['battle_input_count'] = 0
+
+    broadcast_account_server_counters(sock)
+
+
 def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
     req_id = parse_exposed_request_id(payload)
+
+    if msg_id in AVATAR_BASE_METHOD_LEAVE_ARENA_IDS:
+        print(f"    [avatar] leaveArena msgID=0x{msg_id:02x} req={req_id} payload={payload.hex()}")
+        send_player_back_to_hangar(sock, addr, sess)
+        return True
 
     if msg_id in AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS:
         print(f"    [avatar] onClientReady req={req_id}")
