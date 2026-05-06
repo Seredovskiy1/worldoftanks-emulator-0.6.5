@@ -1,1 +1,2 @@
 pycryptodome
+PyMySQL>=1.0

@@ -3,12 +3,14 @@ import struct
 import select
 import os
 import time
+import datetime
 import threading
 import pickle
 import zlib
 import builtins
 import math
-import sqlite3
+import pymysql
+import pymysql.cursors
 import hashlib
 import random
 import re
@@ -44,7 +46,18 @@ active_sessions = {}
 db_lock = threading.RLock()
 battle_lock = threading.RLock()
 queue_lock = threading.RLock()
-DATABASE_PATH = "emulator.db"
+
+DB_HOST     = os.environ.get('MYSQL_HOST', '127.0.0.1')
+DB_PORT     = int(os.environ.get('MYSQL_PORT', '3306'))
+DB_USER     = os.environ.get('MYSQL_USER', 'root')
+DB_PASSWORD = os.environ.get('MYSQL_PASSWORD', '')
+DB_NAME     = os.environ.get('MYSQL_DB', 'wot_emulator')
+
+DEFAULT_CREDITS = 1000000000
+DEFAULT_GOLD    = 1000000
+DEFAULT_FREE_XP = 1000000
+DEFAULT_SLOTS   = 200
+DEFAULT_BERTHS  = 50
 active_battle_accounts = {}
 matchmaking_queue = []
 matchmaking_timer = None
@@ -89,34 +102,146 @@ def normalize_login_name(username: str) -> str:
 def password_hash(password: str) -> str:
     return hashlib.sha256((password or '').encode('utf-8')).hexdigest()
 
+def db_connect(use_db: bool = True):
+    kwargs = dict(
+        host=DB_HOST, port=DB_PORT,
+        user=DB_USER, password=DB_PASSWORD,
+        charset='utf8mb4', autocommit=True,
+        cursorclass=pymysql.cursors.Cursor,
+    )
+    if use_db:
+        kwargs['database'] = DB_NAME
+    return pymysql.connect(**kwargs)
+
+
+SCHEMA_STATEMENTS = (
+    "CREATE TABLE IF NOT EXISTS accounts ("
+    " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+    " username VARCHAR(32) NOT NULL,"
+    " normalized_name VARCHAR(32) NOT NULL,"
+    " password_hash CHAR(64) NOT NULL,"
+    " created_at DATETIME NOT NULL,"
+    " last_login DATETIME NOT NULL,"
+    " credits BIGINT NOT NULL DEFAULT 1000000000,"
+    " gold BIGINT NOT NULL DEFAULT 1000000,"
+    " free_xp BIGINT NOT NULL DEFAULT 1000000,"
+    " slots INT NOT NULL DEFAULT 200,"
+    " berths INT NOT NULL DEFAULT 50,"
+    " premium_expire_at BIGINT NOT NULL DEFAULT 0,"
+    " attrs BIGINT NOT NULL DEFAULT 0,"
+    " clan_db_id BIGINT NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (id),"
+    " UNIQUE KEY uniq_username (username),"
+    " UNIQUE KEY uniq_normalized_name (normalized_name)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS account_unlocks ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " item_compact_descr BIGINT NOT NULL,"
+    " PRIMARY KEY (account_id, item_compact_descr)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS account_elite_vehicles ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_compact_descr BIGINT NOT NULL,"
+    " PRIMARY KEY (account_id, vehicle_compact_descr)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS account_double_xp_vehicles ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_compact_descr BIGINT NOT NULL,"
+    " PRIMARY KEY (account_id, vehicle_compact_descr)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS battles ("
+    " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+    " arena_type_id INT NOT NULL,"
+    " queue_type INT NOT NULL DEFAULT 0,"
+    " created_at DATETIME NOT NULL,"
+    " finished_at DATETIME NULL,"
+    " winner_team TINYINT NULL,"
+    " finish_reason TINYINT NULL,"
+    " PRIMARY KEY (id),"
+    " KEY idx_battles_created_at (created_at)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS battle_entries ("
+    " battle_id BIGINT UNSIGNED NOT NULL,"
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_inv_id INT NOT NULL,"
+    " team TINYINT NOT NULL DEFAULT 0,"
+    " joined_at DATETIME NOT NULL,"
+    " PRIMARY KEY (battle_id, account_id),"
+    " KEY idx_entries_account (account_id)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS battle_results ("
+    " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+    " battle_id BIGINT UNSIGNED NOT NULL,"
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_inv_id INT NOT NULL,"
+    " is_winner TINYINT NOT NULL DEFAULT 0,"
+    " frags INT NOT NULL DEFAULT 0,"
+    " damage_dealt INT NOT NULL DEFAULT 0,"
+    " damage_received INT NOT NULL DEFAULT 0,"
+    " shots INT NOT NULL DEFAULT 0,"
+    " hits INT NOT NULL DEFAULT 0,"
+    " life_time_sec INT NOT NULL DEFAULT 0,"
+    " credits_earned INT NOT NULL DEFAULT 0,"
+    " xp_earned INT NOT NULL DEFAULT 0,"
+    " free_xp_earned INT NOT NULL DEFAULT 0,"
+    " finished_at DATETIME NOT NULL,"
+    " PRIMARY KEY (id),"
+    " UNIQUE KEY uniq_battle_account (battle_id, account_id),"
+    " KEY idx_results_account (account_id)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS dossier ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " total_battles INT NOT NULL DEFAULT 0,"
+    " wins INT NOT NULL DEFAULT 0,"
+    " losses INT NOT NULL DEFAULT 0,"
+    " draws INT NOT NULL DEFAULT 0,"
+    " frags INT NOT NULL DEFAULT 0,"
+    " damage_dealt BIGINT NOT NULL DEFAULT 0,"
+    " damage_received BIGINT NOT NULL DEFAULT 0,"
+    " shots INT NOT NULL DEFAULT 0,"
+    " hits INT NOT NULL DEFAULT 0,"
+    " max_xp INT NOT NULL DEFAULT 0,"
+    " max_damage INT NOT NULL DEFAULT 0,"
+    " max_frags INT NOT NULL DEFAULT 0,"
+    " total_xp BIGINT NOT NULL DEFAULT 0,"
+    " total_credits BIGINT NOT NULL DEFAULT 0,"
+    " last_battle_at DATETIME NULL,"
+    " PRIMARY KEY (account_id)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+)
+
+
 def init_database():
     with db_lock:
-        conn = sqlite3.connect(DATABASE_PATH)
         try:
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS accounts ("
-                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "username TEXT NOT NULL UNIQUE,"
-                "normalized_name TEXT NOT NULL UNIQUE,"
-                "password_hash TEXT NOT NULL,"
-                "created_at INTEGER NOT NULL,"
-                "last_login INTEGER NOT NULL)"
-            )
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS battles ("
-                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "arena_type_id INTEGER NOT NULL,"
-                "created_at INTEGER NOT NULL)"
-            )
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS battle_entries ("
-                "battle_id INTEGER NOT NULL,"
-                "account_id INTEGER NOT NULL,"
-                "vehicle_inv_id INTEGER NOT NULL,"
-                "joined_at INTEGER NOT NULL,"
-                "PRIMARY KEY (battle_id, account_id))"
-            )
-            conn.commit()
+            conn = db_connect(use_db=True)
+        except pymysql.err.OperationalError as e:
+            if e.args and e.args[0] == 1049:
+                bootstrap = db_connect(use_db=False)
+                try:
+                    with bootstrap.cursor() as cur:
+                        cur.execute(
+                            "CREATE DATABASE IF NOT EXISTS `%s` "
+                            "DEFAULT CHARACTER SET utf8mb4 "
+                            "DEFAULT COLLATE utf8mb4_unicode_ci" % DB_NAME)
+                    print(f"[*] MySQL: created database `{DB_NAME}`")
+                finally:
+                    bootstrap.close()
+                conn = db_connect(use_db=True)
+            else:
+                raise
+        try:
+            with conn.cursor() as cur:
+                for stmt in SCHEMA_STATEMENTS:
+                    cur.execute(stmt)
+            print(f"[*] MySQL: schema ready on {DB_HOST}:{DB_PORT}/{DB_NAME}")
         finally:
             conn.close()
 
@@ -124,51 +249,197 @@ def get_or_create_account(username: str, password: str):
     username = normalize_login_name(username)
     normalized = username.lower()
     pwd_hash = password_hash(password)
-    now = int(time.time())
+    now = datetime.datetime.now()
     with db_lock:
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = db_connect()
         try:
-            row = conn.execute(
-                "SELECT id, username, password_hash FROM accounts WHERE normalized_name=?",
-                (normalized,)
-            ).fetchone()
-            if row is None:
-                cur = conn.execute(
-                    "INSERT INTO accounts(username, normalized_name, password_hash, created_at, last_login) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (username, normalized, pwd_hash, now, now)
-                )
-                conn.commit()
-                return {'id': int(cur.lastrowid), 'username': username, 'created': True}
-            conn.execute("UPDATE accounts SET last_login=? WHERE id=?", (now, row[0]))
-            conn.commit()
-            return {'id': int(row[0]), 'username': row[1], 'created': False}
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, username, password_hash FROM accounts "
+                    "WHERE normalized_name=%s",
+                    (normalized,))
+                row = cur.fetchone()
+                if row is None:
+                    cur.execute(
+                        "INSERT INTO accounts(username, normalized_name, "
+                        "password_hash, created_at, last_login, credits, gold, "
+                        "free_xp, slots, berths) VALUES "
+                        "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        (username, normalized, pwd_hash, now, now,
+                         DEFAULT_CREDITS, DEFAULT_GOLD, DEFAULT_FREE_XP,
+                         DEFAULT_SLOTS, DEFAULT_BERTHS))
+                    new_id = int(cur.lastrowid)
+                    cur.execute(
+                        "INSERT INTO dossier(account_id) VALUES (%s)",
+                        (new_id,))
+                    return {'id': new_id, 'username': username,
+                            'created': True}
+                if str(row[2]) != pwd_hash:
+                    return {'id': 0, 'username': username,
+                            'created': False, 'auth_failed': True}
+                cur.execute(
+                    "UPDATE accounts SET last_login=%s WHERE id=%s",
+                    (now, row[0]))
+                return {'id': int(row[0]), 'username': row[1],
+                        'created': False}
         finally:
             conn.close()
 
-def store_battle_entry(arena_type_id: int, account_id: int, vehicle_inv_id: int):
-    now = int(time.time())
+def store_battle_entry(arena_type_id: int, account_id: int, vehicle_inv_id: int,
+                       team: int = 0, queue_type: int = 0):
+    now = datetime.datetime.now()
     with db_lock:
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = db_connect()
         try:
-            row = conn.execute(
-                "SELECT id FROM battles ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            if row is None:
-                cur = conn.execute(
-                    "INSERT INTO battles(arena_type_id, created_at) VALUES (?, ?)",
-                    (arena_type_id, now)
-                )
-                battle_id = int(cur.lastrowid)
-            else:
-                battle_id = int(row[0])
-            conn.execute(
-                "INSERT OR REPLACE INTO battle_entries(battle_id, account_id, vehicle_inv_id, joined_at) "
-                "VALUES (?, ?, ?, ?)",
-                (battle_id, account_id, vehicle_inv_id, now)
-            )
-            conn.commit()
-            return battle_id
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM battles WHERE finished_at IS NULL "
+                    "ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                if row is None:
+                    cur.execute(
+                        "INSERT INTO battles(arena_type_id, queue_type, "
+                        "created_at) VALUES (%s, %s, %s)",
+                        (int(arena_type_id), int(queue_type), now))
+                    battle_id = int(cur.lastrowid)
+                else:
+                    battle_id = int(row[0])
+                cur.execute(
+                    "INSERT INTO battle_entries(battle_id, account_id, "
+                    "vehicle_inv_id, team, joined_at) VALUES "
+                    "(%s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE "
+                    "vehicle_inv_id=VALUES(vehicle_inv_id), "
+                    "team=VALUES(team), joined_at=VALUES(joined_at)",
+                    (battle_id, int(account_id), int(vehicle_inv_id),
+                     int(team), now))
+                return battle_id
+        finally:
+            conn.close()
+
+
+def load_account_state(account_id: int) -> dict:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                cur.execute(
+                    "SELECT credits, gold, free_xp, slots, berths, "
+                    "premium_expire_at, attrs, clan_db_id "
+                    "FROM accounts WHERE id=%s", (int(account_id),))
+                row = cur.fetchone() or {}
+                cur.execute(
+                    "SELECT item_compact_descr FROM account_unlocks "
+                    "WHERE account_id=%s", (int(account_id),))
+                unlocks = {int(r['item_compact_descr']) for r in cur.fetchall()}
+                cur.execute(
+                    "SELECT vehicle_compact_descr FROM account_elite_vehicles "
+                    "WHERE account_id=%s", (int(account_id),))
+                elites = {int(r['vehicle_compact_descr']) for r in cur.fetchall()}
+                cur.execute(
+                    "SELECT vehicle_compact_descr FROM account_double_xp_vehicles "
+                    "WHERE account_id=%s", (int(account_id),))
+                dblxp = {int(r['vehicle_compact_descr']) for r in cur.fetchall()}
+        finally:
+            conn.close()
+    return {
+        'credits':         int(row.get('credits', DEFAULT_CREDITS) or 0),
+        'gold':            int(row.get('gold', DEFAULT_GOLD) or 0),
+        'free_xp':         int(row.get('free_xp', DEFAULT_FREE_XP) or 0),
+        'slots':           int(row.get('slots', DEFAULT_SLOTS) or 0),
+        'berths':          int(row.get('berths', DEFAULT_BERTHS) or 0),
+        'premium_expire':  int(row.get('premium_expire_at', 0) or 0),
+        'attrs':           int(row.get('attrs', 0) or 0),
+        'clan_db_id':      int(row.get('clan_db_id', 0) or 0),
+        'unlocks':         unlocks,
+        'elite_vehicles':  elites,
+        'double_xp_vehs':  dblxp,
+    }
+
+
+def record_battle_result(battle_id: int, account_id: int,
+                         vehicle_inv_id: int, results: dict):
+    now = datetime.datetime.now()
+    is_winner = 1 if results.get('isWinner') else 0
+    frags = int(len(results.get('killed') or []))
+    damage_dealt = int(results.get('damageDealt', 0))
+    damage_received = int(results.get('damageReceived', 0))
+    shots = int(results.get('shots', 0))
+    hits = int(results.get('hits', 0))
+    life_time = int(results.get('lifeTime', 0))
+    credits_earned = int(results.get('credits', 0))
+    xp_earned = int(results.get('xp', 0))
+    free_xp_earned = int(results.get('freeXP', 0))
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO battle_results(battle_id, account_id, "
+                    "vehicle_inv_id, is_winner, frags, damage_dealt, "
+                    "damage_received, shots, hits, life_time_sec, "
+                    "credits_earned, xp_earned, free_xp_earned, finished_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                    "%s, %s, %s) ON DUPLICATE KEY UPDATE "
+                    "is_winner=VALUES(is_winner), frags=VALUES(frags), "
+                    "damage_dealt=VALUES(damage_dealt), "
+                    "damage_received=VALUES(damage_received), "
+                    "shots=VALUES(shots), hits=VALUES(hits), "
+                    "life_time_sec=VALUES(life_time_sec), "
+                    "credits_earned=VALUES(credits_earned), "
+                    "xp_earned=VALUES(xp_earned), "
+                    "free_xp_earned=VALUES(free_xp_earned), "
+                    "finished_at=VALUES(finished_at)",
+                    (int(battle_id), int(account_id), int(vehicle_inv_id),
+                     is_winner, frags, damage_dealt, damage_received,
+                     shots, hits, life_time, credits_earned, xp_earned,
+                     free_xp_earned, now))
+                cur.execute(
+                    "UPDATE accounts SET credits=credits+%s, free_xp=free_xp+%s "
+                    "WHERE id=%s",
+                    (credits_earned, free_xp_earned, int(account_id)))
+                wins_inc   = 1 if is_winner else 0
+                losses_inc = 0 if is_winner else 1
+                cur.execute(
+                    "INSERT INTO dossier(account_id, total_battles, wins, "
+                    "losses, frags, damage_dealt, damage_received, shots, "
+                    "hits, max_xp, max_damage, max_frags, total_xp, "
+                    "total_credits, last_battle_at) VALUES "
+                    "(%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON DUPLICATE KEY UPDATE "
+                    "total_battles=total_battles+1, wins=wins+VALUES(wins), "
+                    "losses=losses+VALUES(losses), "
+                    "frags=frags+VALUES(frags), "
+                    "damage_dealt=damage_dealt+VALUES(damage_dealt), "
+                    "damage_received=damage_received+VALUES(damage_received), "
+                    "shots=shots+VALUES(shots), hits=hits+VALUES(hits), "
+                    "max_xp=GREATEST(max_xp, VALUES(max_xp)), "
+                    "max_damage=GREATEST(max_damage, VALUES(max_damage)), "
+                    "max_frags=GREATEST(max_frags, VALUES(max_frags)), "
+                    "total_xp=total_xp+VALUES(total_xp), "
+                    "total_credits=total_credits+VALUES(total_credits), "
+                    "last_battle_at=VALUES(last_battle_at)",
+                    (int(account_id), wins_inc, losses_inc, frags,
+                     damage_dealt, damage_received, shots, hits,
+                     xp_earned, damage_dealt, frags, xp_earned,
+                     credits_earned, now))
+        finally:
+            conn.close()
+
+
+def mark_battle_finished(battle_id, winner_team, finish_reason):
+    if not battle_id:
+        return
+    now = datetime.datetime.now()
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE battles SET finished_at=%s, winner_team=%s, "
+                    "finish_reason=%s WHERE id=%s AND finished_at IS NULL",
+                    (now, int(winner_team) if winner_team is not None else None,
+                     int(finish_reason) if finish_reason is not None else None,
+                     int(battle_id)))
         finally:
             conn.close()
 
@@ -888,11 +1159,11 @@ def ballistic_shot_vec(shot_pos, target_pos, speed: float, gravity: float):
     ))
 
 
-def make_full_sync_pickle() -> bytes:
+def make_full_sync_pickle(account_id: int = 0) -> bytes:
     """РџРѕРІРЅРёР№ (full-sync) diff РґР»СЏ Account._update. Р‘РµР· 'prevRev' в†’
     isFullSync=True в†’ РєР»С–С”РЅС‚ С‡РёСЃС‚РёС‚СЊ __cache С– Р·Р°СЃС‚РѕСЃРѕРІСѓС” РЅР°С€ diff.
 
-    inventory[itemTypeIdx] РњРЈРЎРРўР¬ РјС–СЃС‚РёС‚Рё sub-dicts, С–РЅР°РєС€Рµ
+    inventory[itemTypeIdx] РњРЈРЎРР¤Р¬ РјС–СЃС‚РёС‚Рё sub-dicts, С–РЅР°РєС€Рµ
     InventoryParser.parseVehicles РєСЂР°С€РёС‚СЊ Р· 'NoneType is unsubscriptable'
     РЅР° data['compDescr'] / data['crew'] etc.
     ITEM_TYPE_INDICES (Р· res/scripts/common/items/__init__.py):
@@ -902,6 +1173,22 @@ def make_full_sync_pickle() -> bytes:
     """
     veh_list = load_all_vehicles()
     server_stats = get_server_stats()
+    if account_id:
+        try:
+            acc = load_account_state(int(account_id))
+        except Exception as exc:
+            print(f"[!] load_account_state({account_id}) failed: {exc}")
+            acc = None
+    else:
+        acc = None
+    if acc is None:
+        acc = {
+            'credits': DEFAULT_CREDITS, 'gold': DEFAULT_GOLD,
+            'free_xp': DEFAULT_FREE_XP, 'slots': DEFAULT_SLOTS,
+            'berths': DEFAULT_BERTHS, 'premium_expire': 0, 'attrs': 0,
+            'clan_db_id': 0, 'unlocks': set(),
+            'elite_vehicles': set(), 'double_xp_vehs': set(),
+        }
 
     # InventoryParser.parseVehicles С‡РёС‚Р°С” С‚Р°РєС– sub-dicts:
     #   compDescr[id]    в†’ vehCompDescr (raw bytes)
@@ -990,10 +1277,15 @@ def make_full_sync_pickle() -> bytes:
         # РЇРєС‰Рѕ РЅРµ РґР°С‚Рё 'slots'/'doubleXPVehs' вЂ” Stats.get('slots') РїРѕРІРµСЂС‚Р°С” None
         # в†’ Hangar.__updateVehicles РїР°РґР°С” Р· 'NoneType is unsubscriptable'.
         'stats': {
-            'credits': 1000000000, 'gold': 1000000, 'freeXP': 1000000,
-            'slots': slots_count, 'berths': 50,
+            'credits': int(acc['credits']),
+            'gold': int(acc['gold']),
+            'freeXP': int(acc['free_xp']),
+            'slots': max(slots_count, int(acc['slots'])),
+            'berths': int(acc['berths']),
             'vehTypeXP': {}, 'tankmen': {},
-            'unlocks': set(), 'eliteVehicles': set(), 'doubleXPVehs': set(),
+            'unlocks': set(acc['unlocks']),
+            'eliteVehicles': set(acc['elite_vehicles']),
+            'doubleXPVehs': set(acc['double_xp_vehs']),
             'dossier': '', 'clanInfo': None,
             'accOnline': server_stats['playersCount'], 'accOffline': 0,
             'freeTMenLeft': 100, 'freeVehiclesLeft': slots_count - len(veh_list),
@@ -1002,10 +1294,12 @@ def make_full_sync_pickle() -> bytes:
         },
         'shop': {'rev': 0},
         # _ACCOUNT_STATS: clanDBID, attrs, premiumExpiryTime, autoBanTime,
-        # restrictions в†’ РєРѕРїС–СЋСЋС‚СЊСЃСЏ РІ Stats.__cache.
+        # restrictions -> Stats.__cache.
         'account': {
-            'attrs': 0, 'premiumExpiryTime': 0,
-            'clanDBID': 0, 'autoBanTime': 0, 'restrictions': {},
+            'attrs': int(acc['attrs']),
+            'premiumExpiryTime': int(acc['premium_expire']),
+            'clanDBID': int(acc['clan_db_id']),
+            'autoBanTime': 0, 'restrictions': {},
         },
     }
     # protocol=2 (binary) СЃРєРѕСЂРѕС‡СѓС” pickle ~30% РїРѕСЂС–РІРЅСЏРЅРѕ Р· protocol=0 в†’
@@ -1014,23 +1308,37 @@ def make_full_sync_pickle() -> bytes:
     return pickle.dumps(diff, protocol=2)
 
 
-_CACHED_SYNC_PICKLE = None
-_CACHED_SYNC_BLOB = None
+_CACHED_SYNC_PICKLE = {}
+_CACHED_SYNC_BLOB = {}
 _CACHED_SHOP_BLOB = None
+_sync_cache_lock = threading.RLock()
 
 
-def get_sync_pickle() -> bytes:
-    global _CACHED_SYNC_PICKLE
-    if _CACHED_SYNC_PICKLE is None:
-        _CACHED_SYNC_PICKLE = make_full_sync_pickle()
-    return _CACHED_SYNC_PICKLE
+def get_sync_pickle(account_id: int = 0) -> bytes:
+    key = int(account_id or 0)
+    with _sync_cache_lock:
+        cached = _CACHED_SYNC_PICKLE.get(key)
+        if cached is None:
+            cached = make_full_sync_pickle(key)
+            _CACHED_SYNC_PICKLE[key] = cached
+        return cached
 
 
-def get_sync_blob() -> bytes:
-    global _CACHED_SYNC_BLOB
-    if _CACHED_SYNC_BLOB is None:
-        _CACHED_SYNC_BLOB = zlib.compress(get_sync_pickle())
-    return _CACHED_SYNC_BLOB
+def get_sync_blob(account_id: int = 0) -> bytes:
+    key = int(account_id or 0)
+    with _sync_cache_lock:
+        cached = _CACHED_SYNC_BLOB.get(key)
+        if cached is None:
+            cached = zlib.compress(get_sync_pickle(key))
+            _CACHED_SYNC_BLOB[key] = cached
+        return cached
+
+
+def invalidate_sync_cache(account_id: int = 0):
+    key = int(account_id or 0)
+    with _sync_cache_lock:
+        _CACHED_SYNC_PICKLE.pop(key, None)
+        _CACHED_SYNC_BLOB.pop(key, None)
 
 
 def make_empty_sync_pickle(prev_rev=0) -> bytes:
@@ -1133,7 +1441,8 @@ def send_zlib_pickle_stream(sock, addr, sess, req_id: int, blob: bytes,
 
 
 def send_sync_stream(sock, addr, sess, req_id: int):
-    send_zlib_pickle_stream(sock, addr, sess, req_id, get_sync_blob(),
+    account_id = int(sess.get('account_id') or 0)
+    send_zlib_pickle_stream(sock, addr, sess, req_id, get_sync_blob(account_id),
                             b'syncData', 'syncData STREAM')
 
 
@@ -3397,10 +3706,19 @@ def send_delayed_battle_results(sock, viewer_sess: dict, sessions,
     if not addr:
         return
     results = build_battle_results_for_viewer(viewer_sess, sessions)
+    veh_inv_id = int(viewer_sess.get('battle_vehicle_inv_id') or 0)
+    account_id = int(viewer_sess.get('account_id') or 0)
+    battle_id  = int(viewer_sess.get('battle_id') or 0)
+    if account_id and battle_id and not viewer_sess.get('battle_results_persisted'):
+        try:
+            record_battle_result(battle_id, account_id, veh_inv_id, results)
+            viewer_sess['battle_results_persisted'] = True
+            invalidate_sync_cache(account_id)
+        except Exception as exc:
+            print(f"[!] record_battle_result(account={account_id}, "
+                  f"battle={battle_id}) failed: {exc}")
     msg = build_avatar_on_vehicle_left_arena(
-        True,
-        int(viewer_sess.get('battle_vehicle_inv_id') or 0),
-        results)
+        True, veh_inv_id, results)
     send_avatar_messages(sock, addr, viewer_sess, msg,
                          "Battle results",
                          reliable=True)
@@ -3506,6 +3824,16 @@ def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
         timer.daemon = True
         timer.start()
     print(f"    [battle] finished match={match_id} winnerTeam={winner_team}")
+    persisted_battle_ids = set()
+    for sess in sessions:
+        bid = int(sess.get('battle_id') or 0)
+        if bid and bid not in persisted_battle_ids:
+            persisted_battle_ids.add(bid)
+            try:
+                mark_battle_finished(bid, winner_team,
+                                     BATTLE_FINISH_REASON_EXTERMINATION)
+            except Exception as exc:
+                print(f"[!] mark_battle_finished({bid}) failed: {exc}")
 
 
 def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
@@ -3957,6 +4285,17 @@ def handle_loginapp(sock):
     username, password, bf_key = parse_logon_params(dec)
     if not username: return
     account = get_or_create_account(username, password)
+
+    if account.get('auth_failed'):
+        print(f"[-] Login REJECTED: '{username}' (invalid password)")
+        err_msg = b'Invalid password.'
+        resp_payload = (reply_id
+                        + bytes([67])
+                        + struct.pack('<I', len(err_msg))
+                        + err_msg)
+        resp = b'\x00\x00\xff' + struct.pack('<I', len(resp_payload)) + resp_payload
+        sock.sendto(resp, addr)
+        return
 
     token = os.urandom(4)
     active_sessions[token] = {
