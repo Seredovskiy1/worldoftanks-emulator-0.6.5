@@ -159,3 +159,101 @@ CREATE TABLE IF NOT EXISTS `dossier` (
         FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------------------------------------------------------
+--  tankmen -- crew members; one row per tankman invID
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tankmen` (
+    `inv_id`            INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    `account_id`        BIGINT UNSIGNED   NOT NULL,
+    `vehicle_inv_id`    INT                   NULL,
+    `slot_idx`          TINYINT UNSIGNED      NULL,
+    `nation_id`         TINYINT UNSIGNED  NOT NULL,
+    `vehicle_type_id`   SMALLINT UNSIGNED NOT NULL,
+    `role_id`           TINYINT UNSIGNED  NOT NULL,
+    `role_level`        TINYINT UNSIGNED  NOT NULL DEFAULT 100,
+    `is_female`         TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    `is_premium`        TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    `first_name_id`     SMALLINT UNSIGNED NOT NULL,
+    `last_name_id`      SMALLINT UNSIGNED NOT NULL,
+    `icon_id`           SMALLINT UNSIGNED NOT NULL,
+    `free_xp`           INT               NOT NULL DEFAULT 0,
+    `skills`            VARCHAR(64)       NOT NULL DEFAULT '',
+    `last_skill_level`  TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    `created_at`        DATETIME          NOT NULL,
+    PRIMARY KEY (`inv_id`),
+    KEY `idx_tankmen_account` (`account_id`),
+    KEY `idx_tankmen_vehicle` (`account_id`, `vehicle_inv_id`),
+    CONSTRAINT `fk_tankmen_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------------------------------------------------------
+--  account_consumables -- repair kits, medkits, fire extinguishers (item type 11)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `account_consumables` (
+    `account_id`     BIGINT UNSIGNED NOT NULL,
+    `compact_descr`  INT UNSIGNED    NOT NULL,
+    `quantity`       INT             NOT NULL DEFAULT 0,
+    PRIMARY KEY (`account_id`, `compact_descr`),
+    CONSTRAINT `fk_consumables_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------------------------------------------------------
+--  account_optional_devices -- rammer, vents, stereoscope, etc. (item type 9)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `account_optional_devices` (
+    `account_id`     BIGINT UNSIGNED NOT NULL,
+    `compact_descr`  INT UNSIGNED    NOT NULL,
+    `quantity`       INT             NOT NULL DEFAULT 0,
+    PRIMARY KEY (`account_id`, `compact_descr`),
+    CONSTRAINT `fk_optdev_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------------------------------------------------------
+--  vehicle_consumable_slots -- which consumable is in which slot (3 slots)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `vehicle_consumable_slots` (
+    `account_id`     BIGINT UNSIGNED   NOT NULL,
+    `vehicle_inv_id` INT               NOT NULL,
+    `slot_idx`       TINYINT UNSIGNED  NOT NULL,
+    `compact_descr`  INT UNSIGNED      NOT NULL DEFAULT 0,
+    PRIMARY KEY (`account_id`, `vehicle_inv_id`, `slot_idx`),
+    CONSTRAINT `fk_veh_eq_slots_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------------------------------------------------------
+--  vehicle_optional_device_slots -- which optional device is in which slot
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `vehicle_optional_device_slots` (
+    `account_id`     BIGINT UNSIGNED   NOT NULL,
+    `vehicle_inv_id` INT               NOT NULL,
+    `slot_idx`       TINYINT UNSIGNED  NOT NULL,
+    `compact_descr`  INT UNSIGNED      NOT NULL DEFAULT 0,
+    PRIMARY KEY (`account_id`, `vehicle_inv_id`, `slot_idx`),
+    CONSTRAINT `fk_veh_od_slots_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------------------------------------------------------
+--  vehicle_ammo_layouts -- per-vehicle ammo loadout (which shells, qty)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `vehicle_ammo_layouts` (
+    `account_id`           BIGINT UNSIGNED  NOT NULL,
+    `vehicle_inv_id`       INT              NOT NULL,
+    `slot_idx`             TINYINT UNSIGNED NOT NULL,
+    `shell_compact_descr`  INT UNSIGNED     NOT NULL,
+    `quantity`             INT              NOT NULL DEFAULT 0,
+    PRIMARY KEY (`account_id`, `vehicle_inv_id`, `slot_idx`),
+    CONSTRAINT `fk_veh_ammo_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

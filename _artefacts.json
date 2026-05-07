@@ -1,0 +1,418 @@
+{
+ "equipments": [
+  {
+   "name": "autoExtinguishers",
+   "id": 1,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "{\u001bb�",
+    "��\u0017�"
+   ]
+  },
+  {
+   "name": "smallMedkit",
+   "id": 2,
+   "price": [
+    0,
+    0
+   ],
+   "tags": [
+    "medkit"
+   ]
+  },
+  {
+   "name": "largeMedkit",
+   "id": 3,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "medkit"
+   ]
+  },
+  {
+   "name": "smallRepairkit",
+   "id": 4,
+   "price": [
+    0,
+    0
+   ],
+   "tags": [
+    "repairkit"
+   ]
+  },
+  {
+   "name": "largeRepairkit",
+   "id": 5,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "repairkit"
+   ]
+  },
+  {
+   "name": "lendLeaseOil",
+   "id": 6,
+   "price": [
+    0,
+    0
+   ],
+   "tags": [
+    "~�"
+   ]
+  },
+  {
+   "name": "gasoline100",
+   "id": 7,
+   "price": [
+    0,
+    0
+   ],
+   "tags": [
+    "~�"
+   ]
+  },
+  {
+   "name": "gasoline105",
+   "id": 8,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "~�"
+   ]
+  },
+  {
+   "name": "chocolate",
+   "id": 9,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "stimulator"
+   ]
+  },
+  {
+   "name": "cocacola",
+   "id": 100,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "stimulator"
+   ]
+  },
+  {
+   "name": "ration",
+   "id": 11,
+   "price": [
+    2,
+    0
+   ],
+   "tags": [
+    "stimulator"
+   ]
+  },
+  {
+   "name": "removedRpmLimiter",
+   "id": 12,
+   "price": [
+    0,
+    0
+   ],
+   "tags": [
+    "trigger"
+   ]
+  }
+ ],
+ "optional_devices": [
+  {
+   "name": "antifragmentationLining_light",
+   "id": 1,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "antifragmentationLining_medium",
+   "id": 2,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "antifragmentationLining_heavy",
+   "id": 3,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "stereoscope",
+   "id": 4,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "coatedOptics",
+   "id": 5,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "camouflageNet",
+   "id": 6,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedSuspension_Vikkers",
+   "id": 7,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedSuspension_candle",
+   "id": 8,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedSuspension_Christie",
+   "id": 9,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedTorsions1t",
+   "id": 10,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedTorsions3t",
+   "id": 11,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedTorsions5t",
+   "id": 12,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedSprings",
+   "id": 13,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedLevers",
+   "id": 14,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedBelwillWashers",
+   "id": 15,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedLongitudinalTorsions",
+   "id": 16,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "improvedVentilation_class1",
+   "id": 17,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "improvedVentilation_class2",
+   "id": 18,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "improvedVentilation_class3",
+   "id": 19,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "grousers",
+   "id": 20,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "mediumCaliberTankRammer",
+   "id": 21,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "largeCaliberTankRammer",
+   "id": 22,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "mediumCaliberHowitzerRammer",
+   "id": 23,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "largeCaliberHowitzerRammer",
+   "id": 24,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "enhancedAimDrives",
+   "id": 25,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "wetCombatPack_class1",
+   "id": 26,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "wetCombatPack_class2",
+   "id": 27,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "carbonDioxide",
+   "id": 28,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "filterCyclone",
+   "id": 29,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "aimingStabilizer_Mk1",
+   "id": 30,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  },
+  {
+   "name": "aimingStabilizer_Mk2",
+   "id": 31,
+   "price": [
+    0,
+    0
+   ],
+   "tags": []
+  }
+ ]
+}

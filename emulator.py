@@ -215,6 +215,68 @@ SCHEMA_STATEMENTS = (
     " last_battle_at DATETIME NULL,"
     " PRIMARY KEY (account_id)"
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS tankmen ("
+    " inv_id INT UNSIGNED NOT NULL AUTO_INCREMENT,"
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_inv_id INT NULL,"
+    " slot_idx TINYINT UNSIGNED NULL,"
+    " nation_id TINYINT UNSIGNED NOT NULL,"
+    " vehicle_type_id SMALLINT UNSIGNED NOT NULL,"
+    " role_id TINYINT UNSIGNED NOT NULL,"
+    " role_level TINYINT UNSIGNED NOT NULL DEFAULT 100,"
+    " is_female TINYINT UNSIGNED NOT NULL DEFAULT 0,"
+    " is_premium TINYINT UNSIGNED NOT NULL DEFAULT 0,"
+    " first_name_id SMALLINT UNSIGNED NOT NULL,"
+    " last_name_id SMALLINT UNSIGNED NOT NULL,"
+    " icon_id SMALLINT UNSIGNED NOT NULL,"
+    " free_xp INT NOT NULL DEFAULT 0,"
+    " skills VARCHAR(64) NOT NULL DEFAULT '',"
+    " last_skill_level TINYINT UNSIGNED NOT NULL DEFAULT 0,"
+    " created_at DATETIME NOT NULL,"
+    " PRIMARY KEY (inv_id),"
+    " KEY idx_tankmen_account (account_id),"
+    " KEY idx_tankmen_vehicle (account_id, vehicle_inv_id)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS account_consumables ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " compact_descr INT UNSIGNED NOT NULL,"
+    " quantity INT NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (account_id, compact_descr)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS account_optional_devices ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " compact_descr INT UNSIGNED NOT NULL,"
+    " quantity INT NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (account_id, compact_descr)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS vehicle_consumable_slots ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_inv_id INT NOT NULL,"
+    " slot_idx TINYINT UNSIGNED NOT NULL,"
+    " compact_descr INT UNSIGNED NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (account_id, vehicle_inv_id, slot_idx)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS vehicle_optional_device_slots ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_inv_id INT NOT NULL,"
+    " slot_idx TINYINT UNSIGNED NOT NULL,"
+    " compact_descr INT UNSIGNED NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (account_id, vehicle_inv_id, slot_idx)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS vehicle_ammo_layouts ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_inv_id INT NOT NULL,"
+    " slot_idx TINYINT UNSIGNED NOT NULL,"
+    " shell_compact_descr INT UNSIGNED NOT NULL,"
+    " quantity INT NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (account_id, vehicle_inv_id, slot_idx)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 )
 
 
@@ -241,15 +303,100 @@ def init_database():
             with conn.cursor() as cur:
                 for stmt in SCHEMA_STATEMENTS:
                     cur.execute(stmt)
+                migrate_database_schema(cur)
             print(f"[*] MySQL: schema ready on {DB_HOST}:{DB_PORT}/{DB_NAME}")
         finally:
             conn.close()
+
+
+def migrate_database_schema(cur):
+    cur.execute(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='tankmen' "
+        "AND COLUMN_NAME='slot_idx'",
+        (DB_NAME,))
+    row = cur.fetchone()
+    if not row or int(row[0]) == 0:
+        cur.execute(
+            "ALTER TABLE tankmen ADD COLUMN slot_idx "
+            "TINYINT UNSIGNED NULL AFTER vehicle_inv_id")
+    cur.execute(
+        "SELECT inv_id, account_id, vehicle_inv_id FROM tankmen "
+        "WHERE vehicle_inv_id IS NOT NULL AND slot_idx IS NULL "
+        "ORDER BY account_id, vehicle_inv_id, inv_id")
+    rows = cur.fetchall() or []
+    counters = {}
+    for inv_id, acc_id, veh_inv_id in rows:
+        key = (int(acc_id), int(veh_inv_id))
+        slot_idx = counters.get(key, 0)
+        counters[key] = slot_idx + 1
+        cur.execute(
+            "UPDATE tankmen SET slot_idx=%s WHERE inv_id=%s",
+            (slot_idx, int(inv_id)))
+    cur.execute(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='vehicle_ammo_layouts' "
+        "AND COLUMN_NAME='slot_idx'",
+        (DB_NAME,))
+    row = cur.fetchone()
+    ammo_slot_idx_added = False
+    if not row or int(row[0]) == 0:
+        cur.execute(
+            "ALTER TABLE vehicle_ammo_layouts ADD COLUMN slot_idx "
+            "TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER vehicle_inv_id")
+        ammo_slot_idx_added = True
+    if ammo_slot_idx_added:
+        cur.execute(
+            "SELECT account_id, vehicle_inv_id, shell_compact_descr "
+            "FROM vehicle_ammo_layouts "
+            "ORDER BY account_id, vehicle_inv_id, shell_compact_descr")
+        rows = cur.fetchall() or []
+        counters = {}
+        for acc_id, veh_inv_id, shell_cd in rows:
+            key = (int(acc_id), int(veh_inv_id))
+            slot_idx = counters.get(key, 0)
+            counters[key] = slot_idx + 1
+            cur.execute(
+                "UPDATE vehicle_ammo_layouts SET slot_idx=%s "
+                "WHERE account_id=%s AND vehicle_inv_id=%s "
+                "AND shell_compact_descr=%s",
+                (slot_idx, int(acc_id), int(veh_inv_id), int(shell_cd)))
+    cur.execute(
+        "SELECT COLUMN_NAME FROM information_schema.STATISTICS "
+        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='vehicle_ammo_layouts' "
+        "AND INDEX_NAME='PRIMARY' ORDER BY SEQ_IN_INDEX",
+        (DB_NAME,))
+    pk_cols = [str(r[0]) for r in (cur.fetchall() or [])]
+    if pk_cols != ['account_id', 'vehicle_inv_id', 'slot_idx']:
+        cur.execute(
+            "SELECT account_id, vehicle_inv_id, shell_compact_descr "
+            "FROM vehicle_ammo_layouts "
+            "ORDER BY account_id, vehicle_inv_id, slot_idx, "
+            "shell_compact_descr")
+        rows = cur.fetchall() or []
+        counters = {}
+        for acc_id, veh_inv_id, shell_cd in rows:
+            key = (int(acc_id), int(veh_inv_id))
+            slot_idx = counters.get(key, 0)
+            counters[key] = slot_idx + 1
+            cur.execute(
+                "UPDATE vehicle_ammo_layouts SET slot_idx=%s "
+                "WHERE account_id=%s AND vehicle_inv_id=%s "
+                "AND shell_compact_descr=%s",
+                (slot_idx, int(acc_id), int(veh_inv_id), int(shell_cd)))
+        cur.execute(
+            "ALTER TABLE vehicle_ammo_layouts DROP PRIMARY KEY, "
+            "ADD PRIMARY KEY(account_id, vehicle_inv_id, slot_idx)")
+
 
 def get_or_create_account(username: str, password: str):
     username = normalize_login_name(username)
     normalized = username.lower()
     pwd_hash = password_hash(password)
     now = datetime.datetime.now()
+    new_account_id = None
+    existing_account_id = None
+    existing_username = None
     with db_lock:
         conn = db_connect()
         try:
@@ -268,22 +415,204 @@ def get_or_create_account(username: str, password: str):
                         (username, normalized, pwd_hash, now, now,
                          DEFAULT_CREDITS, DEFAULT_GOLD, DEFAULT_FREE_XP,
                          DEFAULT_SLOTS, DEFAULT_BERTHS))
-                    new_id = int(cur.lastrowid)
+                    new_account_id = int(cur.lastrowid)
                     cur.execute(
                         "INSERT INTO dossier(account_id) VALUES (%s)",
-                        (new_id,))
-                    return {'id': new_id, 'username': username,
-                            'created': True}
-                if str(row[2]) != pwd_hash:
-                    return {'id': 0, 'username': username,
-                            'created': False, 'auth_failed': True}
-                cur.execute(
-                    "UPDATE accounts SET last_login=%s WHERE id=%s",
-                    (now, row[0]))
-                return {'id': int(row[0]), 'username': row[1],
-                        'created': False}
+                        (new_account_id,))
+                else:
+                    if str(row[2]) != pwd_hash:
+                        return {'id': 0, 'username': username,
+                                'created': False, 'auth_failed': True}
+                    cur.execute(
+                        "UPDATE accounts SET last_login=%s WHERE id=%s",
+                        (now, row[0]))
+                    existing_account_id = int(row[0])
+                    existing_username = row[1]
         finally:
             conn.close()
+    if new_account_id is not None:
+        try:
+            seed_default_account_inventory(new_account_id)
+        except Exception as e:
+            print(f"[!] seed_default_account_inventory failed: {e}")
+        return {'id': new_account_id, 'username': username, 'created': True}
+    if existing_account_id is not None:
+        try:
+            seed_default_account_inventory(existing_account_id)
+            invalidate_sync_cache(existing_account_id)
+        except Exception as e:
+            print(f"[!] auto-seed for existing account failed: {e}")
+        return {'id': existing_account_id, 'username': existing_username,
+                'created': False}
+    return {'id': 0, 'username': username, 'created': False,
+            'auth_failed': True}
+
+
+def count_account_tankmen(account_id: int) -> int:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM tankmen WHERE account_id=%s",
+                    (int(account_id),))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    return int(row[0]) if row else 0
+
+
+def seed_default_account_inventory(account_id: int):
+    veh_list = load_all_vehicles()
+    if not veh_list:
+        return
+    now = datetime.datetime.now()
+
+    DEFAULT_CONSUMABLES = (
+        (ITEM_TYPE_EQUIPMENT, 4, 50),
+        (ITEM_TYPE_EQUIPMENT, 2, 50),
+        (ITEM_TYPE_EQUIPMENT, 1, 50),
+    )
+    DEFAULT_OPT_DEVICES = (
+        (ITEM_TYPE_OPTIONAL_DEVICE, 4, 50),
+        (ITEM_TYPE_OPTIONAL_DEVICE, 5, 50),
+        (ITEM_TYPE_OPTIONAL_DEVICE, 1, 50),
+    )
+
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                for item_type, in_nation, qty in DEFAULT_CONSUMABLES:
+                    cd = make_artefact_compact_descr(item_type, in_nation)
+                    cur.execute(
+                        "INSERT INTO account_consumables(account_id, "
+                        "compact_descr, quantity) VALUES (%s, %s, %s) "
+                        "ON DUPLICATE KEY UPDATE quantity=quantity",
+                        (account_id, cd, qty))
+                for item_type, in_nation, qty in DEFAULT_OPT_DEVICES:
+                    cd = make_artefact_compact_descr(item_type, in_nation)
+                    cur.execute(
+                        "INSERT INTO account_optional_devices(account_id, "
+                        "compact_descr, quantity) VALUES (%s, %s, %s) "
+                        "ON DUPLICATE KEY UPDATE quantity=quantity",
+                        (account_id, cd, qty))
+                for vehicle in veh_list:
+                    seed_vehicle_default_inventory(cur, account_id, vehicle, now)
+                fix_legacy_tankman_nations(cur, account_id, veh_list)
+        finally:
+            conn.close()
+
+
+def fix_legacy_tankman_nations(cur, account_id: int, veh_list):
+    veh_by_inv = {int(v['inv_id']): v for v in veh_list}
+    cur.execute(
+        "SELECT inv_id, vehicle_inv_id, nation_id, vehicle_type_id, "
+        "first_name_id, last_name_id, icon_id, is_female, is_premium "
+        "FROM tankmen WHERE account_id=%s AND vehicle_inv_id IS NOT NULL",
+        (int(account_id),))
+    rows = cur.fetchall() or []
+    for row in rows:
+        tm_inv, veh_inv, nation_id, vehicle_type_id = (int(row[0]),
+            int(row[1]) if row[1] is not None else 0,
+            int(row[2]), int(row[3]))
+        vehicle = veh_by_inv.get(veh_inv)
+        if vehicle is None:
+            continue
+        target_nation = int(vehicle.get('nationID') or 0)
+        target_vtype  = int(vehicle.get('vehicleTypeID') or 0)
+        if nation_id == target_nation and vehicle_type_id == target_vtype:
+            continue
+        passport = pick_random_passport(
+            vehicle.get('nation') or 'ussr',
+            is_premium=bool(row[8]))
+        if passport is None:
+            cur.execute(
+                "UPDATE tankmen SET nation_id=%s, vehicle_type_id=%s "
+                "WHERE inv_id=%s AND account_id=%s",
+                (target_nation, target_vtype, tm_inv, int(account_id)))
+            continue
+        cur.execute(
+            "UPDATE tankmen SET nation_id=%s, vehicle_type_id=%s, "
+            "is_female=%s, first_name_id=%s, last_name_id=%s, icon_id=%s "
+            "WHERE inv_id=%s AND account_id=%s",
+            (target_nation, target_vtype,
+             1 if passport['is_female'] else 0,
+             passport['first_name_id'], passport['last_name_id'],
+             passport['icon_id'], tm_inv, int(account_id)))
+
+
+def seed_vehicle_default_inventory(cur, account_id, vehicle, now):
+    veh_inv_id      = int(vehicle['inv_id'])
+    nation_id       = int(vehicle.get('nationID') or 0)
+    vehicle_type_id = int(vehicle.get('vehicleTypeID') or 0)
+    nation_name     = vehicle.get('nation') or 'ussr'
+    crew_size       = int(vehicle.get('crewSize') or 4)
+
+    cur.execute(
+        "SELECT COUNT(*) FROM tankmen WHERE account_id=%s "
+        "AND vehicle_inv_id=%s",
+        (int(account_id), veh_inv_id))
+    row = cur.fetchone()
+    if not (row and int(row[0]) > 0):
+        for slot in range(min(crew_size, len(DEFAULT_CREW_ROLES))):
+            role_id = DEFAULT_CREW_ROLES[slot]
+            passport = pick_random_passport(nation_name)
+            if passport is None:
+                continue
+            cur.execute(
+                "INSERT INTO tankmen(account_id, vehicle_inv_id, "
+                "slot_idx, nation_id, vehicle_type_id, role_id, "
+                "role_level, is_female, is_premium, first_name_id, "
+                "last_name_id, icon_id, free_xp, skills, "
+                "last_skill_level, created_at) VALUES "
+                "(%s, %s, %s, %s, %s, %s, 100, %s, 0, %s, %s, %s, "
+                "0, '', 0, %s)",
+                (int(account_id), veh_inv_id, slot, nation_id,
+                 vehicle_type_id, role_id,
+                 1 if passport['is_female'] else 0,
+                 passport['first_name_id'],
+                 passport['last_name_id'], passport['icon_id'], now))
+
+    cur.execute(
+        "SELECT COUNT(*) FROM vehicle_consumable_slots "
+        "WHERE account_id=%s AND vehicle_inv_id=%s",
+        (int(account_id), veh_inv_id))
+    row = cur.fetchone()
+    if not (row and int(row[0]) > 0):
+        consumable_layout = [
+            make_artefact_compact_descr(ITEM_TYPE_EQUIPMENT, 4),
+            make_artefact_compact_descr(ITEM_TYPE_EQUIPMENT, 2),
+            make_artefact_compact_descr(ITEM_TYPE_EQUIPMENT, 1),
+        ]
+        for slot_idx, cd in enumerate(consumable_layout):
+            cur.execute(
+                "INSERT INTO vehicle_consumable_slots(account_id, "
+                "vehicle_inv_id, slot_idx, compact_descr) "
+                "VALUES (%s, %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE "
+                "compact_descr=VALUES(compact_descr)",
+                (int(account_id), veh_inv_id, slot_idx, cd))
+
+    cur.execute(
+        "SELECT COUNT(*) FROM vehicle_optional_device_slots "
+        "WHERE account_id=%s AND vehicle_inv_id=%s",
+        (int(account_id), veh_inv_id))
+    row = cur.fetchone()
+    if not (row and int(row[0]) > 0):
+        opt_device_layout = [
+            make_artefact_compact_descr(ITEM_TYPE_OPTIONAL_DEVICE, 4),
+            make_artefact_compact_descr(ITEM_TYPE_OPTIONAL_DEVICE, 5),
+            make_artefact_compact_descr(ITEM_TYPE_OPTIONAL_DEVICE, 1),
+        ]
+        for slot_idx, cd in enumerate(opt_device_layout):
+            cur.execute(
+                "INSERT INTO vehicle_optional_device_slots(account_id, "
+                "vehicle_inv_id, slot_idx, compact_descr) "
+                "VALUES (%s, %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE "
+                "compact_descr=VALUES(compact_descr)",
+                (int(account_id), veh_inv_id, slot_idx, cd))
 
 def store_battle_entry(arena_type_id: int, account_id: int, vehicle_inv_id: int,
                        team: int = 0, queue_type: int = 0):
@@ -354,6 +683,377 @@ def load_account_state(account_id: int) -> dict:
         'elite_vehicles':  elites,
         'double_xp_vehs':  dblxp,
     }
+
+
+def load_account_tankmen(account_id: int) -> list:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                cur.execute(
+                    "SELECT inv_id, vehicle_inv_id, slot_idx, nation_id, "
+                    "vehicle_type_id, role_id, role_level, is_female, "
+                    "is_premium, "
+                    "first_name_id, last_name_id, icon_id, free_xp, "
+                    "skills, last_skill_level "
+                    "FROM tankmen WHERE account_id=%s ORDER BY inv_id",
+                    (int(account_id),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+    out = []
+    for r in rows:
+        skills_str = (r.get('skills') or '').strip()
+        skills = []
+        if skills_str:
+            try:
+                skills = [int(x) for x in skills_str.split(',') if x.strip()]
+            except Exception:
+                skills = []
+        out.append({
+            'inv_id':         int(r['inv_id']),
+            'vehicle_inv_id': (int(r['vehicle_inv_id'])
+                               if r.get('vehicle_inv_id') is not None else 0),
+            'slot_idx':       (int(r['slot_idx'])
+                               if r.get('slot_idx') is not None else None),
+            'nation_id':      int(r['nation_id']),
+            'vehicle_type_id':int(r['vehicle_type_id']),
+            'role_id':        int(r['role_id']),
+            'role_level':     int(r['role_level']),
+            'is_female':      bool(r['is_female']),
+            'is_premium':     bool(r['is_premium']),
+            'first_name_id':  int(r['first_name_id']),
+            'last_name_id':   int(r['last_name_id']),
+            'icon_id':        int(r['icon_id']),
+            'free_xp':        int(r['free_xp']),
+            'skills':         skills,
+            'last_skill_level': int(r['last_skill_level']),
+        })
+    return out
+
+
+def load_account_consumables(account_id: int) -> dict:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT compact_descr, quantity FROM account_consumables "
+                    "WHERE account_id=%s AND quantity > 0",
+                    (int(account_id),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+    return {int(cd): int(qty) for cd, qty in rows}
+
+
+def load_account_optional_devices(account_id: int) -> dict:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT compact_descr, quantity FROM account_optional_devices "
+                    "WHERE account_id=%s AND quantity > 0",
+                    (int(account_id),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+    return {int(cd): int(qty) for cd, qty in rows}
+
+
+def load_vehicle_consumable_slots(account_id: int) -> dict:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT vehicle_inv_id, slot_idx, compact_descr "
+                    "FROM vehicle_consumable_slots WHERE account_id=%s",
+                    (int(account_id),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+    out = {}
+    for veh_inv_id, slot_idx, cd in rows:
+        slots = out.setdefault(int(veh_inv_id), [0, 0, 0])
+        if 0 <= slot_idx < len(slots):
+            slots[int(slot_idx)] = int(cd)
+    return out
+
+
+DEFAULT_ARTEFACT_PRICE_CREDITS = 5000
+DEFAULT_OPT_DEVICE_PRICE_CREDITS = 100000
+
+
+def get_artefact_price(item_type: int, in_nation_id: int) -> tuple:
+    cfg = load_artefacts_config() or {}
+    section = 'equipments' if item_type == ITEM_TYPE_EQUIPMENT \
+              else 'optional_devices' if item_type == ITEM_TYPE_OPTIONAL_DEVICE \
+              else None
+    if section:
+        for it in cfg.get(section, []):
+            if int(it.get('id') or 0) == int(in_nation_id):
+                price = it.get('price') or [0, 0]
+                credits = max(0, int(price[0] if len(price) > 0 else 0))
+                gold    = max(0, int(price[1] if len(price) > 1 else 0))
+                if credits == 0 and gold == 0:
+                    if item_type == ITEM_TYPE_EQUIPMENT:
+                        credits = DEFAULT_ARTEFACT_PRICE_CREDITS
+                    elif item_type == ITEM_TYPE_OPTIONAL_DEVICE:
+                        credits = DEFAULT_OPT_DEVICE_PRICE_CREDITS
+                return (credits, gold)
+    if item_type == ITEM_TYPE_EQUIPMENT:
+        return (DEFAULT_ARTEFACT_PRICE_CREDITS, 0)
+    if item_type == ITEM_TYPE_OPTIONAL_DEVICE:
+        return (DEFAULT_OPT_DEVICE_PRICE_CREDITS, 0)
+    return (0, 0)
+
+
+def buy_item_for_account(account_id: int, item_compact_descr: int,
+                         count: int) -> dict:
+    if not account_id or count <= 0:
+        return {'success': False, 'reason': 'invalid args'}
+    item_type   = item_compact_descr & 0x0f
+    nation_id   = (item_compact_descr >> 4) & 0x0f
+    in_nation_id = (item_compact_descr >> 8) & 0xffff
+    if item_type not in (ITEM_TYPE_EQUIPMENT, ITEM_TYPE_OPTIONAL_DEVICE):
+        return {'success': False,
+                'reason': f'item_type {item_type} not buyable'}
+    credits_each, gold_each = get_artefact_price(item_type, in_nation_id)
+    total_credits = credits_each * int(count)
+    total_gold    = gold_each    * int(count)
+    table = ('account_consumables' if item_type == ITEM_TYPE_EQUIPMENT
+             else 'account_optional_devices')
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT credits, gold FROM accounts WHERE id=%s",
+                    (int(account_id),))
+                row = cur.fetchone()
+                if row is None:
+                    return {'success': False, 'reason': 'no account'}
+                have_credits, have_gold = int(row[0]), int(row[1])
+                if have_credits < total_credits or have_gold < total_gold:
+                    return {'success': False,
+                            'reason': f'insufficient funds '
+                            f'(need {total_credits}c {total_gold}g, '
+                            f'have {have_credits}c {have_gold}g)'}
+                cur.execute(
+                    "UPDATE accounts SET credits=credits-%s, gold=gold-%s "
+                    "WHERE id=%s",
+                    (total_credits, total_gold, int(account_id)))
+                cur.execute(
+                    f"INSERT INTO {table}(account_id, compact_descr, "
+                    "quantity) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE "
+                    "quantity=quantity+VALUES(quantity)",
+                    (int(account_id), int(item_compact_descr), int(count)))
+        finally:
+            conn.close()
+    return {'success': True, 'price': (total_credits, total_gold)}
+
+
+def load_vehicle_optional_device_slots(account_id: int) -> dict:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT vehicle_inv_id, slot_idx, compact_descr "
+                    "FROM vehicle_optional_device_slots WHERE account_id=%s",
+                    (int(account_id),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+    out = {}
+    for veh_inv_id, slot_idx, cd in rows:
+        slots = out.setdefault(int(veh_inv_id), [0, 0, 0])
+        if 0 <= slot_idx < len(slots):
+            slots[int(slot_idx)] = int(cd)
+    return out
+
+
+def load_vehicle_ammo_layouts(account_id: int) -> dict:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT vehicle_inv_id, slot_idx, "
+                    "shell_compact_descr, quantity "
+                    "FROM vehicle_ammo_layouts WHERE account_id=%s "
+                    "ORDER BY vehicle_inv_id, slot_idx",
+                    (int(account_id),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+    out = {}
+    for veh_inv_id, slot_idx, cd, qty in rows:
+        out.setdefault(int(veh_inv_id), []).append(
+            (int(slot_idx), int(cd), int(qty)))
+    flat = {}
+    for veh_inv_id, items in out.items():
+        items.sort(key=lambda x: x[0])
+        flat[veh_inv_id] = []
+        for _, cd, qty in items:
+            flat[veh_inv_id].extend([cd, qty])
+    return flat
+
+
+def save_consumable_slots(account_id: int, vehicle_inv_id: int,
+                          slot_cds: list):
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM vehicle_consumable_slots "
+                    "WHERE account_id=%s AND vehicle_inv_id=%s",
+                    (int(account_id), int(vehicle_inv_id)))
+                for slot_idx, cd in enumerate(slot_cds):
+                    cd = int(cd)
+                    if cd <= 0:
+                        cd = 0
+                    cur.execute(
+                        "INSERT INTO vehicle_consumable_slots(account_id, "
+                        "vehicle_inv_id, slot_idx, compact_descr) "
+                        "VALUES (%s, %s, %s, %s)",
+                        (int(account_id), int(vehicle_inv_id),
+                         int(slot_idx), cd))
+        finally:
+            conn.close()
+
+
+def save_optional_device_slot(account_id: int, vehicle_inv_id: int,
+                              slot_idx: int, compact_descr: int):
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                compact_descr = int(compact_descr)
+                if compact_descr > 0:
+                    cur.execute(
+                        "INSERT INTO vehicle_optional_device_slots("
+                        "account_id, vehicle_inv_id, slot_idx, "
+                        "compact_descr) VALUES (%s, %s, %s, %s) "
+                        "ON DUPLICATE KEY UPDATE "
+                        "compact_descr=VALUES(compact_descr)",
+                        (int(account_id), int(vehicle_inv_id),
+                         int(slot_idx), compact_descr))
+                else:
+                    cur.execute(
+                        "DELETE FROM vehicle_optional_device_slots "
+                        "WHERE account_id=%s AND vehicle_inv_id=%s "
+                        "AND slot_idx=%s",
+                        (int(account_id), int(vehicle_inv_id),
+                         int(slot_idx)))
+        finally:
+            conn.close()
+
+
+def save_vehicle_ammo_layout(account_id: int, vehicle_inv_id: int,
+                             ammo_pairs: list):
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM vehicle_ammo_layouts "
+                    "WHERE account_id=%s AND vehicle_inv_id=%s",
+                    (int(account_id), int(vehicle_inv_id)))
+                slot_idx = 0
+                i = 0
+                while i + 1 < len(ammo_pairs) and slot_idx < 8:
+                    cd  = int(ammo_pairs[i])
+                    qty = max(0, int(ammo_pairs[i + 1]))
+                    if cd > 0:
+                        cur.execute(
+                            "INSERT INTO vehicle_ammo_layouts("
+                            "account_id, vehicle_inv_id, slot_idx, "
+                            "shell_compact_descr, quantity) "
+                            "VALUES (%s, %s, %s, %s, %s)",
+                            (int(account_id), int(vehicle_inv_id),
+                             slot_idx, cd, qty))
+                        slot_idx += 1
+                    i += 2
+        finally:
+            conn.close()
+
+
+def set_tankman_vehicle(account_id: int, tankman_inv_id: int,
+                        vehicle_inv_id, slot_idx=None):
+    veh = (int(vehicle_inv_id) if vehicle_inv_id is not None
+           and int(vehicle_inv_id) > 0 else None)
+    slot = (int(slot_idx) if veh is not None and slot_idx is not None
+            and int(slot_idx) >= 0 else None)
+    prev_veh = 0
+    kicked_veh = 0
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT vehicle_inv_id FROM tankmen "
+                    "WHERE inv_id=%s AND account_id=%s",
+                    (int(tankman_inv_id), int(account_id)))
+                row = cur.fetchone()
+                prev_veh = int(row[0]) if row and row[0] is not None else 0
+                if veh is not None and slot is not None:
+                    cur.execute(
+                        "UPDATE tankmen SET vehicle_inv_id=NULL, "
+                        "slot_idx=NULL WHERE account_id=%s "
+                        "AND vehicle_inv_id=%s AND slot_idx=%s "
+                        "AND inv_id<>%s",
+                        (int(account_id), veh, slot, int(tankman_inv_id)))
+                    kicked_veh = veh if int(cur.rowcount or 0) > 0 else 0
+                cur.execute(
+                    "UPDATE tankmen SET vehicle_inv_id=%s, slot_idx=%s "
+                    "WHERE inv_id=%s AND account_id=%s",
+                    (veh, slot, int(tankman_inv_id), int(account_id)))
+                affected = cur.rowcount
+        finally:
+            conn.close()
+    return (int(affected or 0) > 0, prev_veh, kicked_veh)
+
+
+def clear_tankman_vehicle_slot(account_id: int, vehicle_inv_id: int,
+                               slot_idx: int) -> bool:
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE tankmen SET vehicle_inv_id=NULL, slot_idx=NULL "
+                    "WHERE account_id=%s AND vehicle_inv_id=%s "
+                    "AND slot_idx=%s",
+                    (int(account_id), int(vehicle_inv_id), int(slot_idx)))
+                affected = cur.rowcount
+        finally:
+            conn.close()
+    return int(affected or 0) > 0
+
+
+def dismiss_tankman(account_id: int, tankman_inv_id: int):
+    with db_lock:
+        conn = db_connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT vehicle_inv_id FROM tankmen "
+                    "WHERE inv_id=%s AND account_id=%s",
+                    (int(tankman_inv_id), int(account_id)))
+                row = cur.fetchone()
+                veh_inv_id = int(row[0]) if row and row[0] is not None else 0
+                cur.execute(
+                    "DELETE FROM tankmen "
+                    "WHERE inv_id=%s AND account_id=%s",
+                    (int(tankman_inv_id), int(account_id)))
+                affected = cur.rowcount
+        finally:
+            conn.close()
+    return (int(affected or 0) > 0, veh_inv_id)
 
 
 def record_battle_result(battle_id: int, account_id: int,
@@ -809,9 +1509,15 @@ RESOURCE_FRAGMENT_MSG_ID = 0x38
 
 # WoT AccountCommands (Р· res/scripts/common/AccountCommands.py):
 CMD_SYNC_DATA    = 100      # cmd=100 в†’ РґС–С„С„ (РЅР°С€ full_sync) Сѓ ext
+CMD_EQUIP        = 101
+CMD_EQUIP_OPTDEV = 102
 CMD_EQUIP_SHELLS = 103
+CMD_EQUIP_EQS    = 104
+CMD_EQUIP_TMAN   = 105
 CMD_SYNC_SHOP    = 300      # cmd=300 в†’ Р’Р•Р›РРљРР™ shop dict С‡РµСЂРµР· STREAM
 CMD_BUY_ITEM     = 302
+CMD_BUY_TMAN     = 303
+CMD_DISMISS_TMAN = 306
 CMD_SYNC_DOSSIERS = 600
 CMD_SET_LANGUAGE = 1000
 CMD_REQ_ARENA_LIST = 502
@@ -821,6 +1527,10 @@ CMD_DEQUEUE      = 701
 RES_SUCCESS      = 0
 RES_STREAM       = 1
 RES_CACHE        = 2
+RES_FAILURE      = -1
+RES_WRONG_ARGS   = -2
+RES_NON_PLAYER   = -3
+RES_SHOP_DESYNC  = -4
 
 
 def bw_pack_int(value: int) -> bytes:
@@ -952,6 +1662,12 @@ def parse_doCmd_int3(payload: bytes):
     return struct.unpack_from('<iii', payload, 4)
 
 
+def parse_doCmd_int4(payload: bytes):
+    if len(payload) < 20:
+        return None
+    return struct.unpack_from('<iiii', payload, 4)
+
+
 def parse_doCmd_int_arr(payload: bytes):
     if len(payload) < 8:
         return []
@@ -1025,6 +1741,9 @@ def load_all_vehicles():
             'inv_id': inv_id,
             'compactDescr': cd,
             'name': v['name'],
+            'nation': v.get('nation') or 'ussr',
+            'nationID': int(v.get('nationID') or 0),
+            'vehicleTypeID': int(v.get('vehicleTypeID') or 0),
             'crewSize': crew_size,
             'turretCompactDescr': v.get('turretCompactDescr', 0),
             'gunCompactDescr': v.get('gunCompactDescr', 0),
@@ -1052,6 +1771,135 @@ def collect_shell_prices(veh_list):
             price = shell.get('price', (0, 0))
             shell_prices.setdefault(nation_id, {})[compact] = tuple(price)
     return shell_prices
+
+
+_TANKMEN_CONFIG_CACHE = None
+_ARTEFACTS_CONFIG_CACHE = None
+
+ITEM_TYPE_VEHICLE         = 1
+ITEM_TYPE_TANKMAN         = 8
+ITEM_TYPE_OPTIONAL_DEVICE = 9
+ITEM_TYPE_SHELL           = 10
+ITEM_TYPE_EQUIPMENT       = 11
+
+NATION_NONE_INDEX = 15
+
+ROLE_COMMANDER = 1
+ROLE_RADIOMAN  = 2
+ROLE_DRIVER    = 3
+ROLE_GUNNER    = 4
+ROLE_LOADER    = 5
+
+DEFAULT_CREW_ROLES = (ROLE_COMMANDER, ROLE_DRIVER, ROLE_GUNNER,
+                      ROLE_RADIOMAN, ROLE_LOADER, ROLE_LOADER)
+
+
+def load_tankmen_config():
+    global _TANKMEN_CONFIG_CACHE
+    if _TANKMEN_CONFIG_CACHE is not None:
+        return _TANKMEN_CONFIG_CACHE
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        '_tankmen.json')
+    if not os.path.exists(path):
+        print('[!] _tankmen.json not found - run _dump_tankmen.py first')
+        _TANKMEN_CONFIG_CACHE = {}
+        return _TANKMEN_CONFIG_CACHE
+    import json
+    with open(path, 'r', encoding='utf-8') as f:
+        _TANKMEN_CONFIG_CACHE = json.load(f)
+    return _TANKMEN_CONFIG_CACHE
+
+
+def load_artefacts_config():
+    global _ARTEFACTS_CONFIG_CACHE
+    if _ARTEFACTS_CONFIG_CACHE is not None:
+        return _ARTEFACTS_CONFIG_CACHE
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        '_artefacts.json')
+    if not os.path.exists(path):
+        print('[!] _artefacts.json not found - run _dump_artefacts.py first')
+        _ARTEFACTS_CONFIG_CACHE = {'equipments': [], 'optional_devices': []}
+        return _ARTEFACTS_CONFIG_CACHE
+    import json
+    with open(path, 'r', encoding='utf-8') as f:
+        _ARTEFACTS_CONFIG_CACHE = json.load(f)
+    return _ARTEFACTS_CONFIG_CACHE
+
+
+def make_artefact_compact_descr(item_type: int, in_nation_id: int,
+                                nation_id: int = NATION_NONE_INDEX) -> int:
+    header = (item_type & 0x0f) | ((nation_id & 0x0f) << 4)
+    return header | ((in_nation_id & 0xffff) << 8)
+
+
+def make_vehicle_compact_descr_with_optional_devices(
+        compact_descr: bytes, device_slots: list) -> bytes:
+    cd = bytes(compact_descr or b'')
+    if len(cd) < 15:
+        return cd
+    optional_devices = b''
+    optional_devices_mask = 0
+    for device_cd in list(device_slots or [])[:3]:
+        optional_devices_mask <<= 1
+        device_cd = int(device_cd or 0)
+        if device_cd > 0:
+            device_id = (device_cd >> 8) & 0xffff
+            optional_devices = struct.pack('<H', device_id) + optional_devices
+            optional_devices_mask |= 1
+    flags = (cd[14] & 0xf0) | (optional_devices_mask & 0x0f)
+    return cd[:14] + bytes([flags]) + optional_devices + cd[15:]
+
+
+def make_tankman_compact_descr(nation_id: int, vehicle_type_id: int,
+                               role_id: int, role_level: int,
+                               first_name_id: int, last_name_id: int,
+                               icon_id: int, is_female: bool = False,
+                               is_premium: bool = False,
+                               free_xp: int = 0,
+                               skills: list = None,
+                               last_skill_level: int = 0) -> bytes:
+    skills = list(skills or [])
+    header = (ITEM_TYPE_TANKMAN & 0x0f) | ((nation_id & 0x0f) << 4)
+    cd = struct.pack('4B', header, vehicle_type_id, role_id, role_level)
+    cd += struct.pack(f'{1 + len(skills)}B', len(skills), *skills)
+    cd += bytes([last_skill_level if skills else 0])
+    MIN_ROLE_LEVEL, LEVELS_PER_RANK = 50, 50
+    rank_offset = max(0, role_level - MIN_ROLE_LEVEL)
+    rank, levels_into_rank = divmod(rank_offset, LEVELS_PER_RANK)
+    levels_to_next_rank = LEVELS_PER_RANK - levels_into_rank
+    flags = (1 if is_female else 0) | ((1 if is_premium else 0) << 1)
+    cd += struct.pack('<B3H2Bi',
+                      flags, first_name_id, last_name_id, icon_id,
+                      rank, levels_to_next_rank, free_xp)
+    return cd
+
+
+def pick_random_passport(nation_name: str, is_premium: bool = False):
+    cfg = load_tankmen_config().get(nation_name)
+    if not cfg:
+        return None
+    groups = cfg.get('premiumGroups' if is_premium else 'normalGroups') or []
+    if not groups:
+        groups = cfg.get('normalGroups') or []
+    if not groups:
+        return None
+    group = random.choice(groups)
+    first_names = group.get('firstNames') or []
+    last_names = group.get('lastNames') or []
+    icons = group.get('icons') or []
+    if not (first_names and last_names and icons):
+        return None
+    fn = random.choice(first_names)
+    ln = random.choice(last_names)
+    ic = random.choice(icons)
+    return {
+        'is_female': bool(group.get('isFemale')),
+        'first_name_id': int(fn[0]),
+        'last_name_id':  int(ln[0]),
+        'icon_id':       int(ic[0]),
+        'first_name':    fn[1],
+        'last_name':     ln[1],
+    }
 
 
 def get_vehicle_by_inventory_id(inv_id: int):
@@ -1209,20 +2057,52 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
     veh_eqs = {}
     veh_settings = {}
     veh_lock = {}
-    # CurrentVehicle.isCrewFull():
-    #   None not in vehicle.crew  AND  vehicle.crew != []
-    # Hangar.__updateTankmen С–С‚РµСЂСѓС” `for i in range(len(crew))` С– РґР»СЏ
-    # РєРѕР¶РЅРѕРіРѕ i С‡РёС‚Р°С” `crewRoles[i]`, С‚РѕРјСѓ len(crew) РјР°С” == crewSize.
-    # invID=0 вЂ” "РїРѕР·Р° С–РЅРІРµРЅС‚Р°СЂРµРј" tankman: Hangar С€СѓРєР°С” Р№РѕРіРѕ РІ `tankmen`,
-    # РЅРµ Р·РЅР°С…РѕРґРёС‚СЊ в†’ tman=None в†’ РїСЂРѕРїСѓСЃРєР°С” СЃРєС–Р»-СЃРµРєС†С–СЋ (Р±РµР· РєСЂР°С€Сѓ),
-    # РђР›Р• СѓРјРѕРІР° isCrewFull() РїСЂРѕР№РґРµ.
+    if account_id:
+        tankmen_rows = load_account_tankmen(account_id)
+        consumables  = load_account_consumables(account_id)
+        opt_devices  = load_account_optional_devices(account_id)
+        veh_eq_slots = load_vehicle_consumable_slots(account_id)
+        veh_od_slots = load_vehicle_optional_device_slots(account_id)
+        veh_ammo_layouts = load_vehicle_ammo_layouts(account_id)
+    else:
+        tankmen_rows, consumables, opt_devices = [], {}, {}
+        veh_eq_slots, veh_od_slots = {}, {}
+        veh_ammo_layouts = {}
+
+    tankmen_compDescr = {}
+    tankmen_vehicle   = {}
+    crew_by_vehicle   = {}
+    crew_slots_by_vehicle = {}
+    for tm in tankmen_rows:
+        cd_bytes = make_tankman_compact_descr(
+            tm['nation_id'], tm['vehicle_type_id'],
+            tm['role_id'], tm['role_level'],
+            tm['first_name_id'], tm['last_name_id'], tm['icon_id'],
+            is_female=tm['is_female'], is_premium=tm['is_premium'],
+            free_xp=tm['free_xp'], skills=tm['skills'],
+            last_skill_level=tm['last_skill_level'])
+        tm_inv = int(tm['inv_id'])
+        tankmen_compDescr[tm_inv] = cd_bytes
+        veh_inv = int(tm['vehicle_inv_id'] or 0)
+        if veh_inv:
+            tankmen_vehicle[tm_inv] = veh_inv
+            slot_idx = tm.get('slot_idx')
+            if slot_idx is not None and int(slot_idx) >= 0:
+                crew_slots_by_vehicle.setdefault(veh_inv, {})[
+                    int(slot_idx)] = tm_inv
+            else:
+                crew_by_vehicle.setdefault(veh_inv, []).append(tm_inv)
+
     FAKE_TANKMAN_INVID = 0
     shell_inventory = {}
     for vehicle in veh_list:
         inv_id = vehicle['inv_id']
-        cd = vehicle['compactDescr']
         crew_size = vehicle['crewSize']
-        default_ammo = list(vehicle.get('defaultAmmo') or [])
+        opt_device_slots = list(veh_od_slots.get(inv_id, [0, 0, 0]))
+        cd = make_vehicle_compact_descr_with_optional_devices(
+            vehicle['compactDescr'], opt_device_slots)
+        default_ammo = list(veh_ammo_layouts.get(
+            inv_id, vehicle.get('defaultAmmo') or []))
         shells_layout = {}
         turret_cd = vehicle.get('turretCompactDescr', 0)
         gun_cd = vehicle.get('gunCompactDescr', 0)
@@ -1232,10 +2112,26 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
         veh_compDescr[inv_id] = cd
         veh_shellsLayout[inv_id] = shells_layout
         veh_shells[inv_id] = list(default_ammo)
-        veh_crew[inv_id] = [FAKE_TANKMAN_INVID] * crew_size
-        veh_repair[inv_id] = (0, 1.0)        # 0 cost, full health
-        veh_eqsLayout[inv_id] = [0, 0, 0]
-        veh_eqs[inv_id] = [0, 0, 0]
+
+        crew_for_veh = [FAKE_TANKMAN_INVID] * crew_size
+        used_tankmen = set()
+        for slot_idx, tm_inv in crew_slots_by_vehicle.get(inv_id, {}).items():
+            if 0 <= int(slot_idx) < crew_size:
+                crew_for_veh[int(slot_idx)] = tm_inv
+                used_tankmen.add(tm_inv)
+        free_slots = [
+            idx for idx, tm_inv in enumerate(crew_for_veh)
+            if tm_inv == FAKE_TANKMAN_INVID
+        ]
+        for tm_inv in crew_by_vehicle.get(inv_id, []):
+            if not free_slots or tm_inv in used_tankmen:
+                continue
+            crew_for_veh[free_slots.pop(0)] = tm_inv
+        veh_crew[inv_id] = crew_for_veh
+
+        veh_repair[inv_id] = (0, 1.0)
+        veh_eqsLayout[inv_id] = opt_device_slots
+        veh_eqs[inv_id]       = list(veh_eq_slots.get(inv_id, [0, 0, 0]))
         veh_settings[inv_id] = 0
         veh_lock[inv_id] = 0
         for i in range(0, len(default_ammo), 2):
@@ -1247,7 +2143,7 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
     slots_count = max(200, len(veh_list) + 10)
 
     diff = {
-        'rev': 0,
+        'rev': get_account_sync_revision(account_id),
         'inventory': {
             1: {  # vehicle
                 'compDescr': veh_compDescr,
@@ -1261,8 +2157,11 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
                 'lock': veh_lock,
             },
             2: {}, 3: {}, 4: {}, 5: {}, 6: {}, 7: {},
-            8: {'compDescr': {}, 'vehicle': {}},   # tankman
-            9: {}, 10: shell_inventory, 11: {},
+            8: {'compDescr': dict(tankmen_compDescr),
+                'vehicle':   dict(tankmen_vehicle)},
+            9: dict(opt_devices),
+            10: shell_inventory,
+            11: dict(consumables),
         },
         # Stats._CACHE_STATS = ('battlesTillCaptcha',) в†’ СЃР°РјРµ Р·РІС–РґСЃРё
         # CaptchaUI С‡РёС‚Р°С” battlesTillCaptcha. РЇРєС‰Рѕ РЅРµ РїРѕРєР»Р°СЃС‚Рё, Stats.get
@@ -1311,7 +2210,22 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
 _CACHED_SYNC_PICKLE = {}
 _CACHED_SYNC_BLOB = {}
 _CACHED_SHOP_BLOB = None
+_ACCOUNT_SYNC_REV = {}
 _sync_cache_lock = threading.RLock()
+
+
+def get_account_sync_revision(account_id: int = 0) -> int:
+    key = int(account_id or 0)
+    with _sync_cache_lock:
+        return int(_ACCOUNT_SYNC_REV.get(key, 0))
+
+
+def bump_account_sync_revision(account_id: int = 0) -> int:
+    key = int(account_id or 0)
+    with _sync_cache_lock:
+        rev = int(_ACCOUNT_SYNC_REV.get(key, 0)) + 1
+        _ACCOUNT_SYNC_REV[key] = rev
+        return rev
 
 
 def get_sync_pickle(account_id: int = 0) -> bytes:
@@ -1343,6 +2257,124 @@ def invalidate_sync_cache(account_id: int = 0):
 
 def make_empty_sync_pickle(prev_rev=0) -> bytes:
     return pickle.dumps({'rev': prev_rev, 'prevRev': prev_rev}, protocol=2)
+
+
+def push_account_diff(sock, addr, sess, partial_diff: dict) -> bool:
+    if not sock or not addr or not sess or not partial_diff:
+        return False
+    account_id = int(sess.get('account_id') or 0)
+    if not account_id:
+        return False
+    prev_rev = get_account_sync_revision(account_id)
+    new_rev = bump_account_sync_revision(account_id)
+    diff = dict(partial_diff)
+    diff['prevRev'] = prev_rev
+    diff['rev'] = new_rev
+    msg = build_account_update(diff)
+    return bool(send_avatar_messages(sock, addr, sess, msg,
+                                     f"Account.update(rev={new_rev})",
+                                     reliable=True))
+
+
+def build_vehicle_inventory_diff(account_id: int, veh_inv_id: int) -> dict:
+    veh_inv_id = int(veh_inv_id)
+    vehicle = get_vehicle_by_inventory_id(veh_inv_id)
+    if vehicle is None:
+        return {}
+    veh_eq_slots     = load_vehicle_consumable_slots(account_id)
+    veh_od_slots     = load_vehicle_optional_device_slots(account_id)
+    veh_ammo_layouts = load_vehicle_ammo_layouts(account_id)
+    opt_devs = list(veh_od_slots.get(veh_inv_id, [0, 0, 0]))
+    cd = make_vehicle_compact_descr_with_optional_devices(
+        vehicle['compactDescr'], opt_devs)
+    eqs = list(veh_eq_slots.get(veh_inv_id, [0, 0, 0]))
+    default_ammo = list(veh_ammo_layouts.get(
+        veh_inv_id, vehicle.get('defaultAmmo') or []))
+    turret_cd = vehicle.get('turretCompactDescr', 0)
+    gun_cd    = vehicle.get('gunCompactDescr', 0)
+    shells_layout = {}
+    if turret_cd and gun_cd and default_ammo:
+        shells_layout[(turret_cd, gun_cd)] = list(default_ammo)
+    return {
+        'inventory': {
+            1: {
+                'compDescr':    {veh_inv_id: cd},
+                'eqs':          {veh_inv_id: eqs},
+                'eqsLayout':    {veh_inv_id: opt_devs},
+                'shells':       {veh_inv_id: list(default_ammo)},
+                'shellsLayout': {veh_inv_id: shells_layout},
+            },
+        },
+    }
+
+
+def build_crew_inventory_diff(account_id: int, veh_inv_id: int,
+                              dismissed_tankman: int = 0) -> dict:
+    veh_inv_id = int(veh_inv_id)
+    vehicle = get_vehicle_by_inventory_id(veh_inv_id)
+    crew_size = int(vehicle.get('crewSize') or 4) if vehicle else 0
+    tankmen_rows = load_account_tankmen(account_id)
+    crew_for_veh = [0] * crew_size
+    free_tail = []
+    tankmen_compDescr_diff = {}
+    tankmen_vehicle_diff = {}
+    for tm in tankmen_rows:
+        tm_inv = int(tm['inv_id'])
+        cd_bytes = make_tankman_compact_descr(
+            tm['nation_id'], tm['vehicle_type_id'],
+            tm['role_id'], tm['role_level'],
+            tm['first_name_id'], tm['last_name_id'], tm['icon_id'],
+            is_female=tm['is_female'], is_premium=tm['is_premium'],
+            free_xp=tm['free_xp'], skills=tm['skills'],
+            last_skill_level=tm['last_skill_level'])
+        veh_for_tm = int(tm.get('vehicle_inv_id') or 0)
+        slot_idx   = tm.get('slot_idx')
+        if veh_for_tm == veh_inv_id:
+            tankmen_compDescr_diff[tm_inv] = cd_bytes
+            tankmen_vehicle_diff[tm_inv] = veh_inv_id
+            if (slot_idx is not None and 0 <= int(slot_idx) < crew_size):
+                crew_for_veh[int(slot_idx)] = tm_inv
+            else:
+                free_tail.append(tm_inv)
+        elif veh_for_tm == 0:
+            tankmen_compDescr_diff[tm_inv] = cd_bytes
+            tankmen_vehicle_diff[tm_inv] = None
+    used = set(x for x in crew_for_veh if x)
+    for idx in range(len(crew_for_veh)):
+        if crew_for_veh[idx] == 0 and free_tail:
+            tm_inv = free_tail.pop(0)
+            if tm_inv in used:
+                continue
+            crew_for_veh[idx] = tm_inv
+            used.add(tm_inv)
+    if dismissed_tankman:
+        tankmen_compDescr_diff[int(dismissed_tankman)] = None
+        tankmen_vehicle_diff[int(dismissed_tankman)] = None
+    return {
+        'inventory': {
+            1: {'crew': {veh_inv_id: crew_for_veh}},
+            8: {
+                'compDescr': tankmen_compDescr_diff,
+                'vehicle':   tankmen_vehicle_diff,
+            },
+        },
+    }
+
+
+def build_account_state_diff(account_id: int) -> dict:
+    state = load_account_state(account_id)
+    return {
+        'stats': {
+            'credits': int(state['credits']),
+            'gold':    int(state['gold']),
+            'freeXP':  int(state['free_xp']),
+        },
+        'inventory': {
+            9:  dict(load_account_optional_devices(account_id)),
+            10: {},
+            11: dict(load_account_consumables(account_id)),
+        },
+    }
 
 
 def make_empty_ext_pickle() -> bytes:
@@ -4118,23 +5150,196 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         return
 
     if cmd == CMD_BUY_ITEM:
-        msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
+        args = parse_doCmd_int3(payload) or (0, 0, 1)
+        _cache_rev, item_compact_descr, count = args
+        account_id = int(sess.get('account_id') or 0)
+        result = buy_item_for_account(account_id, item_compact_descr, count)
+        if result.get('success'):
+            invalidate_sync_cache(account_id)
+            msg = build_oncmdrespext(req_id, RES_SUCCESS,
+                                     make_empty_ext_pickle())
+            print(f"    [>] buyItem(cd=0x{item_compact_descr:08x} "
+                  f"x{count}) success price={result.get('price')}")
+        else:
+            msg = build_oncmdrespext(req_id, RES_FAILURE,
+                                     make_empty_ext_pickle())
+            print(f"    [-] buyItem(cd=0x{item_compact_descr:08x} "
+                  f"x{count}) FAIL: {result.get('reason')}")
         if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
             return
-        print(f"    [>] buyItem(req={req_id}) success")
+        if result.get('success') and account_id:
+            try:
+                push_account_diff(sock, addr, sess,
+                                  build_account_state_diff(account_id))
+            except Exception as exc:
+                print(f"    [!] push_account_diff(buyItem) FAIL: {exc}")
         return
 
     if cmd == CMD_EQUIP_SHELLS:
         arr = parse_doCmd_int_arr(payload)
+        account_id = int(sess.get('account_id') or 0)
+        veh_inv_id = 0
+        save_ok = False
         if arr:
             veh_inv_id = arr[0]
+            ammo_pairs = arr[1:]
             vehicle = get_vehicle_by_inventory_id(veh_inv_id)
             if vehicle is not None:
-                vehicle['defaultAmmo'] = arr[1:]
+                vehicle['defaultAmmo'] = list(ammo_pairs)
+            if account_id:
+                try:
+                    save_vehicle_ammo_layout(account_id, veh_inv_id,
+                                             ammo_pairs)
+                    invalidate_sync_cache(account_id)
+                    save_ok = True
+                except Exception as exc:
+                    print(f"    [!] save_vehicle_ammo_layout FAIL: {exc}")
         msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
         if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
             return
+        if save_ok and account_id and veh_inv_id:
+            try:
+                push_account_diff(sock, addr, sess,
+                                  build_vehicle_inventory_diff(account_id, veh_inv_id))
+            except Exception as exc:
+                print(f"    [!] push_account_diff(equipShells) FAIL: {exc}")
         print(f"    [>] equipShells(req={req_id}, items={len(arr)}) success")
+        return
+
+    if cmd == CMD_EQUIP_EQS:
+        arr = parse_doCmd_int_arr(payload)
+        account_id = int(sess.get('account_id') or 0)
+        veh_inv_id = 0
+        save_ok = False
+        if arr and account_id:
+            veh_inv_id = arr[0]
+            slots = list(arr[1:4]) + [0, 0, 0]
+            slots = slots[:3]
+            try:
+                save_consumable_slots(account_id, veh_inv_id, slots)
+                invalidate_sync_cache(account_id)
+                save_ok = True
+                print(f"    [>] equipEqs(veh={veh_inv_id}, "
+                      f"slots={[hex(s) for s in slots]}) saved")
+            except Exception as exc:
+                print(f"    [!] save_consumable_slots FAIL: {exc}")
+        msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
+            return
+        if save_ok and account_id and veh_inv_id:
+            try:
+                push_account_diff(sock, addr, sess,
+                                  build_vehicle_inventory_diff(account_id, veh_inv_id))
+            except Exception as exc:
+                print(f"    [!] push_account_diff(equipEqs) FAIL: {exc}")
+        return
+
+    if cmd == CMD_EQUIP_OPTDEV:
+        args = parse_doCmd_int4(payload)
+        account_id = int(sess.get('account_id') or 0)
+        veh_inv_id = 0
+        save_ok = False
+        if args and account_id:
+            veh_inv_id, device_cd, slot_idx, _is_paid = args
+            try:
+                save_optional_device_slot(account_id, veh_inv_id,
+                                          slot_idx, device_cd)
+                invalidate_sync_cache(account_id)
+                save_ok = True
+                print(f"    [>] equipOptDev(veh={veh_inv_id}, "
+                      f"slot={slot_idx}, cd=0x{device_cd & 0xffffffff:08x})")
+            except Exception as exc:
+                print(f"    [!] save_optional_device_slot FAIL: {exc}")
+        msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
+            return
+        if save_ok and account_id and veh_inv_id:
+            try:
+                push_account_diff(sock, addr, sess,
+                                  build_vehicle_inventory_diff(account_id, veh_inv_id))
+            except Exception as exc:
+                print(f"    [!] push_account_diff(equipOptDev) FAIL: {exc}")
+        return
+
+    if cmd == CMD_EQUIP_TMAN:
+        args = parse_doCmd_int3(payload)
+        account_id = int(sess.get('account_id') or 0)
+        veh_inv_id = 0
+        save_ok = False
+        affected_vehicles = set()
+        if args and account_id:
+            veh_inv_id, slot, tman_inv_id = args
+            try:
+                if tman_inv_id and tman_inv_id > 0:
+                    _ok, prev_veh, kicked_veh = set_tankman_vehicle(
+                        account_id, tman_inv_id, veh_inv_id, slot)
+                    print(f"    [>] equipTman(veh={veh_inv_id}, "
+                          f"slot={slot}, tman={tman_inv_id})")
+                    if prev_veh:
+                        affected_vehicles.add(int(prev_veh))
+                    if kicked_veh:
+                        affected_vehicles.add(int(kicked_veh))
+                else:
+                    clear_tankman_vehicle_slot(account_id, veh_inv_id, slot)
+                    print(f"    [>] equipTman(veh={veh_inv_id}, "
+                          f"slot={slot}, tman=NONE)")
+                affected_vehicles.add(int(veh_inv_id))
+                invalidate_sync_cache(account_id)
+                save_ok = True
+            except Exception as exc:
+                print(f"    [!] set_tankman_vehicle FAIL: {exc}")
+        msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
+            return
+        if save_ok and account_id:
+            for affected in affected_vehicles:
+                if not affected:
+                    continue
+                try:
+                    push_account_diff(sock, addr, sess,
+                                      build_crew_inventory_diff(account_id, affected))
+                except Exception as exc:
+                    print(f"    [!] push_account_diff(equipTman veh={affected}) FAIL: {exc}")
+        return
+
+    if cmd == CMD_DISMISS_TMAN:
+        args = parse_doCmd_int3(payload)
+        account_id = int(sess.get('account_id') or 0)
+        ok = False
+        prev_veh_inv_id = 0
+        tman_inv_id = 0
+        if args and account_id:
+            tman_inv_id = args[0]
+            try:
+                ok, prev_veh_inv_id = dismiss_tankman(account_id, tman_inv_id)
+                if ok:
+                    invalidate_sync_cache(account_id)
+                    print(f"    [>] dismissTman(tman={tman_inv_id}) ok")
+                else:
+                    print(f"    [-] dismissTman(tman={tman_inv_id}) "
+                          f"not found")
+            except Exception as exc:
+                print(f"    [!] dismiss_tankman FAIL: {exc}")
+        result_code = RES_SUCCESS if ok else RES_FAILURE
+        msg = build_oncmdrespext(req_id, result_code, make_empty_ext_pickle())
+        if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
+            return
+        if ok and account_id:
+            try:
+                if prev_veh_inv_id:
+                    push_account_diff(sock, addr, sess,
+                                      build_crew_inventory_diff(
+                                          account_id, prev_veh_inv_id,
+                                          dismissed_tankman=tman_inv_id))
+                else:
+                    push_account_diff(sock, addr, sess, {
+                        'inventory': {8: {
+                            'compDescr': {int(tman_inv_id): None},
+                            'vehicle':   {int(tman_inv_id): None},
+                        }},
+                    })
+            except Exception as exc:
+                print(f"    [!] push_account_diff(dismissTman) FAIL: {exc}")
         return
 
     if cmd == CMD_SYNC_DOSSIERS:
