@@ -2691,6 +2691,11 @@ STATIC_OBSTACLE_SHOOTER_GAP = 4.0
 STATIC_OBSTACLE_TARGET_GAP = 4.0
 STATIC_OBSTACLE_Y_BELOW = 1.5
 STATIC_OBSTACLE_Y_HEIGHT = 5.0
+TANK_COLLISION_RADIUS = 2.5
+TANK_SLOPE_LIMIT_TAN = math.tan(math.radians(35.0))
+TANK_SLOPE_SOFT_TAN = math.tan(math.radians(28.0))
+TANK_SLOPE_SAMPLE_MIN_XZ = 0.20
+TANK_SLOPE_SMOOTHING = 0.6
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -3367,6 +3372,14 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
         dz = pos[2] - prev[2]
         if dx * dx + dy * dy + dz * dz > 0.0001:
             sess['client_vehicle_last_move_time'] = now
+        xz_dist = math.sqrt(dx * dx + dz * dz)
+        if xz_dist > TANK_SLOPE_SAMPLE_MIN_XZ:
+            slope = dy / xz_dist
+            prev_slope = float(sess.get('client_vehicle_slope', 0.0))
+            sess['client_vehicle_slope'] = (
+                prev_slope * TANK_SLOPE_SMOOTHING +
+                slope * (1.0 - TANK_SLOPE_SMOOTHING))
+            sess['client_vehicle_slope_time'] = now
     sess['client_vehicle_pos'] = pos
     sess['client_vehicle_yaw'] = yaw
     sess['client_vehicle_last_update_time'] = now
@@ -3674,6 +3687,8 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_motion_loop_started'] = False
     sess['battle_client_control_enabled'] = False
     sess['server_vehicle_authoritative'] = True
+    sess['client_vehicle_slope'] = 0.0
+    sess['client_vehicle_slope_time'] = 0.0
     sess['battle_period_active'] = False
     sess['battle_turret_yaw'] = spawn_yaw
     sess['battle_gun_pitch'] = 0.0
@@ -3778,9 +3793,42 @@ def advance_battle_motion(sess: dict, flags: int = None):
     if now - float(sess.get('last_targeting_update', 0.0)) > 0.25:
         turret_yaw = float(sess.get('battle_turret_yaw', prev_yaw))
         sess['battle_turret_yaw'] = normalize_angle(turret_yaw + yaw - prev_yaw)
+
+    slope_climb_blocked = False
+    slope_age = now - float(sess.get('client_vehicle_slope_time', 0.0))
+    if slope_age <= 1.5:
+        slope = float(sess.get('client_vehicle_slope', 0.0))
+        if speed > 0.001 and slope > TANK_SLOPE_LIMIT_TAN:
+            speed = 0.0
+            slope_climb_blocked = True
+        elif speed < -0.001 and slope < -TANK_SLOPE_LIMIT_TAN:
+            speed = 0.0
+            slope_climb_blocked = True
+        elif speed > 0.001 and slope > TANK_SLOPE_SOFT_TAN:
+            soft_factor = max(
+                0.0,
+                1.0 - (slope - TANK_SLOPE_SOFT_TAN) /
+                max(0.001, TANK_SLOPE_LIMIT_TAN - TANK_SLOPE_SOFT_TAN))
+            speed *= soft_factor
+        elif speed < -0.001 and slope < -TANK_SLOPE_SOFT_TAN:
+            soft_factor = max(
+                0.0,
+                1.0 - (-slope - TANK_SLOPE_SOFT_TAN) /
+                max(0.001, TANK_SLOPE_LIMIT_TAN - TANK_SLOPE_SOFT_TAN))
+            speed *= soft_factor
+
     if abs(speed) > 0.001:
-        x += math.sin(yaw) * speed * dt
-        z += math.cos(yaw) * speed * dt
+        cand_x = x + math.sin(yaw) * speed * dt
+        cand_z = z + math.cos(yaw) * speed * dt
+        arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
+        new_x, new_z, blocked = resolve_motion_against_obstacles(
+            arena_type_id, x, z, cand_x, cand_z)
+        x, z = new_x, new_z
+        if blocked:
+            speed = 0.0
+
+    if slope_climb_blocked and abs(speed) < 0.001:
+        speed = 0.0
 
     sess['battle_prev_pos'] = prev_pos
     sess['battle_pos'] = (x, y, z)
@@ -4427,6 +4475,37 @@ def load_static_obstacles_for_arena(arena_type_id: int):
     if obstacles:
         print(f"    [battle] loaded {len(obstacles)} static obstacle(s) for arenaType={arena_type_id}")
     return obstacles
+
+
+def find_blocking_static_obstacle(arena_type_id: int, x: float, z: float,
+                                  tank_radius: float = TANK_COLLISION_RADIUS):
+    obstacles = load_static_obstacles_for_arena(arena_type_id)
+    if not obstacles:
+        return None
+    for ox, oy, oz, oradius in obstacles:
+        block_radius = oradius - STATIC_OBSTACLE_RADIUS_PAD + tank_radius
+        if block_radius <= 0.0:
+            continue
+        dx = x - ox
+        dz = z - oz
+        if dx * dx + dz * dz < block_radius * block_radius:
+            return (ox, oy, oz, oradius, block_radius)
+    return None
+
+
+def resolve_motion_against_obstacles(arena_type_id: int,
+                                     prev_x: float, prev_z: float,
+                                     new_x: float, new_z: float,
+                                     tank_radius: float = TANK_COLLISION_RADIUS):
+    if find_blocking_static_obstacle(arena_type_id, new_x, new_z, tank_radius) is None:
+        return new_x, new_z, False
+    if (find_blocking_static_obstacle(arena_type_id, new_x, prev_z, tank_radius) is None
+            and (new_x != prev_x or new_z == prev_z)):
+        return new_x, prev_z, True
+    if (find_blocking_static_obstacle(arena_type_id, prev_x, new_z, tank_radius) is None
+            and (new_z != prev_z or new_x == prev_x)):
+        return prev_x, new_z, True
+    return prev_x, prev_z, True
 
 
 def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
