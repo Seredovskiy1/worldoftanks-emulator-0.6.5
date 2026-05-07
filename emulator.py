@@ -58,6 +58,8 @@ DEFAULT_GOLD    = 1000000
 DEFAULT_FREE_XP = 1000000
 DEFAULT_SLOTS   = 200
 DEFAULT_BERTHS  = 50
+
+NATION_NAMES = ('ussr', 'germany', 'usa', 'china', 'france', 'uk', 'japan')
 active_battle_accounts = {}
 matchmaking_queue = []
 matchmaking_timer = None
@@ -432,16 +434,22 @@ def get_or_create_account(username: str, password: str):
             conn.close()
     if new_account_id is not None:
         try:
+            print(f"[*] seeding new account id={new_account_id}")
             seed_default_account_inventory(new_account_id)
         except Exception as e:
             print(f"[!] seed_default_account_inventory failed: {e}")
+            import traceback
+            traceback.print_exc()
         return {'id': new_account_id, 'username': username, 'created': True}
     if existing_account_id is not None:
         try:
+            print(f"[*] re-seeding existing account id={existing_account_id}")
             seed_default_account_inventory(existing_account_id)
             invalidate_sync_cache(existing_account_id)
         except Exception as e:
             print(f"[!] auto-seed for existing account failed: {e}")
+            import traceback
+            traceback.print_exc()
         return {'id': existing_account_id, 'username': existing_username,
                 'created': False}
     return {'id': 0, 'username': username, 'created': False,
@@ -506,31 +514,56 @@ def seed_default_account_inventory(account_id: int):
 
 def fix_legacy_tankman_nations(cur, account_id: int, veh_list):
     veh_by_inv = {int(v['inv_id']): v for v in veh_list}
+    valid_pairs = {(int(v.get('nationID') or 0),
+                    int(v.get('vehicleTypeID') or 0)) for v in veh_list}
+    nation_default_vtype = {}
+    for v in veh_list:
+        n = int(v.get('nationID') or 0)
+        t = int(v.get('vehicleTypeID') or 0)
+        nation_default_vtype.setdefault(n, t)
+
     cur.execute(
         "SELECT inv_id, vehicle_inv_id, nation_id, vehicle_type_id, "
         "first_name_id, last_name_id, icon_id, is_female, is_premium "
-        "FROM tankmen WHERE account_id=%s AND vehicle_inv_id IS NOT NULL",
+        "FROM tankmen WHERE account_id=%s",
         (int(account_id),))
     rows = cur.fetchall() or []
+    fixed = 0
     for row in rows:
-        tm_inv, veh_inv, nation_id, vehicle_type_id = (int(row[0]),
-            int(row[1]) if row[1] is not None else 0,
-            int(row[2]), int(row[3]))
-        vehicle = veh_by_inv.get(veh_inv)
-        if vehicle is None:
-            continue
-        target_nation = int(vehicle.get('nationID') or 0)
-        target_vtype  = int(vehicle.get('vehicleTypeID') or 0)
+        tm_inv = int(row[0])
+        veh_inv = int(row[1]) if row[1] is not None else 0
+        nation_id = int(row[2])
+        vehicle_type_id = int(row[3])
+        is_premium = bool(row[8])
+
+        if veh_inv:
+            vehicle = veh_by_inv.get(veh_inv)
+            if vehicle is None:
+                continue
+            target_nation = int(vehicle.get('nationID') or 0)
+            target_vtype  = int(vehicle.get('vehicleTypeID') or 0)
+            target_nation_name = vehicle.get('nation') or 'ussr'
+        else:
+            if (nation_id, vehicle_type_id) in valid_pairs:
+                continue
+            target_nation = nation_id
+            target_vtype = nation_default_vtype.get(nation_id)
+            if target_vtype is None or (target_nation, target_vtype) not in valid_pairs:
+                target_nation = 0
+                target_vtype = nation_default_vtype.get(0, 0)
+            target_nation_name = NATION_NAMES[target_nation] \
+                if 0 <= target_nation < len(NATION_NAMES) else 'ussr'
+
         if nation_id == target_nation and vehicle_type_id == target_vtype:
             continue
-        passport = pick_random_passport(
-            vehicle.get('nation') or 'ussr',
-            is_premium=bool(row[8]))
+        passport = pick_random_passport(target_nation_name,
+                                        is_premium=is_premium)
         if passport is None:
             cur.execute(
                 "UPDATE tankmen SET nation_id=%s, vehicle_type_id=%s "
                 "WHERE inv_id=%s AND account_id=%s",
                 (target_nation, target_vtype, tm_inv, int(account_id)))
+            fixed += 1
             continue
         cur.execute(
             "UPDATE tankmen SET nation_id=%s, vehicle_type_id=%s, "
@@ -540,6 +573,9 @@ def fix_legacy_tankman_nations(cur, account_id: int, veh_list):
              1 if passport['is_female'] else 0,
              passport['first_name_id'], passport['last_name_id'],
              passport['icon_id'], tm_inv, int(account_id)))
+        fixed += 1
+    print(f"[*] fix_legacy_tankman_nations: account={account_id} "
+          f"fixed={fixed}/{len(rows)} tankmen")
 
 
 def seed_vehicle_default_inventory(cur, account_id, vehicle, now):
@@ -2069,21 +2105,44 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
         veh_eq_slots, veh_od_slots = {}, {}
         veh_ammo_layouts = {}
 
+    veh_by_inv = {int(v['inv_id']): v for v in veh_list}
     tankmen_compDescr = {}
     tankmen_vehicle   = {}
     crew_by_vehicle   = {}
     crew_slots_by_vehicle = {}
     for tm in tankmen_rows:
+        tm_inv = int(tm['inv_id'])
+        veh_inv = int(tm['vehicle_inv_id'] or 0)
+        nation_id = int(tm['nation_id'])
+        vehicle_type_id = int(tm['vehicle_type_id'])
+        first_name_id = int(tm['first_name_id'] or 0)
+        last_name_id  = int(tm['last_name_id'] or 0)
+        icon_id       = int(tm['icon_id'] or 0)
+        is_female     = bool(tm.get('is_female'))
+        if veh_inv:
+            assigned = veh_by_inv.get(veh_inv)
+            if assigned is not None:
+                veh_nation = int(assigned.get('nationID') or 0)
+                veh_vtype  = int(assigned.get('vehicleTypeID') or 0)
+                if nation_id != veh_nation or vehicle_type_id != veh_vtype:
+                    nation_id = veh_nation
+                    vehicle_type_id = veh_vtype
+                    nation_name = assigned.get('nation') or 'ussr'
+                    passport = pick_random_passport(
+                        nation_name, is_premium=bool(tm.get('is_premium')))
+                    if passport is not None:
+                        first_name_id = int(passport['first_name_id'])
+                        last_name_id  = int(passport['last_name_id'])
+                        icon_id       = int(passport['icon_id'])
+                        is_female     = bool(passport['is_female'])
         cd_bytes = make_tankman_compact_descr(
-            tm['nation_id'], tm['vehicle_type_id'],
+            nation_id, vehicle_type_id,
             tm['role_id'], tm['role_level'],
-            tm['first_name_id'], tm['last_name_id'], tm['icon_id'],
-            is_female=tm['is_female'], is_premium=tm['is_premium'],
+            first_name_id, last_name_id, icon_id,
+            is_female=is_female, is_premium=tm['is_premium'],
             free_xp=tm['free_xp'], skills=tm['skills'],
             last_skill_level=tm['last_skill_level'])
-        tm_inv = int(tm['inv_id'])
         tankmen_compDescr[tm_inv] = cd_bytes
-        veh_inv = int(tm['vehicle_inv_id'] or 0)
         if veh_inv:
             tankmen_vehicle[tm_inv] = veh_inv
             slot_idx = tm.get('slot_idx')
@@ -2311,7 +2370,9 @@ def build_vehicle_inventory_diff(account_id: int, veh_inv_id: int) -> dict:
 def build_crew_inventory_diff(account_id: int, veh_inv_id: int,
                               dismissed_tankman: int = 0) -> dict:
     veh_inv_id = int(veh_inv_id)
-    vehicle = get_vehicle_by_inventory_id(veh_inv_id)
+    veh_list = load_all_vehicles()
+    veh_by_inv = {int(v['inv_id']): v for v in veh_list}
+    vehicle = veh_by_inv.get(veh_inv_id)
     crew_size = int(vehicle.get('crewSize') or 4) if vehicle else 0
     tankmen_rows = load_account_tankmen(account_id)
     crew_for_veh = [0] * crew_size
@@ -2320,14 +2381,36 @@ def build_crew_inventory_diff(account_id: int, veh_inv_id: int,
     tankmen_vehicle_diff = {}
     for tm in tankmen_rows:
         tm_inv = int(tm['inv_id'])
+        veh_for_tm = int(tm.get('vehicle_inv_id') or 0)
+        nation_id = int(tm['nation_id'])
+        vehicle_type_id = int(tm['vehicle_type_id'])
+        first_name_id = int(tm['first_name_id'] or 0)
+        last_name_id  = int(tm['last_name_id'] or 0)
+        icon_id       = int(tm['icon_id'] or 0)
+        is_female     = bool(tm.get('is_female'))
+        if veh_for_tm:
+            assigned = veh_by_inv.get(veh_for_tm)
+            if assigned is not None:
+                veh_nation = int(assigned.get('nationID') or 0)
+                veh_vtype  = int(assigned.get('vehicleTypeID') or 0)
+                if nation_id != veh_nation or vehicle_type_id != veh_vtype:
+                    nation_id = veh_nation
+                    vehicle_type_id = veh_vtype
+                    nation_name = assigned.get('nation') or 'ussr'
+                    passport = pick_random_passport(
+                        nation_name, is_premium=bool(tm.get('is_premium')))
+                    if passport is not None:
+                        first_name_id = int(passport['first_name_id'])
+                        last_name_id  = int(passport['last_name_id'])
+                        icon_id       = int(passport['icon_id'])
+                        is_female     = bool(passport['is_female'])
         cd_bytes = make_tankman_compact_descr(
-            tm['nation_id'], tm['vehicle_type_id'],
+            nation_id, vehicle_type_id,
             tm['role_id'], tm['role_level'],
-            tm['first_name_id'], tm['last_name_id'], tm['icon_id'],
-            is_female=tm['is_female'], is_premium=tm['is_premium'],
+            first_name_id, last_name_id, icon_id,
+            is_female=is_female, is_premium=tm['is_premium'],
             free_xp=tm['free_xp'], skills=tm['skills'],
             last_skill_level=tm['last_skill_level'])
-        veh_for_tm = int(tm.get('vehicle_inv_id') or 0)
         slot_idx   = tm.get('slot_idx')
         if veh_for_tm == veh_inv_id:
             tankmen_compDescr_diff[tm_inv] = cd_bytes
@@ -2405,7 +2488,9 @@ def make_shop_pickle() -> bytes:
         'freeXPConversion':  (200, 25),
         'premiumCost':       {1: 250, 3: 600, 7: 1250, 14: 2500, 30: 4500},
         'tradeFees':         (0.0, 0.0),
-        'tankmanCost':       [(0, 0, 0), (500, 0, 1), (0, 200, 2)],
+        'tankmanCost':       [{'credits': 0,   'gold': 0},
+                              {'credits': 500, 'gold': 0},
+                              {'credits': 0,   'gold': 200}],
         'paidRemovalCost':   5,
         'camouflageCost':    {0: [], 1: [], 2: []},
         'hornCost':          (5, 0),
@@ -2478,8 +2563,22 @@ def send_sync_stream(sock, addr, sess, req_id: int):
                             b'syncData', 'syncData STREAM')
 
 
+DOSSIER_TYPE_ACCOUNT = 1
+DOSSIER_TYPE_VEHICLE = 2
+DOSSIER_TYPE_TANKMAN = 4
+
+
 def send_dossiers_stream(sock, addr, sess, req_id: int):
-    blob = zlib.compress(pickle.dumps((1, []), protocol=2))
+    account_id = int(sess.get('account_id') or 0)
+    dossiers_list = []
+    try:
+        tankmen = load_account_tankmen(account_id) if account_id else []
+    except Exception:
+        tankmen = []
+    for tm in tankmen:
+        tm_inv = int(tm['inv_id'])
+        dossiers_list.extend([DOSSIER_TYPE_TANKMAN, tm_inv, 0, b''])
+    blob = zlib.compress(pickle.dumps((1, dossiers_list), protocol=2))
     send_zlib_pickle_stream(sock, addr, sess, req_id, blob,
                             b'dossiers', 'Dossiers STREAM')
 
