@@ -6,7 +6,7 @@ REM ============================================================
 REM   WoT 0.6.5 Emulator - Setup hosts entries (run once)
 REM ============================================================
 
-set "SERVER_HOST=YOUR_SERVER_IP_OR_DOMAIN"
+set "SERVER_HOST=127.0.0.1"
 
 REM ---- Check admin ----
 net session >nul 2>&1
