@@ -40,6 +40,7 @@ builtins.print = print
 
 LOGIN_PORT  = 20016
 BASEAPP_PORT = 20017
+PUBLIC_HOST = os.environ.get('WOT_PUBLIC_HOST', '127.0.0.1')
 
 # { token_bytes : { 'bf_key': bytes, 'addr': (ip,port) } }
 active_sessions = {}
@@ -5613,7 +5614,11 @@ def handle_loginapp(sock):
           f"dbid={account['id']} | Token: {token.hex()}")
 
     # LoginReplyRecord: Mercury::Address(ip 4B + port 2B + salt 2B) + sessionKey(4B) = 12 B
-    record  = socket.inet_aton('127.0.0.1')
+    try:
+        baseapp_ip = socket.gethostbyname(PUBLIC_HOST)
+    except Exception:
+        baseapp_ip = '127.0.0.1'
+    record  = socket.inet_aton(baseapp_ip)
     record += struct.pack('>H', BASEAPP_PORT)
     record += b'\x00\x00'            # salt (Mercury::Address.salt)
     record += token
@@ -5773,6 +5778,10 @@ def main():
     base_sock.bind(('0.0.0.0', BASEAPP_PORT))
 
     print(f"[*] WoT 0.6.5 Emulator | LoginApp:{LOGIN_PORT} | BaseApp:{BASEAPP_PORT}")
+    print(f"[*] PUBLIC_HOST={PUBLIC_HOST} (advertised to clients in LoginReply)")
+    if PUBLIC_HOST in ('127.0.0.1', 'localhost'):
+        print("[!] PUBLIC_HOST=127.0.0.1 — only local clients can connect.")
+        print("[!] For remote players, set env: WOT_PUBLIC_HOST=<your_public_ip_or_domain>")
     print("[*] Р—Р°РїСѓСЃРєР°Р№ РіСЂСѓ С– С‚РёСЃРЅРё Connect!\n")
 
     while True:
