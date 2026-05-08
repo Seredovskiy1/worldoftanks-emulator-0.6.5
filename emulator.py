@@ -14,6 +14,7 @@ import pymysql.cursors
 import hashlib
 import random
 import re
+import contextlib
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, Blowfish
 
@@ -2647,7 +2648,10 @@ ARENA_UPDATE_STATISTICS = 4
 ARENA_UPDATE_VEHICLE_STATISTICS = 5
 ARENA_UPDATE_VEHICLE_KILLED = 6
 ARENA_UPDATE_AVATAR_READY = 7
+ARENA_UPDATE_BASE_POINTS = 8
+ARENA_UPDATE_BASE_CAPTURED = 9
 BATTLE_FINISH_REASON_EXTERMINATION = 1
+BATTLE_FINISH_REASON_BASE = 2
 # Arena type IDs Р· res/scripts/arena_defs/_list_.xml:
 #   1=01_karelia, 2=02_malinovka, 4=04_himmelsdorf, 5=05_prohorovka,
 #   6=06_ensk, 7=07_lakeville, 8=08_ruinberg, 10=10_hills, 11=11_murovanka,
@@ -2660,6 +2664,11 @@ BATTLE_TIMER_SECONDS = 15 * 60
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
 BATTLE_MOTION_TICK = 0.10
+BASE_CAPTURE_RADIUS = 50.0
+BASE_CAPTURE_POINTS_MAX = 100
+BASE_CAPTURE_POINTS_PER_SECOND = 1.0
+BASE_CAPTURE_MAX_POINTS_PER_SECOND = 3.0
+BASE_CAPTURE_CLIENT_POSITION_MAX_AGE = 5.0
 TARGETING_UPDATE_INTERVAL = 0.08
 BATTLE_MAX_FORWARD_SPEED = 10.0
 BATTLE_MAX_BACKWARD_SPEED = 4.0
@@ -2686,7 +2695,10 @@ SHOT_TANK_HIT_RADIUS_V = 4.0
 SHOT_TANK_MARKER_VERT_ABOVE = 25.0
 TARGET_HIT_RADIUS = 8.0
 SHOT_TARGET_OVERSHOOT = 10.0
-STATIC_OBSTACLE_RADIUS_PAD = 2.0
+STATIC_OBSTACLE_MOVE_RADIUS_FACTOR = 0.65
+STATIC_OBSTACLE_MOVE_RADIUS_MIN = 2.0
+STATIC_OBSTACLE_MOVE_RADIUS_MAX = 8.0
+STATIC_OBSTACLE_SHOT_RADIUS_PAD = 1.0
 STATIC_OBSTACLE_SHOOTER_GAP = 4.0
 STATIC_OBSTACLE_TARGET_GAP = 4.0
 STATIC_OBSTACLE_Y_BELOW = 1.5
@@ -2743,6 +2755,13 @@ KARELIA_TEAM2_SPAWNS = [
     for x, y, z in KARELIA_TEAM1_SPAWNS
 ]
 
+ARENA_CAPTURE_BASE_POSITIONS = {
+    1: {
+        1: (-405.14, -398.27),
+        2: (396.27, 402.37),
+    },
+}
+
 ARENA_SPAWN_POS = {
     1:  KARELIA_TEAM1_SPAWNS[0],
     2:  (-350.0, 80.0, -350.0),
@@ -2769,6 +2788,7 @@ ARENA_SPAWN_POS = {
 KARELIA_STONE_MODEL_RE = re.compile(
     rb'content/Environment/[^\x00]{0,160}Stones[^\x00]{0,160}\.modelx?')
 STATIC_OBSTACLE_CACHE = {}
+STATIC_MODEL_RADIUS_CACHE = {}
 
 
 def normalize_arena_type_id(arena_type_id) -> int:
@@ -3564,6 +3584,13 @@ def start_battle_tick_loop(sock):
                 for observer, payload in remote_payloads:
                     send_avatar_messages(sock, observer.get('addr'), observer,
                                          b''.join(payload), '', reliable=False)
+                processed_matches = set()
+                for sess in sessions:
+                    match_id = sess.get('battle_match_id')
+                    if match_id in processed_matches:
+                        continue
+                    processed_matches.add(match_id)
+                    process_base_capture(sock, match_id)
             except Exception as exc:
                 print(f"[!] Battle tick loop error: {exc}")
                 time.sleep(0.1)
@@ -3598,6 +3625,66 @@ def pick_spawn_pos(arena_type_id: int, sess: dict):
     return spawns[spawn_index % len(spawns)]
 
 
+def get_capture_base_position(arena_type_id: int, base_id: int):
+    base_map = ARENA_CAPTURE_BASE_POSITIONS.get(int(arena_type_id), {})
+    pos = base_map.get(int(base_id))
+    if pos is not None:
+        return pos
+    spawns = get_spawn_base_spawns(arena_type_id, base_id)
+    if not spawns:
+        fallback = ARENA_SPAWN_POS.get(arena_type_id,
+                                       ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+        return fallback[0], fallback[2]
+    x = sum(float(pos[0]) for pos in spawns) / len(spawns)
+    z = sum(float(pos[2]) for pos in spawns) / len(spawns)
+    return x, z
+
+
+def build_battle_capture_state(arena_type_id: int, base_assignment: dict):
+    bases = {}
+    for team in (1, 2):
+        base_id = int((base_assignment or {}).get(team, team))
+        x, z = get_capture_base_position(arena_type_id, base_id)
+        bases[team] = {
+            'base_id': base_id,
+            'pos': (float(x), float(z)),
+            'radius': BASE_CAPTURE_RADIUS,
+            'points': 0.0,
+            'last_sent': 0,
+            'capturing_team': 0,
+            'invader_progress': {},
+        }
+    return {'last_update': time.time(), 'bases': bases,
+            'lock': threading.RLock()}
+
+
+def ensure_battle_capture_state(sess: dict):
+    state = sess.get('battle_capture_state')
+    if state is not None:
+        return state
+    arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
+    state = build_battle_capture_state(
+        arena_type_id, sess.get('battle_base_assignment') or {1: 1, 2: 2})
+    sess['battle_capture_state'] = state
+    return state
+
+
+def distance_xz(pos, base_pos) -> float:
+    dx = float(pos[0]) - float(base_pos[0])
+    dz = float(pos[2]) - float(base_pos[1])
+    return math.sqrt(dx * dx + dz * dz)
+
+
+def get_base_capture_vehicle_pos(sess: dict):
+    pos = sess.get('client_vehicle_pos')
+    if pos is not None:
+        last = float(sess.get('client_vehicle_last_update_time', 0.0))
+        if time.time() - last <= BASE_CAPTURE_CLIENT_POSITION_MAX_AGE:
+            return pos
+    return get_effective_vehicle_pos(
+        sess, sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
+
+
 def assign_match_teams(valid_batch):
     shuffled = list(valid_batch)
     random.shuffle(shuffled)
@@ -3615,8 +3702,7 @@ def assign_match_teams(valid_batch):
         teams[team].append(queued)
         weights[team] += weight
 
-    team1_base = random.choice((1, 2))
-    base_assignment = {1: team1_base, 2: 1 if team1_base == 2 else 2}
+    base_assignment = {1: 1, 2: 2}
     for team, queued_list in teams.items():
         for index, queued in enumerate(queued_list):
             sess = queued.get('sess')
@@ -3706,6 +3792,8 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_shots_received'] = 0
     sess['battle_damage_dealt'] = 0
     sess['battle_damage_received'] = 0
+    sess['battle_capture_points'] = 0
+    sess['battle_dropped_capture_points'] = 0
     sess['battle_damaged_vehicle_ids'] = set()
     sess['battle_killed_vehicle_ids'] = set()
     sess['battle_spotted_vehicle_ids'] = set()
@@ -4102,6 +4190,16 @@ def start_matchmaking_timer(sock):
         if not valid_batch:
             return
         assign_match_teams(valid_batch)
+        first_sess = (valid_batch[0].get('sess') or {})
+        arena_type_id = normalize_arena_type_id(
+            first_sess.get('battle_arena_type_id'))
+        capture_state = build_battle_capture_state(
+            arena_type_id, first_sess.get('battle_base_assignment') or {1: 1, 2: 2})
+        for queued in valid_batch:
+            sess = queued.get('sess')
+            if sess:
+                sess['battle_capture_state'] = capture_state
+        print(f"    [battle] capture bases={capture_state.get('bases')}")
         team_counts = {1: 0, 2: 0}
         base_assignment = {}
         for queued in valid_batch:
@@ -4422,15 +4520,83 @@ def find_client_space_dir(arena_type_id: int):
     return None
 
 
-def stone_obstacle_radius(model_path: bytes) -> float:
+def find_client_res_file(resource_path: bytes):
+    relative = resource_path.decode('ascii', 'ignore').strip('/').replace('/', os.sep)
+    if relative.endswith('.modelx'):
+        relative = relative[:-1]
+    roots = [
+        os.environ.get('WOT_CLIENT_ROOT'),
+        r'C:\Users\qwerty\Desktop\World_of_Tanks',
+    ]
+    for root in roots:
+        if not root:
+            continue
+        path = os.path.join(root, 'res', relative)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def read_model_obstacle_radius(model_path: bytes):
+    cache_key = model_path.lower()
+    if cache_key in STATIC_MODEL_RADIUS_CACHE:
+        return STATIC_MODEL_RADIUS_CACHE[cache_key]
+    radius = None
+    path = find_client_res_file(model_path)
+    if path:
+        try:
+            with open(path, 'rb') as fh:
+                data = fh.read()
+            for offset in range(0, max(0, len(data) - 24)):
+                values = struct.unpack_from('<6f', data, offset)
+                if not all(math.isfinite(v) for v in values):
+                    continue
+                min_x, min_y, min_z, max_x, max_y, max_z = values
+                if (-40.0 < min_x < 0.0 and -20.0 < min_y < 10.0 and
+                        -40.0 < min_z < 0.0 and 0.0 < max_x < 40.0 and
+                        0.0 < max_y < 20.0 and 0.0 < max_z < 40.0):
+                    radius = math.sqrt(
+                        max(abs(min_x), abs(max_x)) ** 2 +
+                        max(abs(min_z), abs(max_z)) ** 2)
+                    break
+        except OSError:
+            radius = None
+    if radius is None:
+        radius = stone_obstacle_radius_fallback(model_path)
+    STATIC_MODEL_RADIUS_CACHE[cache_key] = radius
+    return radius
+
+
+def stone_obstacle_radius_fallback(model_path: bytes) -> float:
     name = model_path.lower()
-    if b'stones5' in name or b'stones7' in name:
-        return 14.0
-    if b'stones1' in name or b'stones4' in name:
-        return 12.0
-    if b'stones2' in name:
-        return 11.0
-    return 10.0
+    if b'stones03' in name or b'stones04' in name:
+        return 10.0
+    if b'stones01' in name or b'stones02' in name or b'stones05' in name:
+        return 7.5
+    if b'stones5' in name:
+        return 4.0
+    return 3.2
+
+
+def stone_obstacle_radius(model_path: bytes) -> float:
+    return read_model_obstacle_radius(model_path)
+
+
+def movement_obstacle_radius(visual_radius: float) -> float:
+    return max(
+        STATIC_OBSTACLE_MOVE_RADIUS_MIN,
+        min(STATIC_OBSTACLE_MOVE_RADIUS_MAX,
+            float(visual_radius) * STATIC_OBSTACLE_MOVE_RADIUS_FACTOR))
+
+
+def get_obstacle_move_radius(obstacle) -> float:
+    return float(obstacle[3])
+
+
+def get_obstacle_shot_radius(obstacle) -> float:
+    if len(obstacle) >= 5:
+        return float(obstacle[4])
+    return float(obstacle[3])
 
 
 def load_static_obstacles_for_arena(arena_type_id: int):
@@ -4466,11 +4632,14 @@ def load_static_obstacles_for_arena(arena_type_id: int):
                         continue
                     x = chunk_x * 100.0 + local_x
                     z = chunk_z * 100.0 + local_z
-                    radius = stone_obstacle_radius(match.group()) + STATIC_OBSTACLE_RADIUS_PAD
+                    visual_radius = (
+                        stone_obstacle_radius(match.group()) +
+                        STATIC_OBSTACLE_SHOT_RADIUS_PAD)
+                    move_radius = movement_obstacle_radius(visual_radius)
                     if any((x - other[0]) ** 2 + (z - other[2]) ** 2 < 4.0
                            for other in obstacles):
                         continue
-                    obstacles.append((x, local_y, z, radius))
+                    obstacles.append((x, local_y, z, move_radius, visual_radius))
     STATIC_OBSTACLE_CACHE[arena_type_id] = obstacles
     if obstacles:
         print(f"    [battle] loaded {len(obstacles)} static obstacle(s) for arenaType={arena_type_id}")
@@ -4482,14 +4651,16 @@ def find_blocking_static_obstacle(arena_type_id: int, x: float, z: float,
     obstacles = load_static_obstacles_for_arena(arena_type_id)
     if not obstacles:
         return None
-    for ox, oy, oz, oradius in obstacles:
-        block_radius = oradius - STATIC_OBSTACLE_RADIUS_PAD + tank_radius
+    for obstacle in obstacles:
+        ox, oy, oz = obstacle[0], obstacle[1], obstacle[2]
+        block_radius = get_obstacle_move_radius(obstacle) + tank_radius
         if block_radius <= 0.0:
             continue
         dx = x - ox
         dz = z - oz
         if dx * dx + dz * dz < block_radius * block_radius:
-            return (ox, oy, oz, oradius, block_radius)
+            return (ox, oy, oz, get_obstacle_move_radius(obstacle),
+                    get_obstacle_shot_radius(obstacle), block_radius)
     return None
 
 
@@ -4519,7 +4690,9 @@ def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
     end_y = shot_pos[1] + shot_vec[1] * hit_distance
     end_z = shot_pos[2] + shot_vec[2] * hit_distance
     best = None
-    for x, y, z, radius in load_static_obstacles_for_arena(arena_type_id):
+    for obstacle in load_static_obstacles_for_arena(arena_type_id):
+        x, y, z = obstacle[0], obstacle[1], obstacle[2]
+        radius = get_obstacle_shot_radius(obstacle)
         dx_s = x - shot_pos[0]
         dy_s = y - shot_pos[1]
         dz_s = z - shot_pos[2]
@@ -4798,8 +4971,9 @@ def build_battle_results_for_viewer(viewer_sess: dict, sessions) -> dict:
         'shotsReceived': int(viewer_sess.get('battle_shots_received', 0)),
         'damageReceived': int(viewer_sess.get('battle_damage_received', 0)),
         'potentialDamageReceived': int(viewer_sess.get('battle_damage_received', 0)),
-        'capturePoints': 0,
-        'droppedCapturePoints': 0,
+        'capturePoints': int(viewer_sess.get('battle_capture_points', 0)),
+        'droppedCapturePoints': int(viewer_sess.get(
+            'battle_dropped_capture_points', 0)),
         'lifeTime': life_time,
         'arenaTypeID': normalize_arena_type_id(viewer_sess.get('battle_arena_type_id')),
         'arenaCreateTime': int(viewer_sess.get('battle_launch_wall', time.time())),
@@ -4973,6 +5147,241 @@ def send_afterbattle_music_nudge(sock, viewer_sess: dict,
     timer.start()
 
 
+def finish_battle_by_base_capture(sock, match_id, winner_team: int,
+                                  captured_base_team: int):
+    with battle_lock:
+        sessions = [sess for sess in active_battle_accounts.values()
+                    if sess.get('battle_match_id') == match_id]
+        if not sessions or any(sess.get('battle_ended') for sess in sessions):
+            return False
+        for sess in sessions:
+            sess['battle_ended'] = True
+            sess['battle_period_active'] = False
+            sess['battle_motion_flags'] = 0
+            sess['battle_speed'] = 0.0
+            sess['battle_rspeed'] = 0.0
+            sess['battle_winner'] = sess.get('battle_team') == winner_team
+    now = current_server_time(sessions[0])
+    period_end_time = now + 30
+    for viewer in sessions:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        winner_display_team = 1 if viewer.get('battle_team') == winner_team else 2
+        captured_display_team = 1 if viewer.get('battle_team') == captured_base_team else 2
+        msgs = b''
+        msgs += build_avatar_update_arena(ARENA_UPDATE_BASE_CAPTURED,
+                                          int(captured_display_team))
+        msgs += build_avatar_update_arena(
+            ARENA_UPDATE_PERIOD,
+            (ARENA_PERIOD_AFTERBATTLE, period_end_time, 30,
+             (winner_display_team, BATTLE_FINISH_REASON_BASE)))
+        send_avatar_messages(sock, addr, viewer, msgs,
+                             "Battle finished by base capture",
+                             reliable=True)
+        period_timer = threading.Timer(
+            0.75,
+            lambda v=viewer, w=winner_display_team, t=period_end_time:
+                send_afterbattle_music_nudge(sock, v, w,
+                                             BATTLE_FINISH_REASON_BASE, t))
+        period_timer.daemon = True
+        period_timer.start()
+        timer_sessions = list(sessions)
+        timer = threading.Timer(
+            1.5,
+            lambda v=viewer, ss=timer_sessions, w=winner_display_team, t=period_end_time:
+                send_delayed_battle_results(sock, v, ss, w,
+                                            BATTLE_FINISH_REASON_BASE, t))
+        timer.daemon = True
+        timer.start()
+    print(f"    [battle] finished match={match_id} winnerTeam={winner_team} reason=base")
+    persisted_battle_ids = set()
+    for sess in sessions:
+        bid = int(sess.get('battle_id') or 0)
+        if bid and bid not in persisted_battle_ids:
+            persisted_battle_ids.add(bid)
+            try:
+                mark_battle_finished(bid, winner_team,
+                                     BATTLE_FINISH_REASON_BASE)
+            except Exception as exc:
+                print(f"[!] mark_battle_finished({bid}) failed: {exc}")
+    return True
+
+
+def process_base_capture(sock, match_id):
+    with battle_lock:
+        sessions = [sess for sess in active_battle_accounts.values()
+                    if sess.get('battle_match_id') == match_id and
+                    sess.get('battle_bundle_sent') and
+                    sess.get('battle_period_active')]
+    if not sessions or any(sess.get('battle_ended') for sess in sessions):
+        return
+    state = ensure_battle_capture_state(sessions[0])
+    for sess in sessions[1:]:
+        sess['battle_capture_state'] = state
+    state_lock = state.get('lock')
+    updates = []
+    finish_args = None
+    lock_ctx = state_lock if state_lock is not None else contextlib.nullcontext()
+    with lock_ctx:
+        now = time.time()
+        dt = max(0.001, min(0.5, now - float(state.get('last_update', now))))
+        state['last_update'] = now
+        debug_now = time.time()
+        debug_last = float(state.get('_debug_last_log', 0.0))
+        debug_emit = (debug_now - debug_last) >= 2.0
+        if debug_emit:
+            state['_debug_last_log'] = debug_now
+        for base_team, base in state.get('bases', {}).items():
+            base_team = int(base_team)
+            base_pos = base.get('pos') or (0.0, 0.0)
+            base_radius = float(base.get('radius', BASE_CAPTURE_RADIUS))
+            invader_progress = base.setdefault('invader_progress', {})
+            active_invaders = []
+            active_invader_ids = set()
+            defenders_present = False
+            for sess in sessions:
+                if int(sess.get('battle_vehicle_health') or 0) <= 0:
+                    continue
+                pos = get_base_capture_vehicle_pos(sess)
+                d = distance_xz(pos, base_pos)
+                if debug_emit:
+                    print(f"    [capture-dbg] match={match_id} "
+                          f"player='{sess.get('username')}' "
+                          f"team={sess.get('battle_team')} "
+                          f"pos=({pos[0]:.1f},{pos[2]:.1f}) "
+                          f"baseTeam={base_team} "
+                          f"basePos=({base_pos[0]:.1f},{base_pos[1]:.1f}) "
+                          f"dist={d:.1f}m radius={base_radius:.1f}m "
+                          f"in_circle={'yes' if d <= base_radius else 'no'}")
+                if d > base_radius:
+                    continue
+                if int(sess.get('battle_team') or 0) == base_team:
+                    defenders_present = True
+                else:
+                    active_invaders.append(sess)
+                    active_invader_ids.add(sess.get('account_id'))
+            for account_id in list(invader_progress.keys()):
+                if account_id not in active_invader_ids:
+                    invader_progress.pop(account_id, None)
+            capturing_team = 0
+            if active_invaders and not defenders_present:
+                capturing_team = int(active_invaders[0].get('battle_team') or 0)
+                n = len(active_invaders)
+                total_rate = min(BASE_CAPTURE_MAX_POINTS_PER_SECOND,
+                                 n * BASE_CAPTURE_POINTS_PER_SECOND)
+                per_rate = total_rate / float(n)
+                for invader in active_invaders:
+                    account_id = invader.get('account_id')
+                    prev = float(invader_progress.get(account_id, 0.0))
+                    new_personal = min(float(BASE_CAPTURE_POINTS_MAX),
+                                       prev + per_rate * dt)
+                    invader_progress[account_id] = new_personal
+                    gained = int(new_personal) - int(prev)
+                    if gained > 0:
+                        invader['battle_capture_points'] = int(
+                            invader.get('battle_capture_points', 0)) + gained
+            elif active_invaders and defenders_present:
+                capturing_team = int(base.get('capturing_team') or 0)
+            total_points = (sum(invader_progress.values())
+                            if invader_progress else 0.0)
+            total_points = min(float(BASE_CAPTURE_POINTS_MAX), total_points)
+            base['points'] = total_points
+            base['capturing_team'] = capturing_team
+            sent_points = max(0, min(BASE_CAPTURE_POINTS_MAX,
+                                     int(total_points)))
+            if sent_points != int(base.get('last_sent', -1)):
+                base['last_sent'] = sent_points
+                print(f"    [battle] base capture team={capturing_team} "
+                      f"baseTeam={base_team} points={sent_points} "
+                      f"invaders={len(active_invaders)} "
+                      f"defenders={'yes' if defenders_present else 'no'}")
+                updates.append((base_team,
+                                int(base.get('base_id') or base_team),
+                                sent_points))
+            if (total_points >= BASE_CAPTURE_POINTS_MAX and capturing_team
+                    and not defenders_present):
+                finish_args = (capturing_team, base_team)
+                break
+    if updates:
+        send_base_capture_updates(sock, sessions, updates)
+    if finish_args is not None:
+        finish_battle_by_base_capture(sock, match_id,
+                                      finish_args[0], finish_args[1])
+
+
+def drop_invader_capture_on_damage(target_sess: dict, source_sess: dict = None):
+    """Drop the target's accumulated capture progress on any base.
+
+    Called from `apply_shot_damage` when a vehicle takes damage.  In WoT 0.6.5
+    this is the primary way defenders interrupt a capture: shooting the
+    invader resets their personal contribution to 0 and credits the shooter
+    with `droppedCapturePoints` equal to the dropped amount."""
+    state = target_sess.get('battle_capture_state')
+    if not state:
+        return None, None
+    target_account_id = target_sess.get('account_id')
+    if target_account_id is None:
+        return None, None
+    state_lock = state.get('lock')
+    lock_ctx = state_lock if state_lock is not None else contextlib.nullcontext()
+    total_dropped = 0
+    affected_bases = []
+    with lock_ctx:
+        for base_team, base in state.get('bases', {}).items():
+            progress = base.get('invader_progress')
+            if not progress or target_account_id not in progress:
+                continue
+            dropped_personal = float(progress.pop(target_account_id))
+            if dropped_personal <= 0.0:
+                continue
+            total_dropped += int(dropped_personal)
+            new_total = sum(progress.values()) if progress else 0.0
+            new_total = min(float(BASE_CAPTURE_POINTS_MAX), new_total)
+            base['points'] = new_total
+            if not progress:
+                base['capturing_team'] = 0
+            sent_total = max(0, min(BASE_CAPTURE_POINTS_MAX, int(new_total)))
+            base['last_sent'] = sent_total
+            affected_bases.append((int(base_team),
+                                   int(base.get('base_id') or base_team),
+                                   sent_total))
+    if total_dropped > 0 and source_sess is not None:
+        source_sess['battle_dropped_capture_points'] = int(
+            source_sess.get('battle_dropped_capture_points', 0)) + total_dropped
+    if affected_bases:
+        with battle_lock:
+            match_id = target_sess.get('battle_match_id')
+            sessions = [sess for sess in active_battle_accounts.values()
+                        if sess.get('battle_match_id') == match_id and
+                        sess.get('battle_bundle_sent') and
+                        sess.get('battle_period_active')]
+        if sessions:
+            print(f"    [battle] capture interrupted "
+                  f"target={target_sess.get('username')} "
+                  f"dropped={total_dropped} "
+                  f"shooter={source_sess.get('username') if source_sess else None}")
+            return list(affected_bases), sessions
+    return None, None
+
+
+def send_base_capture_updates(sock, sessions, updates):
+    for viewer in sessions:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        msgs = b''
+        for update in updates:
+            base_team, base_id, points = update
+            display_team = 1 if viewer.get('battle_team') == base_team else 2
+            msgs += build_avatar_update_arena(
+                ARENA_UPDATE_BASE_POINTS,
+                (display_team, int(base_id), int(points)))
+        send_avatar_messages(sock, addr, viewer, msgs,
+                             "Avatar.updateArena(BASE_POINTS)",
+                             reliable=True)
+
+
 def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
     match_id = source_sess.get('battle_match_id')
     with battle_lock:
@@ -5064,7 +5473,12 @@ def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
     target['battle_damage_received'] = int(target.get(
         'battle_damage_received', 0)) + damage
     target['battle_vehicle_health'] = max(0, health - damage)
+    capture_drop_result = drop_invader_capture_on_damage(target, source_sess)
     broadcast_vehicle_health(sock, target, source_sess, damage)
+    if capture_drop_result is not None:
+        cap_updates, cap_sessions = capture_drop_result
+        if cap_updates and cap_sessions:
+            send_base_capture_updates(sock, cap_sessions, cap_updates)
     if target['battle_vehicle_health'] <= 0:
         finish_battle_if_needed(sock, source_sess, target)
     return target, damage
