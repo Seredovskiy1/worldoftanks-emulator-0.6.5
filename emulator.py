@@ -1791,6 +1791,9 @@ def load_all_vehicles():
             'turretRotationSpeed': float(v.get('turretRotationSpeed', 8.0)),
             'gunRotationSpeed': float(v.get('gunRotationSpeed', 8.0)),
             'reloadTime': float(v.get('reloadTime', 5.0)),
+            'enginePower': float(v.get('enginePower', 0.0)),
+            'totalWeightKg': float(v.get('totalWeightKg', 0.0)),
+            'hpPerTon': float(v.get('hpPerTon', 0.0)),
             'defaultAmmo': default_ammo,
             'shells': shells,
         })
@@ -1966,6 +1969,27 @@ def get_vehicle_speed_limits(vehicle: dict):
     if len(limits) >= 2:
         return float(limits[0]), float(limits[1])
     return BATTLE_MAX_FORWARD_SPEED, BATTLE_MAX_BACKWARD_SPEED
+
+
+def get_vehicle_motion_rates(vehicle: dict):
+    hp_per_ton = float((vehicle or {}).get('hpPerTon') or 0.0)
+    if hp_per_ton <= 0.0:
+        return BATTLE_ACCELERATION, BATTLE_DECELERATION
+    accel = max(0.6, min(8.0, hp_per_ton * BATTLE_ACCEL_HP_PER_TON_FACTOR))
+    decel = max(5.0, min(30.0, accel * BATTLE_SPEED_DECEL_RATIO))
+    return accel, decel
+
+
+def get_vehicle_rotation_rates(vehicle: dict):
+    hp_per_ton = float((vehicle or {}).get('hpPerTon') or 0.0)
+    chassis_rotation_speed = float((vehicle or {}).get('chassisRotationSpeed')
+                                   or BATTLE_MAX_ROTATION_SPEED)
+    if hp_per_ton <= 0.0:
+        return BATTLE_ROT_ACCELERATION, BATTLE_ROT_DECELERATION
+    accel = max(1.0, min(6.0, chassis_rotation_speed * BATTLE_ROT_ACCEL_FACTOR
+                          * max(1.0, hp_per_ton * 0.1)))
+    decel = accel * BATTLE_ROT_DECEL_RATIO
+    return accel, decel
 
 
 def get_vehicle_shell_count(vehicle: dict, compact: int) -> int:
@@ -2674,10 +2698,14 @@ BATTLE_MAX_FORWARD_SPEED = 10.0
 BATTLE_MAX_BACKWARD_SPEED = 4.0
 BATTLE_MAX_ROTATION_SPEED = 1.15
 BATTLE_PIVOT_ROTATION_SPEED = 1.35
-BATTLE_ACCELERATION = 7.0
-BATTLE_DECELERATION = 10.0
-BATTLE_ROT_ACCELERATION = 4.0
-BATTLE_ROT_DECELERATION = 5.5
+BATTLE_ACCELERATION = 1.8
+BATTLE_DECELERATION = 7.0
+BATTLE_ROT_ACCELERATION = 2.0
+BATTLE_ROT_DECELERATION = 3.0
+BATTLE_ACCEL_HP_PER_TON_FACTOR = 0.18
+BATTLE_ROT_ACCEL_FACTOR = 2.0
+BATTLE_SPEED_DECEL_RATIO = 3.5
+BATTLE_ROT_DECEL_RATIO = 1.5
 BATTLE_MIN_TURN_FACTOR = 0.7
 REMOTE_GUN_PITCH_SCALE = 0.35
 REMOTE_GUN_PITCH_LIMIT = math.radians(12.0)
@@ -3855,15 +3883,15 @@ def advance_battle_motion(sess: dict, flags: int = None):
     if flags is None:
         flags = sess.get('battle_motion_flags', 0)
 
-    target_speed, target_rspeed = battle_motion_targets(
-        flags, sess.get('battle_vehicle'))
+    vehicle = sess.get('battle_vehicle')
+    target_speed, target_rspeed = battle_motion_targets(flags, vehicle)
     speed = float(sess.get('battle_speed', 0.0))
     rspeed = float(sess.get('battle_rspeed', 0.0))
 
-    speed_rate = BATTLE_ACCELERATION if abs(target_speed) > abs(speed) \
-        else BATTLE_DECELERATION
-    rspeed_rate = BATTLE_ROT_ACCELERATION if abs(target_rspeed) > abs(rspeed) \
-        else BATTLE_ROT_DECELERATION
+    accel, decel = get_vehicle_motion_rates(vehicle)
+    rot_accel, rot_decel = get_vehicle_rotation_rates(vehicle)
+    speed_rate = accel if abs(target_speed) > abs(speed) else decel
+    rspeed_rate = rot_accel if abs(target_rspeed) > abs(rspeed) else rot_decel
     speed = approach(speed, target_speed, speed_rate, dt)
     turn_factor = 1.0
     if abs(target_speed) > 0.01 and abs(speed) > 0.01:

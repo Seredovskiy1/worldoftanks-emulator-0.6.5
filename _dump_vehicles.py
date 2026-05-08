@@ -378,18 +378,38 @@ for nation in NATIONS:
         radio_id = radio_map.get(rd_name)
         turret_id = turret_map.get(tr_name)
         gun_id = gun_map.get(gn_name)
-        chassis_node = get_shared_component_node(os.path.join(comp_dir, 'chassis.xml'), ch_name)
+        chassis_veh_node = find(find(veh, 'chassis'), ch_name) if ch_name else None
+        turret_veh_node = find(find(veh, 'turrets0'), tr_name) if tr_name else None
+        gun_veh_node = None
+        if turret_veh_node is not None and gn_name:
+            guns_node = find(turret_veh_node, 'guns')
+            gun_veh_node = find(guns_node, gn_name) if guns_node is not None else None
+        engine_node = get_shared_component_node(os.path.join(comp_dir, 'engines.xml'), en_name)
+        gun_shared_node = get_shared_component_node(os.path.join(comp_dir, 'guns.xml'), gn_name)
         turret_node = get_shared_component_node(os.path.join(comp_dir, 'turrets.xml'), tr_name)
-        gun_node = get_shared_component_node(os.path.join(comp_dir, 'guns.xml'), gn_name)
         gun_shots = parse_gun_shots(os.path.join(comp_dir, 'guns.xml'),
                                     gn_name, nid, shells_map) if gn_name else []
-        max_ammo = get_gun_max_ammo(veh, tr_name, gn_name, gun_node) if tr_name and gn_name else 0
-        max_health = get_vehicle_max_health(veh, turret_node, tr_name)
+        max_ammo = get_gun_max_ammo(veh, tr_name, gn_name, gun_shared_node) if tr_name and gn_name else 0
+        max_health = get_vehicle_max_health(veh, turret_veh_node or turret_node, tr_name)
         speed_limits = get_vehicle_speed_limits(veh)
-        chassis_rotation_speed = math.radians(get_float(find(chassis_node, 'rotationSpeed'), 30.0))
-        turret_rotation_speed = math.radians(get_float(find(turret_node, 'rotationSpeed'), 30.0))
-        gun_rotation_speed = math.radians(get_float(find(gun_node, 'rotationSpeed'), 30.0))
-        reload_time = get_float(find(gun_node, 'reloadTime'), 5.0)
+        chassis_rotation_speed = math.radians(
+            get_float(find(chassis_veh_node, 'rotationSpeed'), 30.0))
+        turret_rotation_speed = math.radians(
+            get_float(find(turret_veh_node, 'rotationSpeed'), 30.0))
+        gun_rotation_speed = math.radians(
+            get_float(find(gun_shared_node, 'rotationSpeed'), 30.0))
+        reload_time = get_float(find(gun_shared_node, 'reloadTime'), 5.0)
+        hull_weight = get_float(find_path(veh, 'hull/weight'), 0.0)
+        chassis_weight = get_float(find(chassis_veh_node, 'weight'), 0.0)
+        turret_weight = get_float(find(turret_veh_node, 'weight'), 0.0)
+        engine_weight = get_float(find(engine_node, 'weight'), 0.0)
+        engine_power = get_float(find(engine_node, 'power'), 0.0)
+        gun_weight = get_float(find(gun_shared_node, 'weight'), 0.0)
+        total_weight_kg = (hull_weight + chassis_weight + turret_weight
+                           + engine_weight + gun_weight)
+        if total_weight_kg <= 0:
+            total_weight_kg = 20000.0
+        hp_per_ton = engine_power / (total_weight_kg / 1000.0) if total_weight_kg > 0 else 10.0
 
         if None in (chassis_id, engine_id, fuel_id, radio_id, turret_id, gun_id):
             print(f"  [SKIP] {veh_name}: missing comp "
@@ -422,6 +442,9 @@ for nation in NATIONS:
             'turretRotationSpeed': turret_rotation_speed,
             'gunRotationSpeed': gun_rotation_speed,
             'reloadTime': reload_time,
+            'enginePower': engine_power,
+            'totalWeightKg': total_weight_kg,
+            'hpPerTon': hp_per_ton,
             'maxAmmo': max_ammo,
             'defaultAmmo': make_default_ammo(gun_shots, max_ammo),
             'shells': gun_shots,
