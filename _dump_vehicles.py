@@ -257,8 +257,51 @@ def get_price(n):
         return (0, 0)
 
 
+def get_bool(n, default=False):
+    if n is None:
+        return default
+    d = n['data']
+    if not d:
+        return default
+    if n.get('type') == DT_BOOL:
+        return d[:1] not in (b'\x00', b'')
+    text = get_text(n).lower()
+    if text in ('true', '1', 'yes'):
+        return True
+    if text in ('false', '0', 'no'):
+        return False
+    return default
+
+
 def make_int_compact_descr(item_type_id, nation_id, comp_type_id):
     return (comp_type_id << 8) + (nation_id << 4) + item_type_id
+
+
+def parse_armor(node):
+    armor = {}
+    section = find(node, 'armor') if node is not None else None
+    if section is not None:
+        for child in section['children']:
+            armor[child['name']] = [
+                get_float(child, 0.0),
+                get_bool(find(child, 'noDamage'), False),
+            ]
+    return armor
+
+
+def primary_armor(node, armor):
+    text = get_text(find(node, 'primaryArmor')) if node is not None else ''
+    names = text.split() if text else ['armor_1', 'armor_3', 'armor_2']
+    values = []
+    for name in names[:3]:
+        values.append(float((armor.get(name) or [0.0])[0]))
+    while len(values) < 3:
+        values.append(0.0)
+    return values
+
+
+def armor_homogenization(node, default=1.0):
+    return get_float(find(node, 'armorHomogenization'), default) if node is not None else default
 
 
 def parse_shells_xml(path, nation_id):
@@ -274,11 +317,17 @@ def parse_shells_xml(path, nation_id):
             'id': shell_id,
             'compactDescr': make_int_compact_descr(10, nation_id, shell_id),
             'price': get_price(find(c, 'price')),
+            'kind': get_text(find(c, 'kind')) or '',
+            'caliber': get_int(find(c, 'caliber'), 1),
             'damage': [
                 get_float(find_path(c, 'damage/armor'), 0.0),
                 get_float(find_path(c, 'damage/devices'), 0.0),
             ],
             'damageRandomization': 0.25,
+            'piercingPowerRandomization': 0.25,
+            'normalizationAngle': math.radians(get_float(find(c, 'normalizationAngle'), 0.0)),
+            'ricochetAngleCos': math.cos(math.radians(get_float(find(c, 'ricochetAngle'), 70.0))),
+            'explosionRadius': get_float(find(c, 'explosionRadius'), 0.0),
         }
     return out
 
@@ -302,10 +351,18 @@ def parse_gun_shots(path, gun_name, nation_id, shells_map):
             'compactDescr': shell['compactDescr'],
             'defaultPortion': get_float(find(shot, 'defaultPortion'), 0.0),
             'price': shell['price'],
+            'kind': shell.get('kind', ''),
+            'caliber': shell.get('caliber', 1),
             'damage': shell.get('damage', [0.0, 0.0]),
             'damageRandomization': shell.get('damageRandomization', 0.25),
+            'piercingPower': get_vector(find(shot, 'piercingPower'), 2, [0.0, 0.0]),
+            'piercingPowerRandomization': shell.get('piercingPowerRandomization', 0.25),
+            'normalizationAngle': shell.get('normalizationAngle', 0.0),
+            'ricochetAngleCos': shell.get('ricochetAngleCos', math.cos(math.radians(70.0))),
+            'explosionRadius': shell.get('explosionRadius', 0.0),
             'speed': get_float(find(shot, 'speed'), 800.0),
             'gravity': get_float(find(shot, 'gravity'), 9.81),
+            'maxDistance': get_float(find(shot, 'maxDistance'), 720.0),
             'effectsIndex': get_int(find(shot, 'effectsIndex'), 0),
         })
     return out
@@ -412,6 +469,7 @@ for nation in NATIONS:
         radio_node = get_shared_component_node(os.path.join(comp_dir, 'radios.xml'), rd_name)
         gun_shared_node = get_shared_component_node(os.path.join(comp_dir, 'guns.xml'), gn_name)
         turret_node = get_shared_component_node(os.path.join(comp_dir, 'turrets.xml'), tr_name)
+        hull_node = find(veh, 'hull')
         gun_shots = parse_gun_shots(os.path.join(comp_dir, 'guns.xml'),
                                     gn_name, nid, shells_map) if gn_name else []
         max_ammo = get_gun_max_ammo(veh, tr_name, gn_name, gun_shared_node) if tr_name and gn_name else 0
@@ -437,6 +495,30 @@ for nation in NATIONS:
         if total_weight_kg <= 0:
             total_weight_kg = 20000.0
         hp_per_ton = engine_power / (total_weight_kg / 1000.0) if total_weight_kg > 0 else 10.0
+        hull_armor = parse_armor(hull_node)
+        turret_armor = parse_armor(turret_veh_node)
+        if not turret_armor:
+            turret_armor = parse_armor(turret_node)
+        armor_model = {
+            'hull': {
+                'armor': hull_armor,
+                'primaryArmor': primary_armor(hull_node, hull_armor),
+                'armorHomogenization': armor_homogenization(hull_node, 1.0),
+            },
+            'turret': {
+                'armor': turret_armor,
+                'primaryArmor': primary_armor(turret_veh_node or turret_node, turret_armor),
+                'armorHomogenization': armor_homogenization(turret_veh_node or turret_node, 1.0),
+            },
+            'dimensions': {
+                'halfWidth': 2.4,
+                'halfLength': 5.2,
+                'minHeight': 0.15,
+                'hullTop': 2.15,
+                'maxHeight': 3.8,
+                'centerHeight': 1.3,
+            },
+        }
 
         chassis_max_load = get_float(find(chassis_veh_node, 'maxLoad'), 0.0)
         chassis_max_climb_angle_deg = get_float(find(chassis_veh_node, 'maxClimbAngle'), 35.0)
@@ -522,6 +604,7 @@ for nation in NATIONS:
             'trackCenterOffset': track_center_offset,
             'rotationEnergy': rotation_energy,
             'rotationSpeedLimit': rotation_speed_limit,
+            'armorModel': armor_model,
             'maxAmmo': max_ammo,
             'defaultAmmo': make_default_ammo(gun_shots, max_ammo),
             'shells': gun_shots,

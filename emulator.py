@@ -1522,6 +1522,8 @@ AVATAR_STOP_TRACER_MSG_ID           = 0x8d
 AVATAR_EXPLODE_PROJECTILE_MSG_ID    = 0x8e
 AVATAR_ON_VEHICLE_LEFT_ARENA_MSG_ID = 0x91
 VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
+VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID = 0x82
+ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
 CLIENT_CONTROL_ENTITY_MSG_ID        = 0x33
@@ -1727,6 +1729,9 @@ VEHICLE_MAX_HEALTH_OVERRIDES = {
     'Lowe': 1650,
 }
 
+VEHICLE_SPEED_MULTIPLIER = 1.5
+VEHICLE_ROTATION_MULTIPLIER = 1.5
+
 
 def make_default_ammo_from_shells(shells, max_ammo):
     shells = list(shells or [])
@@ -1779,6 +1784,10 @@ def load_all_vehicles():
             default_ammo = make_default_ammo_from_shells(shells, v.get('maxAmmo', 0))
         max_health = int(v.get('maxHealth', 1000))
         max_health = max(max_health, int(VEHICLE_MAX_HEALTH_OVERRIDES.get(v['name'], 0)))
+        scaled_speed_limits = [
+            float(limit or 0.0) * VEHICLE_SPEED_MULTIPLIER
+            for limit in (v.get('speedLimits') or [])
+        ]
         out.append({
             'inv_id': inv_id,
             'compactDescr': cd,
@@ -1790,9 +1799,9 @@ def load_all_vehicles():
             'turretCompactDescr': v.get('turretCompactDescr', 0),
             'gunCompactDescr': v.get('gunCompactDescr', 0),
             'maxHealth': max_health,
-            'speedLimits': list(v.get('speedLimits', [])),
-            'chassisRotationSpeed': float(v.get('chassisRotationSpeed') or 0.0),
-            'chassisRotationSpeedLimit': float(v.get('chassisRotationSpeedLimit') or 0.0),
+            'speedLimits': scaled_speed_limits,
+            'chassisRotationSpeed': float(v.get('chassisRotationSpeed') or 0.0) * VEHICLE_ROTATION_MULTIPLIER,
+            'chassisRotationSpeedLimit': float(v.get('chassisRotationSpeedLimit') or 0.0) * VEHICLE_ROTATION_MULTIPLIER,
             'chassisMaxClimbAngleRad': float(v.get('chassisMaxClimbAngleRad') or 0.0),
             'chassisMaxLoadKg': float(v.get('chassisMaxLoadKg') or 0.0),
             'chassisRotationIsAroundCenter': bool(v.get('chassisRotationIsAroundCenter') or False),
@@ -1817,6 +1826,7 @@ def load_all_vehicles():
             'trackCenterOffset': float(v.get('trackCenterOffset') or 0.0),
             'rotationEnergy': float(v.get('rotationEnergy') or 0.0),
             'rotationSpeedLimit': float(v.get('rotationSpeedLimit') or 0.0),
+            'armorModel': dict(v.get('armorModel') or {}),
             'defaultAmmo': default_ammo,
             'shells': shells,
         })
@@ -2014,6 +2024,36 @@ def get_vehicle_compact_descr(inv_id: int = None) -> bytes:
     return b'\x00' * 22
 
 
+def set_session_battle_vehicle_snapshot(sess: dict, vehicle: dict,
+                                        inv_id: int) -> dict:
+    if not vehicle:
+        return {}
+    fwd, bwd = get_vehicle_speed_limits(vehicle)
+    max_health = get_vehicle_max_health(vehicle)
+    sess['battle_vehicle'] = vehicle
+    sess['battle_vehicle_inv_id'] = int(inv_id)
+    sess['battle_vehicle_compactDescr'] = vehicle.get('compactDescr') or b''
+    sess['battle_vehicle_name'] = vehicle.get('name') or 'unknown'
+    sess['battle_vehicle_speedLimits'] = (fwd, bwd)
+    sess['battle_vehicle_maxHealth'] = max_health
+    return vehicle
+
+
+def get_session_battle_vehicle(sess: dict) -> dict:
+    vehicle = sess.get('battle_vehicle')
+    if vehicle:
+        return vehicle
+    requested_inv_id = int(sess.get('battle_vehicle_inv_id') or 1)
+    vehicle = get_vehicle_by_inventory_id(requested_inv_id)
+    if vehicle is None:
+        print(f"    [!] missing battle vehicle invID={requested_inv_id} "
+              f"for {sess.get('username') or 'player'}")
+        return {}
+    if vehicle:
+        set_session_battle_vehicle_snapshot(sess, vehicle, requested_inv_id)
+    return vehicle or {}
+
+
 def get_vehicle_max_health(vehicle: dict) -> int:
     return max(1, int((vehicle or {}).get('maxHealth', 1000)))
 
@@ -2028,6 +2068,18 @@ def get_vehicle_speed_limits(vehicle: dict):
         if forward > 0.0 and backward > 0.0:
             return forward, backward
     return BATTLE_DEFAULT_FORWARD_SPEED, BATTLE_DEFAULT_BACKWARD_SPEED
+
+
+def get_vehicle_accel_floor(vehicle: dict) -> float:
+    forward_limit, _backward_limit = get_vehicle_speed_limits(vehicle)
+    weight_t = float((vehicle or {}).get('totalWeightKg') or 0.0) / 1000.0
+    if weight_t <= 25.0:
+        target_time = BATTLE_ACCEL_LIGHT_TOP_SPEED_TIME
+    elif weight_t >= 55.0:
+        target_time = BATTLE_ACCEL_HEAVY_TOP_SPEED_TIME
+    else:
+        target_time = BATTLE_ACCEL_MEDIUM_TOP_SPEED_TIME
+    return max(BATTLE_ACCEL_MIN, forward_limit / max(0.1, target_time))
 
 
 def get_vehicle_rotation_speed(vehicle: dict) -> float:
@@ -2079,6 +2131,7 @@ def get_vehicle_motion_rates(vehicle: dict):
         accel = BATTLE_DEFAULT_ACCEL
     else:
         accel = hp_per_ton * BATTLE_ENGINE_ACCEL_FACTOR / terrain_resistance
+    accel = max(accel, get_vehicle_accel_floor(vehicle))
     accel = max(BATTLE_ACCEL_MIN,
                 min(BATTLE_ACCEL_MAX, accel))
     brake_force = float((vehicle or {}).get('brakeForce') or 0.0)
@@ -2176,7 +2229,7 @@ def get_vehicle_shell(vehicle: dict, compact: int = None):
 
 
 def get_current_vehicle_shell(sess: dict):
-    vehicle = sess.get('battle_vehicle') or {}
+    vehicle = get_session_battle_vehicle(sess)
     shell_cd = int(sess.get('battle_current_shell') or 0)
     stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
     shell_cd = select_available_shell(stock, shell_cd)
@@ -2194,6 +2247,306 @@ def get_shell_damage(shell: dict) -> int:
     randomization = float((shell or {}).get('damageRandomization', 0.25))
     return max(1, int(round(base * random.uniform(1.0 - randomization,
                                                   1.0 + randomization))))
+
+
+def get_shell_kind(shell: dict) -> str:
+    kind = str((shell or {}).get('kind') or '').upper()
+    aliases = {
+        'AP': 'ARMOR_PIERCING',
+        'AP_CR': 'ARMOR_PIERCING_CR',
+        'APCR': 'ARMOR_PIERCING_CR',
+        'AP_HE': 'ARMOR_PIERCING_HE',
+        'HC': 'HOLLOW_CHARGE',
+        'HE': 'HIGH_EXPLOSIVE',
+    }
+    return aliases.get(kind, kind)
+
+
+def is_armor_piercing_shell(shell: dict) -> bool:
+    return get_shell_kind(shell).startswith('ARMOR_PIERCING')
+
+
+def is_high_explosive_shell(shell: dict) -> bool:
+    return get_shell_kind(shell) == 'HIGH_EXPLOSIVE'
+
+
+def is_hollow_charge_shell(shell: dict) -> bool:
+    return get_shell_kind(shell) == 'HOLLOW_CHARGE'
+
+
+def get_shell_caliber(shell: dict) -> float:
+    caliber = float((shell or {}).get('caliber') or 0.0)
+    if caliber > 0.0:
+        return caliber
+    match = re.search(r'(\d+)mm', str((shell or {}).get('name', '')))
+    return float(int(match.group(1)) if match else 75)
+
+
+def get_shell_base_penetration(shell: dict, distance: float) -> float:
+    power = list((shell or {}).get('piercingPower') or [])
+    if len(power) >= 2 and float(power[0] or 0.0) > 0.0:
+        near = float(power[0] or 0.0)
+        far = float(power[1] or near)
+    else:
+        near = max(20.0, get_shell_caliber(shell) * 1.6)
+        far = near * 0.8
+    if distance <= SHOT_PENETRATION_NEAR_DISTANCE:
+        return near
+    if distance >= SHOT_PENETRATION_FAR_DISTANCE:
+        return far
+    span = SHOT_PENETRATION_FAR_DISTANCE - SHOT_PENETRATION_NEAR_DISTANCE
+    k = (distance - SHOT_PENETRATION_NEAR_DISTANCE) / span
+    return near + (far - near) * k
+
+
+def get_randomized_penetration(shell: dict, distance: float) -> float:
+    base = get_shell_base_penetration(shell, distance)
+    randomization = float((shell or {}).get('piercingPowerRandomization', 0.25))
+    return base * random.uniform(1.0 - randomization, 1.0 + randomization)
+
+
+def vehicle_armor_model(vehicle: dict) -> dict:
+    model = dict((vehicle or {}).get('armorModel') or {})
+    if model:
+        return model
+    return {
+        'hull': {'primaryArmor': [50.0, 40.0, 35.0], 'armorHomogenization': 1.0},
+        'turret': {'primaryArmor': [60.0, 45.0, 40.0], 'armorHomogenization': 1.0},
+        'dimensions': {},
+    }
+
+
+def armor_dimensions(model: dict) -> dict:
+    dims = dict((model or {}).get('dimensions') or {})
+    return {
+        'halfWidth': float(dims.get('halfWidth') or SHOT_TANK_HALF_WIDTH),
+        'halfLength': float(dims.get('halfLength') or SHOT_TANK_HALF_LENGTH),
+        'minHeight': float(dims.get('minHeight') or SHOT_TANK_MIN_HEIGHT),
+        'hullTop': float(dims.get('hullTop') or 2.15),
+        'maxHeight': float(dims.get('maxHeight') or SHOT_TANK_MAX_HEIGHT),
+        'centerHeight': float(dims.get('centerHeight') or SHOT_TANK_CENTER_HEIGHT),
+    }
+
+
+def vehicle_hit_yaw(target_sess: dict) -> float:
+    if is_recent_client_vehicle_position(target_sess):
+        return float(target_sess.get('client_vehicle_yaw',
+                                     target_sess.get('battle_yaw', 0.0)))
+    return float(target_sess.get('battle_yaw', 0.0))
+
+
+def world_to_vehicle_local(point, pos, yaw: float):
+    dx = float(point[0]) - float(pos[0])
+    dy = float(point[1]) - float(pos[1])
+    dz = float(point[2]) - float(pos[2])
+    sin_yaw = math.sin(yaw)
+    cos_yaw = math.cos(yaw)
+    return (
+        dx * cos_yaw - dz * sin_yaw,
+        dy,
+        dx * sin_yaw + dz * cos_yaw,
+    )
+
+
+def local_to_world_vector(vec, yaw: float):
+    sin_yaw = math.sin(yaw)
+    cos_yaw = math.cos(yaw)
+    return (
+        vec[0] * cos_yaw + vec[2] * sin_yaw,
+        vec[1],
+        -vec[0] * sin_yaw + vec[2] * cos_yaw,
+    )
+
+
+def ray_vehicle_box_hit(shot_pos, shot_vec, vehicle_pos, yaw: float, dims: dict):
+    local_origin = world_to_vehicle_local(shot_pos, vehicle_pos, yaw)
+    local_dir = world_to_vehicle_local(
+        (shot_pos[0] + shot_vec[0], shot_pos[1] + shot_vec[1], shot_pos[2] + shot_vec[2]),
+        vehicle_pos, yaw)
+    local_dir = (
+        local_dir[0] - local_origin[0],
+        local_dir[1] - local_origin[1],
+        local_dir[2] - local_origin[2],
+    )
+    bounds = (
+        (-dims['halfWidth'], dims['halfWidth']),
+        (dims['minHeight'], dims['maxHeight']),
+        (-dims['halfLength'], dims['halfLength']),
+    )
+    t_min = -1.0e30
+    t_max = 1.0e30
+    normal = (0.0, 0.0, -1.0)
+    for axis in range(3):
+        origin = local_origin[axis]
+        direction = local_dir[axis]
+        low, high = bounds[axis]
+        if abs(direction) < 1.0e-6:
+            if origin < low or origin > high:
+                return None
+            continue
+        t1 = (low - origin) / direction
+        t2 = (high - origin) / direction
+        n1 = [0.0, 0.0, 0.0]
+        n2 = [0.0, 0.0, 0.0]
+        n1[axis] = -1.0
+        n2[axis] = 1.0
+        if t1 > t2:
+            t1, t2 = t2, t1
+            n1, n2 = n2, n1
+        if t1 > t_min:
+            t_min = t1
+            normal = tuple(n1)
+        t_max = min(t_max, t2)
+        if t_min > t_max:
+            return None
+    distance = t_min if t_min >= 0.0 else t_max
+    if distance < 0.0 or distance > SHOT_TRACE_DISTANCE:
+        return None
+    hit_local = (
+        local_origin[0] + local_dir[0] * distance,
+        local_origin[1] + local_dir[1] * distance,
+        local_origin[2] + local_dir[2] * distance,
+    )
+    hit_world = (
+        float(shot_pos[0]) + float(shot_vec[0]) * distance,
+        float(shot_pos[1]) + float(shot_vec[1]) * distance,
+        float(shot_pos[2]) + float(shot_vec[2]) * distance,
+    )
+    return hit_local, hit_world, normal, distance
+
+
+def fallback_hit_from_marker(marker_pos, vehicle_pos, yaw: float, dims: dict):
+    local = world_to_vehicle_local(marker_pos, vehicle_pos, yaw)
+    face_x = dims['halfWidth'] - abs(local[0])
+    face_z = dims['halfLength'] - abs(local[2])
+    if face_x < face_z:
+        normal = (1.0 if local[0] >= 0.0 else -1.0, 0.0, 0.0)
+    else:
+        normal = (0.0, 0.0, 1.0 if local[2] >= 0.0 else -1.0)
+    clamped = (
+        clamp(local[0], -dims['halfWidth'], dims['halfWidth']),
+        clamp(local[1], dims['minHeight'], dims['maxHeight']),
+        clamp(local[2], -dims['halfLength'], dims['halfLength']),
+    )
+    return clamped, tuple(float(v) for v in marker_pos), normal
+
+
+def armor_component_and_zone(hit_local, normal, dims: dict):
+    component = 'turret' if hit_local[1] >= dims['hullTop'] else 'hull'
+    if abs(normal[2]) >= abs(normal[0]):
+        zone = 'front' if normal[2] > 0.0 else 'rear'
+    else:
+        zone = 'side'
+    if component == 'hull' and zone == 'front' and hit_local[1] < dims['hullTop'] * 0.45:
+        zone = 'lower_front'
+    return component, zone
+
+
+def get_zone_armor(armor_model: dict, component: str, zone: str) -> float:
+    comp = dict((armor_model or {}).get(component) or {})
+    primary = list(comp.get('primaryArmor') or [])
+    while len(primary) < 3:
+        primary.append(50.0)
+    if zone == 'front':
+        return float(primary[0] or 50.0)
+    if zone == 'lower_front':
+        return float(primary[0] or 50.0) * 0.85
+    if zone == 'side':
+        return float(primary[1] or primary[0] or 40.0)
+    return float(primary[2] or primary[1] or 35.0)
+
+
+def get_component_homogenization(armor_model: dict, component: str) -> float:
+    comp = dict((armor_model or {}).get(component) or {})
+    return max(0.1, float(comp.get('armorHomogenization') or 1.0))
+
+
+def impact_cosine(shot_vec, normal, yaw: float) -> float:
+    world_normal = local_to_world_vector(normal, yaw)
+    return max(0.0, -(
+        float(shot_vec[0]) * world_normal[0] +
+        float(shot_vec[1]) * world_normal[1] +
+        float(shot_vec[2]) * world_normal[2]))
+
+
+def resolve_shot_armor(shell: dict, hit_info: dict) -> dict:
+    distance = float(hit_info.get('distance') or 0.0)
+    armor = float(hit_info.get('armor') or 0.0)
+    cos_value = max(0.0, min(1.0, float(hit_info.get('impactCos') or 0.0)))
+    normalized_cos = cos_value
+    if is_armor_piercing_shell(shell):
+        angle = math.acos(max(-1.0, min(1.0, cos_value)))
+        angle = max(0.0, angle - float((shell or {}).get('normalizationAngle') or 0.0))
+        normalized_cos = math.cos(angle)
+    effective = armor / max(SHOT_ARMOR_MIN_COS, normalized_cos)
+    ricochet_cos = float((shell or {}).get('ricochetAngleCos', SHOT_ARMOR_AUTORICOCHET_COS))
+    can_ricochet = is_armor_piercing_shell(shell) or is_hollow_charge_shell(shell)
+    if can_ricochet and cos_value <= ricochet_cos:
+        result = SHOT_RESULT_RICOCHET
+        damage = 0
+        penetration = get_shell_base_penetration(shell, distance)
+    else:
+        penetration = get_randomized_penetration(shell, distance)
+        if penetration + 1.0e-6 >= effective:
+            result = SHOT_RESULT_ARMOR_PIERCED
+            damage = get_shell_damage(shell)
+        elif is_high_explosive_shell(shell):
+            result = SHOT_RESULT_ARMOR_NOT_PIERCED
+            damage = max(SHOT_HE_MIN_SPLASH_DAMAGE,
+                         int(round(get_shell_damage(shell) * SHOT_HE_NONPEN_DAMAGE_FACTOR)))
+        else:
+            result = SHOT_RESULT_ARMOR_NOT_PIERCED
+            damage = 0
+    out = dict(hit_info)
+    out.update({
+        'result': result,
+        'damage': damage,
+        'penetration': penetration,
+        'effectiveArmor': effective,
+        'impactAngleDeg': math.degrees(math.acos(max(-1.0, min(1.0, cos_value)))),
+    })
+    return out
+
+
+def pack_damage_segment(hit_info: dict) -> int:
+    component = hit_info.get('component') or 'hull'
+    comp_idx = {'chassis': 0, 'hull': 1, 'turret': 2, 'gun': 3}.get(component, 1)
+    result = int(hit_info.get('result', SHOT_RESULT_ARMOR_NOT_PIERCED)) & 0xff
+    local = hit_info.get('hitLocal') or (0.0, SHOT_TANK_CENTER_HEIGHT, 0.0)
+    dims = hit_info.get('dimensions') or armor_dimensions({})
+    if component == 'turret':
+        bounds = (
+            (-dims['halfWidth'] * 0.6, dims['halfWidth'] * 0.6),
+            (dims['hullTop'], dims['maxHeight']),
+            (-dims['halfLength'] * 0.45, dims['halfLength'] * 0.45),
+        )
+    else:
+        bounds = (
+            (-dims['halfWidth'], dims['halfWidth']),
+            (dims['minHeight'], dims['hullTop']),
+            (-dims['halfLength'], dims['halfLength']),
+        )
+    direction = hit_info.get('localShotDir') or (0.0, 0.0, 1.0)
+    start = (
+        local[0] - direction[0] * 0.4,
+        local[1] - direction[1] * 0.4,
+        local[2] - direction[2] * 0.4,
+    )
+    end = (
+        local[0] + direction[0] * 0.4,
+        local[1] + direction[1] * 0.4,
+        local[2] + direction[2] * 0.4,
+    )
+
+    def enc(value, low, high):
+        if high <= low:
+            return 0
+        return int(round(clamp((float(value) - low) / (high - low), 0.0, 1.0) * 255.0)) & 0xff
+
+    sx = enc(start[0], *bounds[0]); sy = enc(start[1], *bounds[1]); sz = enc(start[2], *bounds[2])
+    ex = enc(end[0], *bounds[0]); ey = enc(end[1], *bounds[1]); ez = enc(end[2], *bounds[2])
+    return (result | (comp_idx << 8) | (sx << 16) | (sy << 24) |
+            (sz << 32) | (ex << 40) | (ey << 48) | (ez << 56))
 
 
 def ballistic_shot_vec(shot_pos, target_pos, speed: float, gravity: float):
@@ -2836,20 +3189,20 @@ PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
-BATTLE_MOTION_TICK = 0.05
+BATTLE_MOTION_TICK = 0.1
 BASE_CAPTURE_RADIUS = 50.0
 BASE_CAPTURE_POINTS_MAX = 100
 BASE_CAPTURE_POINTS_PER_SECOND = 1.0
 BASE_CAPTURE_MAX_POINTS_PER_SECOND = 3.0
 BASE_CAPTURE_CLIENT_POSITION_MAX_AGE = 5.0
 TARGETING_UPDATE_INTERVAL = 0.08
-BATTLE_DEFAULT_FORWARD_SPEED = 10.0
-BATTLE_DEFAULT_BACKWARD_SPEED = 4.0
-BATTLE_DEFAULT_ROTATION_SPEED = math.radians(30.0)
-BATTLE_DEFAULT_ACCEL = 1.8
-BATTLE_DEFAULT_DECEL = 6.0
-BATTLE_DEFAULT_ROT_ACCEL = 2.0
-BATTLE_DEFAULT_ROT_DECEL = 3.0
+BATTLE_DEFAULT_FORWARD_SPEED = 10.0 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_DEFAULT_BACKWARD_SPEED = 4.0 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_DEFAULT_ROTATION_SPEED = math.radians(30.0) * VEHICLE_ROTATION_MULTIPLIER
+BATTLE_DEFAULT_ACCEL = 1.8 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_DEFAULT_DECEL = 6.0 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_DEFAULT_ROT_ACCEL = 2.0 * VEHICLE_ROTATION_MULTIPLIER
+BATTLE_DEFAULT_ROT_DECEL = 3.0 * VEHICLE_ROTATION_MULTIPLIER
 BATTLE_ROTATION_SPEED_FACTOR = 1.8
 BATTLE_ROTATION_ACCEL_FACTOR_XML = 2
 BATTLE_ROTATION_BOOST_FULL_WEIGHT_T = 35.0
@@ -2858,11 +3211,14 @@ BATTLE_LIGHT_ROT_ACCEL_WEIGHT_T = 18.0
 BATTLE_LIGHT_ROT_ACCEL_HP_PER_TON = 16.0
 BATTLE_LIGHT_ROT_ACCEL_BONUS = 1.45
 BATTLE_ACCEL_HP_PER_TON_FACTOR = 0.18
-BATTLE_ACCEL_MIN = 0.6
-BATTLE_ACCEL_MAX = 8.0
+BATTLE_ACCEL_MIN = 0.6 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_ACCEL_MAX = 8.0 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_ACCEL_LIGHT_TOP_SPEED_TIME = 4.0
+BATTLE_ACCEL_MEDIUM_TOP_SPEED_TIME = 4.8
+BATTLE_ACCEL_HEAVY_TOP_SPEED_TIME = 5.5
 BATTLE_SPEED_DECEL_RATIO = 3.5
-BATTLE_DECEL_MIN = 5.0
-BATTLE_DECEL_MAX = 24.0
+BATTLE_DECEL_MIN = 5.0 * VEHICLE_SPEED_MULTIPLIER
+BATTLE_DECEL_MAX = 24.0 * VEHICLE_SPEED_MULTIPLIER
 BATTLE_COAST_DECEL_RATIO = 0.55
 BATTLE_COAST_DECEL_MIN = 2.2
 BATTLE_COAST_DECEL_MAX = 4.5
@@ -2887,6 +3243,17 @@ SHOT_TANK_MAX_HEIGHT = 3.8
 SHOT_TANK_HIT_RADIUS_H = 6.5
 SHOT_TANK_HIT_RADIUS_V = 4.0
 SHOT_TANK_MARKER_VERT_ABOVE = 25.0
+SHOT_RESULT_RICOCHET = 0
+SHOT_RESULT_ARMOR_NOT_PIERCED = 1
+SHOT_RESULT_ARMOR_PIERCED_NO_DAMAGE = 2
+SHOT_RESULT_ARMOR_PIERCED = 3
+SHOT_RESULT_CRITICAL_HIT = 4
+SHOT_ARMOR_MIN_COS = 0.12
+SHOT_ARMOR_AUTORICOCHET_COS = math.cos(math.radians(70.0))
+SHOT_PENETRATION_NEAR_DISTANCE = 100.0
+SHOT_PENETRATION_FAR_DISTANCE = 500.0
+SHOT_HE_NONPEN_DAMAGE_FACTOR = 0.18
+SHOT_HE_MIN_SPLASH_DAMAGE = 1
 TARGET_HIT_RADIUS = 8.0
 SHOT_TARGET_OVERSHOOT = 10.0
 STATIC_OBSTACLE_MOVE_RADIUS_FACTOR = 0.65
@@ -3116,7 +3483,9 @@ def build_battle_motion_sync(pos, yaw: float,
     return msgs
 
 
-def build_battle_motion_tick(pos, yaw: float) -> bytes:
+def build_battle_motion_tick(pos, yaw: float,
+                             speed: float = 0.0,
+                             rspeed: float = 0.0) -> bytes:
     return build_vehicle_motion_update(pos, yaw)
 
 
@@ -3321,9 +3690,30 @@ def build_avatar_stop_tracer(shot_id: int, end_pos) -> bytes:
     return msg_varlen(AVATAR_STOP_TRACER_MSG_ID, em)
 
 
+def build_avatar_explode_projectile(shot_id: int, effects_index: int,
+                                    material_index: int, end_pos,
+                                    velocity_dir) -> bytes:
+    em = struct.pack('<I', AVATAR_ENTITY_ID)
+    em += struct.pack('<f', float(shot_id))
+    em += struct.pack('<BB', int(effects_index) & 0xff,
+                      int(material_index) & 0xff)
+    em += struct.pack('<fff', *end_pos)
+    em += struct.pack('<fff', *velocity_dir)
+    return msg_varlen(AVATAR_EXPLODE_PROJECTILE_MSG_ID, em)
+
+
 def build_vehicle_show_shooting(vehicle_id: int = PLAYER_VEHICLE_ID) -> bytes:
     return msg_varlen(VEHICLE_SHOW_SHOOTING_MSG_ID,
                       struct.pack('<I', vehicle_id))
+
+
+def build_vehicle_damage_from_shot(vehicle_id: int, attacker_id: int,
+                                   points, effects_index: int) -> bytes:
+    payload = struct.pack('<I', int(vehicle_id))
+    payload += struct.pack('<I', int(attacker_id))
+    payload += pack_uint64_array(points)
+    payload += struct.pack('<B', int(effects_index) & 0xff)
+    return msg_varlen(VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID, payload)
 
 
 def build_vehicle_health_property_update(vehicle_id: int, health: int,
@@ -3665,9 +4055,14 @@ def get_remote_vehicle_angles(remote_sess: dict):
 
 
 def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> bytes:
-    remote_vehicle = remote_sess.get('battle_vehicle') or get_vehicle_by_inventory_id(
-        remote_sess.get('battle_vehicle_inv_id', 1))
-    veh_compact = (remote_vehicle or {}).get('compactDescr') or get_vehicle_compact_descr()
+    remote_vehicle = get_session_battle_vehicle(remote_sess)
+    veh_compact = (remote_sess.get('battle_vehicle_compactDescr') or
+                   (remote_vehicle or {}).get('compactDescr'))
+    if not remote_vehicle or not veh_compact:
+        print(f"    [!] remote vehicle missing for "
+              f"{remote_sess.get('username') or 'player'} "
+              f"invID={remote_sess.get('battle_vehicle_inv_id')}")
+        return b''
     remote_id = get_remote_vehicle_id(remote_sess)
     remote_name = remote_sess.get('username') or 'player'
     remote_pos = get_effective_vehicle_pos(
@@ -3705,10 +4100,17 @@ def send_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
     remote_account_id = remote_sess.get('account_id')
     if not remote_account_id or remote_account_id in known:
         return
+    msgs = build_remote_vehicle_messages(observer_sess, remote_sess)
+    if not msgs:
+        return
+    remote_vehicle = get_session_battle_vehicle(remote_sess)
+    fwd, _bwd = get_vehicle_speed_limits(remote_vehicle)
     if send_avatar_messages(sock, observer_addr, observer_sess,
-                            build_remote_vehicle_messages(observer_sess, remote_sess),
+                            msgs,
                             f"remote Vehicle#{get_remote_vehicle_id(remote_sess)} "
-                            f"({remote_sess.get('username') or 'player'})",
+                            f"({remote_sess.get('username') or 'player'}, "
+                            f"tank={(remote_vehicle or {}).get('name', 'unknown')}, "
+                            f"fwd={fwd * 3.6:.1f}km/h)",
                             reliable=True):
         known.add(remote_account_id)
 
@@ -3760,8 +4162,13 @@ def start_battle_tick_loop(sock):
 
     def _loop():
         next_tick = time.time()
+        last_tick_dbg = time.time()
+        tick_count = 0
+        last_iter_count = 0
+        max_iter_ms = 0.0
         while True:
             try:
+                iter_start = time.time()
                 next_tick += BATTLE_MOTION_TICK
                 delay = next_tick - time.time()
                 if delay > 0:
@@ -3775,6 +4182,7 @@ def start_battle_tick_loop(sock):
                     ]
                 if not sessions:
                     continue
+                tick_count += 1
                 remote_payloads = []
                 for sess in sessions:
                     flags = sess.get('battle_motion_flags', 0)
@@ -3783,7 +4191,8 @@ def start_battle_tick_loop(sock):
                         addr = sess.get('addr')
                         if addr:
                             send_avatar_messages(sock, addr, sess,
-                                                 build_battle_motion_tick(pos, yaw),
+                                                 build_battle_motion_tick(
+                                                     pos, yaw, speed, rspeed),
                                                  '',
                                                  reliable=False)
                     else:
@@ -3827,6 +4236,21 @@ def start_battle_tick_loop(sock):
                         continue
                     processed_matches.add(match_id)
                     process_base_capture(sock, match_id)
+                iter_ms = (time.time() - iter_start) * 1000.0
+                if iter_ms > max_iter_ms:
+                    max_iter_ms = iter_ms
+                now_dbg = time.time()
+                if now_dbg - last_tick_dbg >= 5.0:
+                    elapsed = now_dbg - last_tick_dbg
+                    ticks_done = tick_count - last_iter_count
+                    actual_hz = ticks_done / max(0.001, elapsed)
+                    print(f"    [tick] sessions={len(sessions)} "
+                          f"actualHz={actual_hz:.1f} "
+                          f"(target={1.0 / BATTLE_MOTION_TICK:.0f}) "
+                          f"maxIterMs={max_iter_ms:.1f}")
+                    last_tick_dbg = now_dbg
+                    last_iter_count = tick_count
+                    max_iter_ms = 0.0
             except Exception as exc:
                 print(f"[!] Battle tick loop error: {exc}")
                 time.sleep(0.1)
@@ -3924,12 +4348,12 @@ def get_base_capture_vehicle_pos(sess: dict):
 def assign_match_teams(valid_batch):
     shuffled = list(valid_batch)
     random.shuffle(shuffled)
-    shuffled.sort(key=lambda queued: int(((queued.get('sess') or {}).get(
-        'battle_vehicle') or {}).get('maxHealth', 0)), reverse=True)
+    shuffled.sort(key=lambda queued: int(get_session_battle_vehicle(
+        queued.get('sess') or {}).get('maxHealth', 0)), reverse=True)
     teams = {1: [], 2: []}
     weights = {1: 0, 2: 0}
     for queued in shuffled:
-        vehicle = ((queued.get('sess') or {}).get('battle_vehicle') or {})
+        vehicle = get_session_battle_vehicle(queued.get('sess') or {})
         weight = max(1, int(vehicle.get('maxHealth', 1)))
         if len(teams[1]) != len(teams[2]):
             team = 1 if len(teams[1]) < len(teams[2]) else 2
@@ -3994,8 +4418,16 @@ def send_avatar_messages(sock, addr, sess, msgs: bytes, label: str,
 
 
 def init_battle_state(sess: dict, spawn_pos):
-    vehicle = sess.get('battle_vehicle') or {}
+    vehicle = get_session_battle_vehicle(sess)
     spawn_yaw = spawn_yaw_for_base(get_session_spawn_base(sess))
+    fwd, bwd = get_vehicle_speed_limits(vehicle)
+    compact = sess.get('battle_vehicle_compactDescr') or (vehicle or {}).get('compactDescr') or b''
+    compact_hex = compact.hex() if isinstance(compact, (bytes, bytearray)) else str(compact)
+    print(f"    [battle-vehicle] player={sess.get('username') or 'player'} "
+          f"invID={sess.get('battle_vehicle_inv_id')} "
+          f"name={(vehicle or {}).get('name', 'unknown')} "
+          f"compact={compact_hex} fwd={fwd * 3.6:.1f}km/h "
+          f"rev={bwd * 3.6:.1f}km/h hp={get_vehicle_max_health(vehicle)}")
     print(f"    [motion] {format_battle_motion_params(vehicle)}")
     sess['battle_generation'] = sess.get('battle_generation', 0) + 1
     arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
@@ -4066,17 +4498,12 @@ def battle_motion_targets(flags: int, vehicle: dict = None):
     rotation_dir = -1 if left and not right else 1 if right and not left else 0
     if movement_dir < 0:
         rotation_dir = -rotation_dir
-    speed_scale = 1.0
-    if flags & 16:
-        speed_scale = 0.5
-    elif flags & 32:
-        speed_scale = 0.25
 
     forward_limit, backward_limit = get_vehicle_speed_limits(vehicle)
     if movement_dir > 0:
-        target_speed = forward_limit * speed_scale
+        target_speed = forward_limit
     elif movement_dir < 0:
-        target_speed = -backward_limit * speed_scale
+        target_speed = -backward_limit
     else:
         target_speed = 0.0
 
@@ -4100,7 +4527,7 @@ def advance_battle_motion(sess: dict, flags: int = None):
     if flags is None:
         flags = sess.get('battle_motion_flags', 0)
 
-    vehicle = sess.get('battle_vehicle')
+    vehicle = get_session_battle_vehicle(sess)
     target_speed, target_rspeed = battle_motion_targets(flags, vehicle)
     raw_target_speed = target_speed
     speed = float(sess.get('battle_speed', 0.0))
@@ -4200,9 +4627,15 @@ def advance_battle_motion(sess: dict, flags: int = None):
                           f"dY={y_diff:+.2f}")
         else:
             client_str = "client=None"
-        print(f"    [motion] flags=0x{flags:02x} pos=({x:.1f},{y:.1f},{z:.1f}) "
-              f"yaw={yaw:.2f} spd={speed:+.2f}->t={target_speed:+.2f}"
-              f"(raw={raw_target_speed:+.2f}) "
+        veh_name = (vehicle or {}).get('name', '?')
+        veh_fwd, veh_bwd = get_vehicle_speed_limits(vehicle)
+        uname = sess.get('username') or 'player'
+        print(f"    [motion] {uname}/{veh_name} fwdLim={veh_fwd*3.6:.1f}km/h "
+              f"accel={accel:.2f} flags=0x{flags:02x} "
+              f"pos=({x:.1f},{y:.1f},{z:.1f}) "
+              f"yaw={yaw:.2f} spd={speed:+.2f}m/s({speed * 3.6:+.1f}km/h)"
+              f"->t={target_speed:+.2f}m/s({target_speed * 3.6:+.1f}km/h)"
+              f"(raw={raw_target_speed:+.2f}m/s/{raw_target_speed * 3.6:+.1f}km/h) "
               f"normalY={current_normal[1]:+.3f}->{candidate_probe_normal[1]:+.3f} "
               f"terrainY={current_height:.2f}->{candidate_probe_y:.2f} "
               f"branch={slope_branch} blocked={blocked_dbg} dt={dt*1000:.0f}ms "
@@ -4345,7 +4778,7 @@ def build_targeting_for_point(sess: dict, target_pos):
         float(shell.get('gravity', 9.81)))
     desired_turret_yaw = normalize_angle(math.atan2(dx, dz))
     desired_gun_pitch = math.atan2(dy, max(0.001, math.sqrt(dx * dx + dz * dz)))
-    vehicle = sess.get('battle_vehicle') or {}
+    vehicle = get_session_battle_vehicle(sess)
     last = float(sess.get('battle_targeting_state_time', now))
     dt = max(0.001, min(0.2, now - last))
     sess['battle_targeting_state_time'] = now
@@ -4375,7 +4808,7 @@ def build_targeting_for_point(sess: dict, target_pos):
 
 
 def build_battle_vehicle_state_messages(sess: dict):
-    vehicle = sess.get('battle_vehicle') or {}
+    vehicle = get_session_battle_vehicle(sess)
     stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
     sess['battle_ammo_stock'] = stock
     health = int(sess['battle_vehicle_health']) if 'battle_vehicle_health' in sess else get_vehicle_max_health(vehicle)
@@ -4436,9 +4869,14 @@ def send_avatar_player(sock, addr, sess):
     """РЁР»Рµ РїРѕРІРЅРёР№ battle-bundle:
        createBasePlayer(Avatar) + createCellPlayer(Avatar, playerVehicleID=200)
        + createEntity(Vehicle 200) + enterAoI(Vehicle 200)."""
-    battle_vehicle = sess.get('battle_vehicle') or get_vehicle_by_inventory_id(
-        sess.get('battle_vehicle_inv_id', 1))
-    veh_compact = (battle_vehicle or {}).get('compactDescr') or get_vehicle_compact_descr()
+    battle_vehicle = get_session_battle_vehicle(sess)
+    veh_compact = (sess.get('battle_vehicle_compactDescr') or
+                   (battle_vehicle or {}).get('compactDescr'))
+    if not battle_vehicle or not veh_compact:
+        print(f"    [!] cannot create battle vehicle for "
+              f"{sess.get('username') or 'player'} "
+              f"invID={sess.get('battle_vehicle_inv_id')}")
+        return
     arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
     sess['battle_arena_type_id'] = arena_type_id
     spawn_pos = pick_spawn_pos(arena_type_id, sess)
@@ -4674,7 +5112,7 @@ def parse_vector3_exposed(payload: bytes):
 
 def build_vehicle_shot_messages(sess: dict):
     sess['battle_last_shot_info'] = None
-    vehicle = sess.get('battle_vehicle') or {}
+    vehicle = get_session_battle_vehicle(sess)
     shell_cd = int(sess.get('battle_current_shell') or 0)
     stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(vehicle)
     sess['battle_ammo_stock'] = stock
@@ -4755,6 +5193,36 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
             send_remote_vehicle(sock, observer, source_sess)
         send_avatar_messages(sock, observer.get('addr'), observer,
                              msg, '', reliable=True)
+
+
+def build_projectile_impact_messages(shot_id: int, effects_index: int,
+                                     end_pos, velocity_dir) -> bytes:
+    direction = normalize_vec(velocity_dir)
+    return (
+        build_avatar_stop_tracer(shot_id, end_pos) +
+        build_avatar_explode_projectile(shot_id, effects_index, 0,
+                                        end_pos, direction)
+    )
+
+
+def broadcast_projectile_impact(sock, source_sess: dict, shot_id: int,
+                                effects_index: int, end_pos, velocity_dir):
+    msg = build_projectile_impact_messages(shot_id, effects_index,
+                                           end_pos, velocity_dir)
+    match_id = source_sess.get('battle_match_id')
+    source_account_id = source_sess.get('account_id')
+    with battle_lock:
+        viewers = [sess for sess in active_battle_accounts.values()
+                   if sess.get('battle_match_id') == match_id]
+    for viewer in viewers:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        if viewer is not source_sess:
+            known = viewer.setdefault('known_remote_accounts', set())
+            if source_account_id not in known:
+                send_remote_vehicle(sock, viewer, source_sess)
+        send_avatar_messages(sock, addr, viewer, msg, '', reliable=True)
 
 
 def get_session_shot_direction(sess: dict):
@@ -5265,9 +5733,6 @@ def marker_blocks_shot(source_sess: dict, target_ray_distance, hit_distance,
 
 
 def find_shot_target(source_sess: dict, shot_pos, shot_vec):
-    """Hit detection: trust the client's trackPointWithGun marker.
-    If a live enemy tank center is within SHOT_TANK_HIT_RADIUS_H/V of the
-    shot-time marker, it's a hit.  shot_vec is unused (kept for compat)."""
     source_account_id = source_sess.get('account_id')
     source_team = source_sess.get('battle_team')
     match_id = source_sess.get('battle_match_id')
@@ -5285,6 +5750,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     best_target = None
     best_h = None
     best_center = None
+    best_pos = None
     for target in candidates:
         if target.get('account_id') == source_account_id:
             continue
@@ -5318,6 +5784,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 best_target = target
                 best_h = horizontal
                 best_center = center
+                best_pos = pos
 
     if best_target is None:
         print(f"    [shot] miss: no tank near client aim marker")
@@ -5348,29 +5815,64 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v_signed={vertical_signed:+.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V_below={SHOT_TANK_HIT_RADIUS_V} V_above={SHOT_TANK_MARKER_VERT_ABOVE})")
         return None
 
-    if best_center is not None:
-        dx = best_center[0] - shot_pos[0]
-        dy = best_center[1] - shot_pos[1]
-        dz = best_center[2] - shot_pos[2]
-        target_distance = math.sqrt(dx * dx + dy * dy + dz * dz)
-        if target_distance > 0.001:
-            target_vec = (dx / target_distance, dy / target_distance, dz / target_distance)
-            obstacle = ray_static_obstacle_hit(source_sess, shot_pos, target_vec, target_distance)
-            if obstacle is not None:
-                obstacle_distance, obstacle_x, obstacle_y, obstacle_z, obstacle_radius = obstacle
-                ox = float(obstacle_x); oz = float(obstacle_z)
-                horizontal = target_vec[0] * target_vec[0] + target_vec[2] * target_vec[2]
-                closest_x = shot_pos[0] + target_vec[0] * obstacle_distance
-                closest_z = shot_pos[2] + target_vec[2] * obstacle_distance
-                ray_y_at = shot_pos[1] + target_vec[1] * obstacle_distance
-                miss_xz = math.sqrt((ox - closest_x) ** 2 + (oz - closest_z) ** 2)
-                print(f"    [shot] miss: static obstacle blocks line of fire dist={obstacle_distance:.1f}/{target_distance:.1f} obstacle=({obstacle_x:.1f},{obstacle_y:.1f},{obstacle_z:.1f}) r={obstacle_radius:.1f}")
-                print(f"    [shot] debug: shot_pos={shot_pos} target_vec=({target_vec[0]:.3f},{target_vec[1]:.3f},{target_vec[2]:.3f}) best_center={best_center}")
-                print(f"    [shot] debug: ray_at_obstacle=({closest_x:.1f},{ray_y_at:.1f},{closest_z:.1f}) miss_xz={miss_xz:.2f} y_band=[{obstacle_y - STATIC_OBSTACLE_Y_BELOW:.1f},{obstacle_y + STATIC_OBSTACLE_Y_HEIGHT:.1f}]")
-                return None
-
-    print(f"    [shot] hit: marker_h={best_h:.2f}m")
-    return best_target
+    vehicle = get_session_battle_vehicle(best_target)
+    armor_model = vehicle_armor_model(vehicle)
+    dims = armor_dimensions(armor_model)
+    yaw = vehicle_hit_yaw(best_target)
+    ray_hit = ray_vehicle_box_hit(shot_pos, shot_vec, best_pos, yaw, dims)
+    if ray_hit is None:
+        hit_local, hit_world, normal = fallback_hit_from_marker(marker_pos, best_pos, yaw, dims)
+        dx = hit_world[0] - shot_pos[0]
+        dy = hit_world[1] - shot_pos[1]
+        dz = hit_world[2] - shot_pos[2]
+        hit_distance = max(0.001, math.sqrt(dx * dx + dy * dy + dz * dz))
+    else:
+        hit_local, hit_world, normal, hit_distance = ray_hit
+    if hit_distance > 0.001:
+        target_vec = (
+            (hit_world[0] - shot_pos[0]) / hit_distance,
+            (hit_world[1] - shot_pos[1]) / hit_distance,
+            (hit_world[2] - shot_pos[2]) / hit_distance,
+        )
+        obstacle = ray_static_obstacle_hit(source_sess, shot_pos, target_vec, hit_distance)
+        if obstacle is not None:
+            obstacle_distance, obstacle_x, obstacle_y, obstacle_z, obstacle_radius = obstacle
+            ox = float(obstacle_x); oz = float(obstacle_z)
+            closest_x = shot_pos[0] + target_vec[0] * obstacle_distance
+            closest_z = shot_pos[2] + target_vec[2] * obstacle_distance
+            ray_y_at = shot_pos[1] + target_vec[1] * obstacle_distance
+            miss_xz = math.sqrt((ox - closest_x) ** 2 + (oz - closest_z) ** 2)
+            print(f"    [shot] miss: static obstacle blocks line of fire dist={obstacle_distance:.1f}/{hit_distance:.1f} obstacle=({obstacle_x:.1f},{obstacle_y:.1f},{obstacle_z:.1f}) r={obstacle_radius:.1f}")
+            print(f"    [shot] debug: shot_pos={shot_pos} target_vec=({target_vec[0]:.3f},{target_vec[1]:.3f},{target_vec[2]:.3f}) best_center={best_center}")
+            print(f"    [shot] debug: ray_at_obstacle=({closest_x:.1f},{ray_y_at:.1f},{closest_z:.1f}) miss_xz={miss_xz:.2f} y_band=[{obstacle_y - STATIC_OBSTACLE_Y_BELOW:.1f},{obstacle_y + STATIC_OBSTACLE_Y_HEIGHT:.1f}]")
+            return None
+    component, zone = armor_component_and_zone(hit_local, normal, dims)
+    armor = get_zone_armor(armor_model, component, zone)
+    armor *= get_component_homogenization(armor_model, component)
+    local_end = world_to_vehicle_local(
+        (shot_pos[0] + shot_vec[0], shot_pos[1] + shot_vec[1], shot_pos[2] + shot_vec[2]),
+        best_pos, yaw)
+    local_origin = world_to_vehicle_local(shot_pos, best_pos, yaw)
+    local_shot_dir = normalize_vec((
+        local_end[0] - local_origin[0],
+        local_end[1] - local_origin[1],
+        local_end[2] - local_origin[2],
+    ))
+    print(f"    [shot] hit: marker_h={best_h:.2f}m component={component} zone={zone}")
+    return {
+        'target': best_target,
+        'targetPos': best_pos,
+        'hitWorld': hit_world,
+        'hitLocal': hit_local,
+        'normal': normal,
+        'distance': hit_distance,
+        'component': component,
+        'zone': zone,
+        'armor': armor,
+        'impactCos': impact_cosine(shot_vec, normal, yaw),
+        'dimensions': dims,
+        'localShotDir': local_shot_dir,
+    }
 
 
 def build_health_update_for_viewer(viewer_sess: dict, target_sess: dict) -> bytes:
@@ -5408,6 +5910,38 @@ def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
     print(f"    [damage] {source_sess.get('username') or 'player'} -> "
           f"{target_sess.get('username') or 'player'} -{damage} hp "
           f"({max(0, int(target_sess.get('battle_vehicle_health') or 0))} left)")
+
+
+def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
+                                    hit_info: dict, effects_index: int,
+                                    damage: int):
+    if not ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS:
+        if damage > 0:
+            broadcast_vehicle_health(sock, target_sess, source_sess, damage)
+        return
+    match_id = target_sess.get('battle_match_id')
+    target_account_id = target_sess.get('account_id')
+    source_account_id = source_sess.get('account_id')
+    segment = pack_damage_segment(hit_info)
+    with battle_lock:
+        viewers = [sess for sess in active_battle_accounts.values()
+                   if sess.get('battle_match_id') == match_id]
+    for viewer in viewers:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        known = viewer.setdefault('known_remote_accounts', set())
+        if viewer is not target_sess and target_account_id not in known:
+            send_remote_vehicle(sock, viewer, target_sess)
+        if viewer is not source_sess and source_account_id not in known:
+            send_remote_vehicle(sock, viewer, source_sess)
+        target_id = viewer_vehicle_id(viewer, target_sess)
+        attacker_id = viewer_vehicle_id(viewer, source_sess)
+        msg = build_vehicle_damage_from_shot(
+            target_id, attacker_id, [segment], effects_index)
+        if damage > 0:
+            msg += build_health_update_for_viewer(viewer, target_sess)
+        send_avatar_messages(sock, addr, viewer, msg, '', reliable=True)
 
 
 def viewer_vehicle_id(viewer_sess: dict, subject_sess: dict) -> int:
@@ -5507,6 +6041,13 @@ def pack_uint32_array(values) -> bytes:
     out = struct.pack('<i', len(values))
     for value in values:
         out += struct.pack('<I', int(value) & 0xffffffff)
+    return out
+
+
+def pack_uint64_array(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<Q', int(value) & 0xffffffffffffffff)
     return out
 
 
@@ -5956,31 +6497,52 @@ def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
 
 
 def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
-    target = find_shot_target(source_sess, shot_pos, shot_vec)
-    if target is None:
-        return None, 0
+    hit_info = find_shot_target(source_sess, shot_pos, shot_vec)
+    if hit_info is None:
+        return None, 0, None
+    resolved = resolve_shot_armor(shell, hit_info)
+    target = resolved.get('target')
     health = int(target.get('battle_vehicle_health') or get_vehicle_max_health(
-        target.get('battle_vehicle') or {}))
+        get_session_battle_vehicle(target)))
     if health <= 0:
-        return None, 0
-    damage = min(health, get_shell_damage(shell))
+        return None, 0, None
+    damage = min(health, int(resolved.get('damage') or 0))
     source_sess['battle_hits'] = int(source_sess.get('battle_hits', 0)) + 1
-    source_sess['battle_damage_dealt'] = int(source_sess.get(
-        'battle_damage_dealt', 0)) + damage
-    source_sess.setdefault('battle_damaged_vehicle_ids', set()).add(target.get('account_id'))
     target['battle_shots_received'] = int(target.get('battle_shots_received', 0)) + 1
-    target['battle_damage_received'] = int(target.get(
-        'battle_damage_received', 0)) + damage
-    target['battle_vehicle_health'] = max(0, health - damage)
-    capture_drop_result = drop_invader_capture_on_damage(target, source_sess)
-    broadcast_vehicle_health(sock, target, source_sess, damage)
-    if capture_drop_result is not None:
-        cap_updates, cap_sessions = capture_drop_result
-        if cap_updates and cap_sessions:
-            send_base_capture_updates(sock, cap_sessions, cap_updates)
-    if target['battle_vehicle_health'] <= 0:
-        finish_battle_if_needed(sock, source_sess, target)
-    return target, damage
+    if damage > 0:
+        source_sess['battle_damage_dealt'] = int(source_sess.get(
+            'battle_damage_dealt', 0)) + damage
+        source_sess.setdefault('battle_damaged_vehicle_ids', set()).add(target.get('account_id'))
+        target['battle_damage_received'] = int(target.get(
+            'battle_damage_received', 0)) + damage
+        target['battle_vehicle_health'] = max(0, health - damage)
+    result_name = {
+        SHOT_RESULT_RICOCHET: 'ricochet',
+        SHOT_RESULT_ARMOR_NOT_PIERCED: 'not_pierced',
+        SHOT_RESULT_ARMOR_PIERCED_NO_DAMAGE: 'pierced_no_damage',
+        SHOT_RESULT_ARMOR_PIERCED: 'pierced',
+        SHOT_RESULT_CRITICAL_HIT: 'critical',
+    }.get(int(resolved.get('result') or 0), 'unknown')
+    print(f"    [armor] {source_sess.get('username') or 'player'} -> "
+          f"{target.get('username') or 'player'} {result_name} "
+          f"zone={resolved.get('component')}/{resolved.get('zone')} "
+          f"pen={float(resolved.get('penetration') or 0.0):.1f} "
+          f"armor={float(resolved.get('armor') or 0.0):.1f} "
+          f"eff={float(resolved.get('effectiveArmor') or 0.0):.1f} "
+          f"angle={float(resolved.get('impactAngleDeg') or 0.0):.1f} "
+          f"damage={damage}")
+    effects_index = int(shell.get('effectsIndex', 0))
+    broadcast_vehicle_shot_feedback(sock, target, source_sess, resolved,
+                                    effects_index, damage)
+    if damage > 0:
+        capture_drop_result = drop_invader_capture_on_damage(target, source_sess)
+        if capture_drop_result is not None:
+            cap_updates, cap_sessions = capture_drop_result
+            if cap_updates and cap_sessions:
+                send_base_capture_updates(sock, cap_sessions, cap_updates)
+        if target['battle_vehicle_health'] <= 0:
+            finish_battle_if_needed(sock, source_sess, target)
+    return target, damage, resolved
 
 
 def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
@@ -5999,7 +6561,19 @@ def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
         broadcast_remote_vehicle_shot(sock, sess, *shot_info)
         shell = sess.get('battle_last_shot_shell') or {}
         shot_vec = sess.get('battle_last_shot_vec') or get_session_shot_direction(sess)
-        apply_shot_damage(sock, sess, shell, shot_info[1], normalize_vec(shot_vec))
+        shot_vec = normalize_vec(shot_vec)
+        _target, _damage, resolved = apply_shot_damage(
+            sock, sess, shell, shot_info[1], shot_vec)
+        if resolved and resolved.get('hitWorld'):
+            impact_pos = resolved.get('hitWorld')
+        else:
+            impact_pos = (
+                shot_info[1][0] + shot_vec[0] * SHOT_TRACE_DISTANCE,
+                shot_info[1][1] + shot_vec[1] * SHOT_TRACE_DISTANCE,
+                shot_info[1][2] + shot_vec[2] * SHOT_TRACE_DISTANCE,
+            )
+        broadcast_projectile_impact(sock, sess, shot_info[0], shot_info[4],
+                                    impact_pos, shot_vec)
 
     def _reload_done():
         if time.time() + 0.05 < float(sess.get('battle_reload_until', 0.0)):
@@ -6139,9 +6713,13 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
         if flags != prev_flags:
             mode = "server authoritative" if sess.get(
                 'server_vehicle_authoritative', True) else "client controlled"
-            move, turn = battle_motion_targets(flags, sess.get('battle_vehicle'))
+            vehicle = get_session_battle_vehicle(sess)
+            move, turn = battle_motion_targets(flags, vehicle)
+            current_speed = float(sess.get('battle_speed', 0.0))
             print(f"    [>] Vehicle.input(flags=0x{prev_flags:02x}->0x{flags:02x}) "
-                  f"[{mode}, target=({move:.1f},{turn:.2f})]")
+                  f"[{mode}, tank={(vehicle or {}).get('name', 'unknown')}, "
+                  f"target=({move:.2f}m/s {move * 3.6:.1f}km/h,"
+                  f"{turn:.2f}), current={current_speed * 3.6:.1f}km/h]")
         if not sess.get('server_vehicle_authoritative', True):
             return True
         return True
@@ -6185,7 +6763,7 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             return True
         code, value = parsed
         stock = sess.get('battle_ammo_stock') or build_vehicle_ammo_stock(
-            sess.get('battle_vehicle') or {})
+            get_session_battle_vehicle(sess))
         if int(stock.get(int(value), 0)) > 0:
             if code == 0:
                 sess['battle_current_shell'] = value
@@ -6464,17 +7042,23 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         veh_inv_id, arena_type_id, queue_type = args
         vehicle = get_vehicle_by_inventory_id(veh_inv_id)
         if vehicle is None:
+            print(f"    [!] requested battle vehicle invID={veh_inv_id} not found; "
+                  f"using invID=1")
             vehicle = get_vehicle_by_inventory_id(1)
             veh_inv_id = 1
-        sess['battle_vehicle_inv_id'] = veh_inv_id
-        sess['battle_vehicle'] = vehicle
+        set_session_battle_vehicle_snapshot(sess, vehicle, veh_inv_id)
         sess['battle_arena_type_id'] = normalize_arena_type_id(arena_type_id)
         sess['battle_queue_type'] = queue_type
         sess['battle_id'] = store_battle_entry(sess['battle_arena_type_id'],
                                                sess.get('account_id') or 0,
                                                veh_inv_id)
+        fwd, bwd = get_vehicle_speed_limits(vehicle)
+        compact = sess.get('battle_vehicle_compactDescr') or b''
+        compact_hex = compact.hex() if isinstance(compact, (bytes, bytearray)) else str(compact)
         print(f"    [battle] queued invID={veh_inv_id} "
               f"name={vehicle.get('name') if vehicle else 'unknown'} "
+              f"compact={compact_hex} fwd={fwd * 3.6:.1f}km/h "
+              f"rev={bwd * 3.6:.1f}km/h "
               f"arenaType={sess['battle_arena_type_id']} queueType={queue_type} "
               f"battleID={sess['battle_id']}")
 
