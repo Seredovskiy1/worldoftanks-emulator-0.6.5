@@ -2039,7 +2039,34 @@ def get_vehicle_rotation_speed(vehicle: dict) -> float:
         cap = float((vehicle or {}).get('chassisRotationSpeedLimit') or 0.0)
         if cap > 0.0:
             rot = min(rot, cap)
-    return rot * BATTLE_ROTATION_SPEED_FACTOR
+    return rot * get_vehicle_rotation_speed_factor(vehicle)
+
+
+def get_vehicle_rotation_boost_scale(vehicle: dict) -> float:
+    weight_t = float((vehicle or {}).get('totalWeightKg') or 0.0) / 1000.0
+    if weight_t <= 0.0:
+        return 1.0
+    if weight_t <= BATTLE_ROTATION_BOOST_FULL_WEIGHT_T:
+        return 1.0
+    if weight_t >= BATTLE_ROTATION_BOOST_NONE_WEIGHT_T:
+        return 0.0
+    span = BATTLE_ROTATION_BOOST_NONE_WEIGHT_T - BATTLE_ROTATION_BOOST_FULL_WEIGHT_T
+    return (BATTLE_ROTATION_BOOST_NONE_WEIGHT_T - weight_t) / span
+
+
+def get_vehicle_rotation_speed_factor(vehicle: dict) -> float:
+    scale = get_vehicle_rotation_boost_scale(vehicle)
+    return 1.0 + (BATTLE_ROTATION_SPEED_FACTOR - 1.0) * scale
+
+
+def get_vehicle_rotation_accel_factor(vehicle: dict) -> float:
+    scale = get_vehicle_rotation_boost_scale(vehicle)
+    return 1.0 + (BATTLE_ROTATION_ACCEL_FACTOR_XML - 1.0) * scale
+
+
+def get_vehicle_min_turn_factor(vehicle: dict) -> float:
+    scale = get_vehicle_rotation_boost_scale(vehicle)
+    return BATTLE_HEAVY_MIN_TURN_FACTOR + (BATTLE_MIN_TURN_FACTOR - BATTLE_HEAVY_MIN_TURN_FACTOR) * scale
 
 
 def get_vehicle_motion_rates(vehicle: dict):
@@ -2067,10 +2094,11 @@ def get_vehicle_rotation_rates(vehicle: dict):
         return BATTLE_DEFAULT_ROT_ACCEL, BATTLE_DEFAULT_ROT_DECEL
     engine_power = float((vehicle or {}).get('enginePower') or 0.0)
     rotation_energy = float((vehicle or {}).get('rotationEnergy') or 0.0)
+    accel_factor = get_vehicle_rotation_accel_factor(vehicle)
     if engine_power > 0.0 and rotation_energy > 0.0:
-        accel = engine_power / rotation_energy * BATTLE_ROTATION_ACCEL_FACTOR_XML
+        accel = engine_power / rotation_energy * accel_factor
     else:
-        accel = chassis_rot * BATTLE_ROT_ACCEL_FACTOR * BATTLE_ROTATION_ACCEL_FACTOR_XML
+        accel = chassis_rot * BATTLE_ROT_ACCEL_FACTOR * accel_factor
     accel_cap = chassis_rot * 3.0
     accel = max(BATTLE_ROT_ACCEL_MIN, min(accel_cap, accel))
     weight_t = float((vehicle or {}).get('totalWeightKg') or 0.0) / 1000.0
@@ -2822,8 +2850,10 @@ BATTLE_DEFAULT_ACCEL = 1.8
 BATTLE_DEFAULT_DECEL = 6.0
 BATTLE_DEFAULT_ROT_ACCEL = 2.0
 BATTLE_DEFAULT_ROT_DECEL = 3.0
-BATTLE_ROTATION_SPEED_FACTOR = 1.22
-BATTLE_ROTATION_ACCEL_FACTOR_XML = 1.35
+BATTLE_ROTATION_SPEED_FACTOR = 1.8
+BATTLE_ROTATION_ACCEL_FACTOR_XML = 2
+BATTLE_ROTATION_BOOST_FULL_WEIGHT_T = 35.0
+BATTLE_ROTATION_BOOST_NONE_WEIGHT_T = 55.0
 BATTLE_LIGHT_ROT_ACCEL_WEIGHT_T = 18.0
 BATTLE_LIGHT_ROT_ACCEL_HP_PER_TON = 16.0
 BATTLE_LIGHT_ROT_ACCEL_BONUS = 1.45
@@ -2833,11 +2863,15 @@ BATTLE_ACCEL_MAX = 8.0
 BATTLE_SPEED_DECEL_RATIO = 3.5
 BATTLE_DECEL_MIN = 5.0
 BATTLE_DECEL_MAX = 24.0
+BATTLE_COAST_DECEL_RATIO = 0.55
+BATTLE_COAST_DECEL_MIN = 2.2
+BATTLE_COAST_DECEL_MAX = 4.5
 BATTLE_ROT_ACCEL_FACTOR = 2.0
 BATTLE_ROT_ACCEL_MIN = 1.0
 BATTLE_ROT_DECEL_RATIO = 1.5
 BATTLE_ROT_DECEL_MIN = 1.5
-BATTLE_MIN_TURN_FACTOR = 0.7
+BATTLE_MIN_TURN_FACTOR = 1
+BATTLE_HEAVY_MIN_TURN_FACTOR = 0.7
 REMOTE_GUN_PITCH_SCALE = 0.35
 REMOTE_GUN_PITCH_LIMIT = math.radians(12.0)
 SHOT_TRACE_DISTANCE = 1200.0
@@ -4030,6 +4064,8 @@ def battle_motion_targets(flags: int, vehicle: dict = None):
     right = bool(flags & 8)
     movement_dir = 1 if forward and not backward else -1 if backward and not forward else 0
     rotation_dir = -1 if left and not right else 1 if right and not left else 0
+    if movement_dir < 0:
+        rotation_dir = -rotation_dir
     speed_scale = 1.0
     if flags & 16:
         speed_scale = 0.5
@@ -4098,13 +4134,20 @@ def advance_battle_motion(sess: dict, flags: int = None):
         (speed > 0.0 and target_speed > 0.0) or
         (speed < 0.0 and target_speed < 0.0)
     )
-    speed_rate = accel if same_direction and abs(target_speed) > abs(speed) else decel
+    coasting = not (flags & 1) and not (flags & 2) and abs(target_speed) < 0.001
+    if coasting:
+        speed_rate = max(BATTLE_COAST_DECEL_MIN,
+                         min(BATTLE_COAST_DECEL_MAX,
+                             decel * BATTLE_COAST_DECEL_RATIO))
+    else:
+        speed_rate = accel if same_direction and abs(target_speed) > abs(speed) else decel
     speed = approach(speed, target_speed, speed_rate, dt)
 
     turn_factor = 1.0
     if abs(target_speed) > 0.01 and abs(speed) > 0.01:
-        turn_factor = BATTLE_MIN_TURN_FACTOR
-        turn_factor += (1.0 - BATTLE_MIN_TURN_FACTOR) * min(
+        min_turn_factor = get_vehicle_min_turn_factor(vehicle)
+        turn_factor = min_turn_factor
+        turn_factor += (1.0 - min_turn_factor) * min(
             1.0, abs(speed) / max(0.01, abs(target_speed)))
     target_rspeed *= turn_factor
     rspeed_rate = rot_accel if abs(target_rspeed) > abs(rspeed) else rot_decel
