@@ -221,6 +221,29 @@ def get_float(n, default=0.0):
     return default
 
 
+def get_vector(n, count, default=None):
+    if default is None:
+        default = [0.0] * count
+    if n is None:
+        return list(default)
+    d = n['data']
+    if not d:
+        return list(default)
+    if len(d) >= count * 4:
+        try:
+            return list(struct.unpack('<' + 'f' * count, d[:count * 4]))
+        except Exception:
+            pass
+    text = get_text(n) or ''
+    parts = text.replace(',', ' ').split()
+    if len(parts) >= count:
+        try:
+            return [float(parts[i]) for i in range(count)]
+        except Exception:
+            return list(default)
+    return list(default)
+
+
 def get_price(n):
     text = get_text(n)
     if not text:
@@ -385,6 +408,8 @@ for nation in NATIONS:
             guns_node = find(turret_veh_node, 'guns')
             gun_veh_node = find(guns_node, gn_name) if guns_node is not None else None
         engine_node = get_shared_component_node(os.path.join(comp_dir, 'engines.xml'), en_name)
+        fuel_node = get_shared_component_node(os.path.join(comp_dir, 'fuelTanks.xml'), fl_name)
+        radio_node = get_shared_component_node(os.path.join(comp_dir, 'radios.xml'), rd_name)
         gun_shared_node = get_shared_component_node(os.path.join(comp_dir, 'guns.xml'), gn_name)
         turret_node = get_shared_component_node(os.path.join(comp_dir, 'turrets.xml'), tr_name)
         gun_shots = parse_gun_shots(os.path.join(comp_dir, 'guns.xml'),
@@ -403,13 +428,46 @@ for nation in NATIONS:
         chassis_weight = get_float(find(chassis_veh_node, 'weight'), 0.0)
         turret_weight = get_float(find(turret_veh_node, 'weight'), 0.0)
         engine_weight = get_float(find(engine_node, 'weight'), 0.0)
+        fuel_weight = get_float(find(fuel_node, 'weight'), 0.0)
+        radio_weight = get_float(find(radio_node, 'weight'), 0.0)
         engine_power = get_float(find(engine_node, 'power'), 0.0)
         gun_weight = get_float(find(gun_shared_node, 'weight'), 0.0)
         total_weight_kg = (hull_weight + chassis_weight + turret_weight
-                           + engine_weight + gun_weight)
+                           + engine_weight + fuel_weight + radio_weight + gun_weight)
         if total_weight_kg <= 0:
             total_weight_kg = 20000.0
         hp_per_ton = engine_power / (total_weight_kg / 1000.0) if total_weight_kg > 0 else 10.0
+
+        chassis_max_load = get_float(find(chassis_veh_node, 'maxLoad'), 0.0)
+        chassis_max_climb_angle_deg = get_float(find(chassis_veh_node, 'maxClimbAngle'), 35.0)
+        chassis_max_climb_angle = math.radians(chassis_max_climb_angle_deg)
+        chassis_min_plane_normal_y = math.cos(chassis_max_climb_angle)
+        chassis_rotation_speed_limit_node = find(chassis_veh_node, 'rotationSpeedLimit') if chassis_veh_node else None
+        chassis_rotation_speed_limit = (
+            math.radians(get_float(chassis_rotation_speed_limit_node, 0.0))
+            if chassis_rotation_speed_limit_node is not None else 0.0)
+        rot_around_center_text = (get_text(find(chassis_veh_node, 'rotationIsAroundCenter')) or '').lower()
+        chassis_rotation_is_around_center = rot_around_center_text in ('true', '1', 'yes')
+        terrain_resistance = get_vector(find(chassis_veh_node, 'terrainResistance'), 3, [1.0, 1.2, 1.4])
+        terrain_resistance = [max(0.001, float(v)) for v in terrain_resistance]
+        brake_force = get_float(find(chassis_veh_node, 'brakeForce'), 6.0) * 9.81
+        specific_friction = 1.0
+        top_right_carrying_point = get_vector(find(chassis_veh_node, 'topRightCarryingPoint'), 2, [0.0, 0.0])
+        track_center_offset = float(top_right_carrying_point[0])
+        base_weight_kg = total_weight_kg
+        rotation_energy = 0.0
+        rotation_speed_limit = chassis_rotation_speed_limit
+        if engine_power > 0.0 and chassis_rotation_speed > 0.0 and base_weight_kg > 0.0:
+            best_resistance = max(0.001, terrain_resistance[0])
+            rotation_energy = engine_power * (total_weight_kg / base_weight_kg) / chassis_rotation_speed
+            rotation_speed_limit = engine_power / max(0.001, rotation_energy)
+            rotation_energy /= best_resistance
+            if not chassis_rotation_is_around_center:
+                rotation_energy -= track_center_offset * total_weight_kg * specific_friction / best_resistance
+            if rotation_energy <= 0.0:
+                rotation_energy = engine_power / max(0.001, chassis_rotation_speed) / best_resistance
+            if chassis_rotation_speed_limit > 0.0:
+                rotation_speed_limit = min(rotation_speed_limit, chassis_rotation_speed_limit)
 
         if None in (chassis_id, engine_id, fuel_id, radio_id, turret_id, gun_id):
             print(f"  [SKIP] {veh_name}: missing comp "
@@ -445,6 +503,25 @@ for nation in NATIONS:
             'enginePower': engine_power,
             'totalWeightKg': total_weight_kg,
             'hpPerTon': hp_per_ton,
+            'hullWeightKg': hull_weight,
+            'chassisWeightKg': chassis_weight,
+            'turretWeightKg': turret_weight,
+            'engineWeightKg': engine_weight,
+            'fuelWeightKg': fuel_weight,
+            'radioWeightKg': radio_weight,
+            'gunWeightKg': gun_weight,
+            'baseWeightKg': base_weight_kg,
+            'chassisMaxLoadKg': chassis_max_load,
+            'chassisMaxClimbAngleRad': chassis_max_climb_angle,
+            'chassisMinPlaneNormalY': chassis_min_plane_normal_y,
+            'chassisRotationSpeedLimit': chassis_rotation_speed_limit,
+            'chassisRotationIsAroundCenter': chassis_rotation_is_around_center,
+            'terrainResistance': terrain_resistance,
+            'brakeForce': brake_force,
+            'specificFriction': specific_friction,
+            'trackCenterOffset': track_center_offset,
+            'rotationEnergy': rotation_energy,
+            'rotationSpeedLimit': rotation_speed_limit,
             'maxAmmo': max_ammo,
             'defaultAmmo': make_default_ammo(gun_shots, max_ammo),
             'shells': gun_shots,

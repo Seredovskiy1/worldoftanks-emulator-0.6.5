@@ -15,6 +15,7 @@ import hashlib
 import random
 import re
 import contextlib
+import zipfile
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, Blowfish
 
@@ -1750,6 +1751,9 @@ def make_default_ammo_from_shells(shells, max_ammo):
     return ammo
 
 
+_MOTION_WARNED = False
+
+
 def load_all_vehicles():
     """Р§РёС‚Р°С” _vehicles.json (РіРµРЅРµСЂСѓС”С‚СЊСЃСЏ _dump_vehicles.py) С– РїРѕРІРµСЂС‚Р°С”
     СЃРїРёСЃРѕРє (invID, compactDescr_bytes, name) РґР»СЏ СѓСЃС–С… С‚Р°РЅРєС–РІ РіСЂРё.
@@ -1787,16 +1791,66 @@ def load_all_vehicles():
             'gunCompactDescr': v.get('gunCompactDescr', 0),
             'maxHealth': max_health,
             'speedLimits': list(v.get('speedLimits', [])),
-            'chassisRotationSpeed': float(v.get('chassisRotationSpeed', BATTLE_MAX_ROTATION_SPEED)),
+            'chassisRotationSpeed': float(v.get('chassisRotationSpeed') or 0.0),
+            'chassisRotationSpeedLimit': float(v.get('chassisRotationSpeedLimit') or 0.0),
+            'chassisMaxClimbAngleRad': float(v.get('chassisMaxClimbAngleRad') or 0.0),
+            'chassisMaxLoadKg': float(v.get('chassisMaxLoadKg') or 0.0),
+            'chassisRotationIsAroundCenter': bool(v.get('chassisRotationIsAroundCenter') or False),
             'turretRotationSpeed': float(v.get('turretRotationSpeed', 8.0)),
             'gunRotationSpeed': float(v.get('gunRotationSpeed', 8.0)),
             'reloadTime': float(v.get('reloadTime', 5.0)),
-            'enginePower': float(v.get('enginePower', 0.0)),
-            'totalWeightKg': float(v.get('totalWeightKg', 0.0)),
-            'hpPerTon': float(v.get('hpPerTon', 0.0)),
+            'enginePower': float(v.get('enginePower') or 0.0),
+            'totalWeightKg': float(v.get('totalWeightKg') or 0.0),
+            'hpPerTon': float(v.get('hpPerTon') or 0.0),
+            'hullWeightKg': float(v.get('hullWeightKg') or 0.0),
+            'chassisWeightKg': float(v.get('chassisWeightKg') or 0.0),
+            'turretWeightKg': float(v.get('turretWeightKg') or 0.0),
+            'engineWeightKg': float(v.get('engineWeightKg') or 0.0),
+            'fuelWeightKg': float(v.get('fuelWeightKg') or 0.0),
+            'radioWeightKg': float(v.get('radioWeightKg') or 0.0),
+            'gunWeightKg': float(v.get('gunWeightKg') or 0.0),
+            'baseWeightKg': float(v.get('baseWeightKg') or 0.0),
+            'terrainResistance': list(v.get('terrainResistance', [])),
+            'brakeForce': float(v.get('brakeForce') or 0.0),
+            'specificFriction': float(v.get('specificFriction') or 0.0),
+            'chassisMinPlaneNormalY': float(v.get('chassisMinPlaneNormalY') or 0.0),
+            'trackCenterOffset': float(v.get('trackCenterOffset') or 0.0),
+            'rotationEnergy': float(v.get('rotationEnergy') or 0.0),
+            'rotationSpeedLimit': float(v.get('rotationSpeedLimit') or 0.0),
             'defaultAmmo': default_ammo,
             'shells': shells,
         })
+    global _MOTION_WARNED
+    if not _MOTION_WARNED:
+        bad = []
+        for v in out:
+            limits = v.get('speedLimits') or ()
+            issues = []
+            if len(limits) < 2 or float(limits[0] or 0.0) <= 0.0 or float(limits[1] or 0.0) <= 0.0:
+                issues.append('speedLimits')
+            if float(v.get('hpPerTon') or 0.0) <= 0.0:
+                issues.append('hpPerTon')
+            if float(v.get('chassisRotationSpeed') or 0.0) <= 0.0:
+                issues.append('chassisRotationSpeed')
+            resistance = v.get('terrainResistance') or ()
+            if len(resistance) < 3 or float(resistance[0] or 0.0) <= 0.0:
+                issues.append('terrainResistance')
+            if float(v.get('brakeForce') or 0.0) <= 0.0:
+                issues.append('brakeForce')
+            if float(v.get('rotationSpeedLimit') or 0.0) <= 0.0:
+                issues.append('rotationSpeedLimit')
+            if issues:
+                bad.append((v['name'], issues))
+        if bad:
+            preview = ', '.join(f"{name}({'+'.join(issues)})" for name, issues in bad[:6])
+            print(f"[!] {len(bad)} vehicle(s) missing motion params -> {preview}"
+                  f"{' ...' if len(bad) > 6 else ''}; "
+                  f"battle physics will use BATTLE_DEFAULT_* fallbacks for them "
+                  f"(re-run _dump_vehicles.py if this is unexpected)")
+        else:
+            print(f"[i] motion params OK for all {len(out)} vehicle(s) "
+                  f"(speedLimits/engine/chassis/terrain physics loaded from XML)")
+        _MOTION_WARNED = True
     return out
 
 
@@ -1965,31 +2019,98 @@ def get_vehicle_max_health(vehicle: dict) -> int:
 
 
 def get_vehicle_speed_limits(vehicle: dict):
+    """Forward / backward in m/s from XML <speedLimits>. Falls back to defaults
+    only if the JSON entry is missing/invalid (warning is emitted at load)."""
     limits = (vehicle or {}).get('speedLimits') or ()
     if len(limits) >= 2:
-        return float(limits[0]), float(limits[1])
-    return BATTLE_MAX_FORWARD_SPEED, BATTLE_MAX_BACKWARD_SPEED
+        forward = float(limits[0] or 0.0)
+        backward = float(limits[1] or 0.0)
+        if forward > 0.0 and backward > 0.0:
+            return forward, backward
+    return BATTLE_DEFAULT_FORWARD_SPEED, BATTLE_DEFAULT_BACKWARD_SPEED
+
+
+def get_vehicle_rotation_speed(vehicle: dict) -> float:
+    rot = float((vehicle or {}).get('rotationSpeedLimit') or 0.0)
+    if rot <= 0.0:
+        rot = float((vehicle or {}).get('chassisRotationSpeed') or 0.0)
+        if rot <= 0.0:
+            return BATTLE_DEFAULT_ROTATION_SPEED
+        cap = float((vehicle or {}).get('chassisRotationSpeedLimit') or 0.0)
+        if cap > 0.0:
+            rot = min(rot, cap)
+    return rot * BATTLE_ROTATION_SPEED_FACTOR
 
 
 def get_vehicle_motion_rates(vehicle: dict):
-    hp_per_ton = float((vehicle or {}).get('hpPerTon') or 0.0)
+    resistance = (vehicle or {}).get('terrainResistance') or [1.0, 1.2, 1.4]
+    terrain_resistance = max(0.001, float(resistance[0] if resistance else 1.0))
+    engine_power = float((vehicle or {}).get('enginePower') or 0.0)
+    weight_t = max(0.001, float((vehicle or {}).get('totalWeightKg') or 0.0) / 1000.0)
+    hp_per_ton = engine_power / weight_t if engine_power > 0.0 else float((vehicle or {}).get('hpPerTon') or 0.0)
     if hp_per_ton <= 0.0:
-        return BATTLE_ACCELERATION, BATTLE_DECELERATION
-    accel = max(0.6, min(8.0, hp_per_ton * BATTLE_ACCEL_HP_PER_TON_FACTOR))
-    decel = max(5.0, min(30.0, accel * BATTLE_SPEED_DECEL_RATIO))
+        accel = BATTLE_DEFAULT_ACCEL
+    else:
+        accel = hp_per_ton * BATTLE_ENGINE_ACCEL_FACTOR / terrain_resistance
+    accel = max(BATTLE_ACCEL_MIN,
+                min(BATTLE_ACCEL_MAX, accel))
+    brake_force = float((vehicle or {}).get('brakeForce') or 0.0)
+    decel = brake_force * BATTLE_BRAKE_FORCE_FACTOR if brake_force > 0.0 else accel * BATTLE_SPEED_DECEL_RATIO
+    decel += terrain_resistance * BATTLE_ROLLING_RESISTANCE_FACTOR
+    decel = max(BATTLE_DECEL_MIN, min(BATTLE_DECEL_MAX, decel))
     return accel, decel
 
 
 def get_vehicle_rotation_rates(vehicle: dict):
+    chassis_rot = get_vehicle_rotation_speed(vehicle)
+    if chassis_rot <= 0.0:
+        return BATTLE_DEFAULT_ROT_ACCEL, BATTLE_DEFAULT_ROT_DECEL
+    engine_power = float((vehicle or {}).get('enginePower') or 0.0)
+    rotation_energy = float((vehicle or {}).get('rotationEnergy') or 0.0)
+    if engine_power > 0.0 and rotation_energy > 0.0:
+        accel = engine_power / rotation_energy * BATTLE_ROTATION_ACCEL_FACTOR_XML
+    else:
+        accel = chassis_rot * BATTLE_ROT_ACCEL_FACTOR * BATTLE_ROTATION_ACCEL_FACTOR_XML
+    accel_cap = chassis_rot * 3.0
+    accel = max(BATTLE_ROT_ACCEL_MIN, min(accel_cap, accel))
+    weight_t = float((vehicle or {}).get('totalWeightKg') or 0.0) / 1000.0
     hp_per_ton = float((vehicle or {}).get('hpPerTon') or 0.0)
-    chassis_rotation_speed = float((vehicle or {}).get('chassisRotationSpeed')
-                                   or BATTLE_MAX_ROTATION_SPEED)
-    if hp_per_ton <= 0.0:
-        return BATTLE_ROT_ACCELERATION, BATTLE_ROT_DECELERATION
-    accel = max(1.0, min(6.0, chassis_rotation_speed * BATTLE_ROT_ACCEL_FACTOR
-                          * max(1.0, hp_per_ton * 0.1)))
-    decel = accel * BATTLE_ROT_DECEL_RATIO
+    if 0.0 < weight_t <= BATTLE_LIGHT_ROT_ACCEL_WEIGHT_T:
+        weight_factor = (BATTLE_LIGHT_ROT_ACCEL_WEIGHT_T - weight_t) / BATTLE_LIGHT_ROT_ACCEL_WEIGHT_T
+        power_factor = max(0.0, min(1.0, (hp_per_ton - BATTLE_LIGHT_ROT_ACCEL_HP_PER_TON) / BATTLE_LIGHT_ROT_ACCEL_HP_PER_TON))
+        accel *= 1.0 + (BATTLE_LIGHT_ROT_ACCEL_BONUS - 1.0) * max(weight_factor, power_factor)
+    accel = min(accel_cap, accel)
+    decel = max(BATTLE_ROT_DECEL_MIN, accel * BATTLE_ROT_DECEL_RATIO)
     return accel, decel
+
+
+def format_battle_motion_params(vehicle: dict) -> str:
+    """One-line summary of the XML-derived motion params used by server/client
+    physics for the given vehicle dict. Used at battle start for diagnostics."""
+    if not vehicle:
+        return '<no vehicle>'
+    name = vehicle.get('name', '?')
+    fwd, bwd = get_vehicle_speed_limits(vehicle)
+    rot = get_vehicle_rotation_speed(vehicle)
+    accel, decel = get_vehicle_motion_rates(vehicle)
+    rot_accel, rot_decel = get_vehicle_rotation_rates(vehicle)
+    hp = float(vehicle.get('enginePower') or 0.0)
+    weight_t = float(vehicle.get('totalWeightKg') or 0.0) / 1000.0
+    hp_per_ton = float(vehicle.get('hpPerTon') or 0.0)
+    resistance = vehicle.get('terrainResistance') or [0.0, 0.0, 0.0]
+    brake = float(vehicle.get('brakeForce') or 0.0)
+    min_normal_y = float(vehicle.get('chassisMinPlaneNormalY') or 0.0)
+    return (
+        f"{name}: fwd={fwd:.2f}m/s ({fwd * 3.6:.1f}km/h), "
+        f"rev={bwd:.2f}m/s ({bwd * 3.6:.1f}km/h), "
+        f"rot={math.degrees(rot):.1f}deg/s, "
+        f"accel={accel:.2f}m/s2 decel={decel:.2f}m/s2, "
+        f"rotAccel={math.degrees(rot_accel):.1f}deg/s2 "
+        f"rotDecel={math.degrees(rot_decel):.1f}deg/s2, "
+        f"engine={hp:.0f}hp, weight={weight_t:.1f}t, hp/t={hp_per_ton:.2f}, "
+        f"terrain={','.join(f'{float(r):.2f}' for r in resistance[:3])}, "
+        f"brake={brake:.1f}, minNormalY={min_normal_y:.3f}"
+    )
 
 
 def get_vehicle_shell_count(vehicle: dict, compact: int) -> int:
@@ -2687,25 +2808,35 @@ PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
-BATTLE_MOTION_TICK = 0.10
+BATTLE_MOTION_TICK = 0.05
 BASE_CAPTURE_RADIUS = 50.0
 BASE_CAPTURE_POINTS_MAX = 100
 BASE_CAPTURE_POINTS_PER_SECOND = 1.0
 BASE_CAPTURE_MAX_POINTS_PER_SECOND = 3.0
 BASE_CAPTURE_CLIENT_POSITION_MAX_AGE = 5.0
 TARGETING_UPDATE_INTERVAL = 0.08
-BATTLE_MAX_FORWARD_SPEED = 10.0
-BATTLE_MAX_BACKWARD_SPEED = 4.0
-BATTLE_MAX_ROTATION_SPEED = 1.15
-BATTLE_PIVOT_ROTATION_SPEED = 1.35
-BATTLE_ACCELERATION = 1.8
-BATTLE_DECELERATION = 7.0
-BATTLE_ROT_ACCELERATION = 2.0
-BATTLE_ROT_DECELERATION = 3.0
+BATTLE_DEFAULT_FORWARD_SPEED = 10.0
+BATTLE_DEFAULT_BACKWARD_SPEED = 4.0
+BATTLE_DEFAULT_ROTATION_SPEED = math.radians(30.0)
+BATTLE_DEFAULT_ACCEL = 1.8
+BATTLE_DEFAULT_DECEL = 6.0
+BATTLE_DEFAULT_ROT_ACCEL = 2.0
+BATTLE_DEFAULT_ROT_DECEL = 3.0
+BATTLE_ROTATION_SPEED_FACTOR = 1.22
+BATTLE_ROTATION_ACCEL_FACTOR_XML = 1.35
+BATTLE_LIGHT_ROT_ACCEL_WEIGHT_T = 18.0
+BATTLE_LIGHT_ROT_ACCEL_HP_PER_TON = 16.0
+BATTLE_LIGHT_ROT_ACCEL_BONUS = 1.45
 BATTLE_ACCEL_HP_PER_TON_FACTOR = 0.18
-BATTLE_ROT_ACCEL_FACTOR = 2.0
+BATTLE_ACCEL_MIN = 0.6
+BATTLE_ACCEL_MAX = 8.0
 BATTLE_SPEED_DECEL_RATIO = 3.5
+BATTLE_DECEL_MIN = 5.0
+BATTLE_DECEL_MAX = 24.0
+BATTLE_ROT_ACCEL_FACTOR = 2.0
+BATTLE_ROT_ACCEL_MIN = 1.0
 BATTLE_ROT_DECEL_RATIO = 1.5
+BATTLE_ROT_DECEL_MIN = 1.5
 BATTLE_MIN_TURN_FACTOR = 0.7
 REMOTE_GUN_PITCH_SCALE = 0.35
 REMOTE_GUN_PITCH_LIMIT = math.radians(12.0)
@@ -2713,6 +2844,7 @@ SHOT_TRACE_DISTANCE = 1200.0
 TARGET_MARKER_OCCLUSION_MAX_AGE = 3.0
 CLIENT_POSITION_MAX_AGE = 0.75
 CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = 80.0
+CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = False
 SHOT_TANK_CENTER_HEIGHT = 1.3
 SHOT_TANK_HALF_LENGTH = 5.2
 SHOT_TANK_HALF_WIDTH = 2.4
@@ -2733,9 +2865,19 @@ STATIC_OBSTACLE_Y_BELOW = 1.5
 STATIC_OBSTACLE_Y_HEIGHT = 5.0
 TANK_COLLISION_RADIUS = 2.5
 TANK_SLOPE_LIMIT_TAN = math.tan(math.radians(35.0))
-TANK_SLOPE_SOFT_TAN = math.tan(math.radians(28.0))
-TANK_SLOPE_SAMPLE_MIN_XZ = 0.20
-TANK_SLOPE_SMOOTHING = 0.6
+TANK_SLOPE_SOFT_TAN = math.tan(math.radians(30.0))
+TANK_SLOPE_SAMPLE_MIN_XZ = 1.0
+TANK_SLOPE_SMOOTHING = 0.9
+BATTLE_TERRAIN_CHUNK_SIZE = 100.0
+BATTLE_TERRAIN_VISIBLE_OFFSET = 2
+BATTLE_TERRAIN_NORMAL_STEP = 1.5
+BATTLE_ENGINE_ACCEL_FACTOR = 0.18
+BATTLE_BRAKE_FORCE_FACTOR = 0.38
+BATTLE_ROLLING_RESISTANCE_FACTOR = 0.35
+BATTLE_STOP_SPEED = 0.035
+BATTLE_STOP_ROT_SPEED = 0.004
+BATTLE_TERRAIN_BLOCK_CACHE = {}
+BATTLE_TERRAIN_WARNED = set()
 
 # Arena typeID в†’ geometry path (РёР· res/scripts/arena_defs/<typeName>.xml)
 # РїР°СЂР°РјРµС‚СЂ <geometry>. Р‘РµР· trailing slash РєР»С–С”РЅС‚ СЃР°Рј РґРѕРґР°С”.
@@ -3401,7 +3543,7 @@ def is_recent_client_vehicle_position(sess: dict) -> bool:
 
 
 def get_effective_vehicle_pos(sess: dict, fallback=None):
-    if is_recent_client_vehicle_position(sess):
+    if not sess.get('server_vehicle_authoritative', True) and is_recent_client_vehicle_position(sess):
         return sess.get('client_vehicle_pos')
     pos = sess.get('battle_pos')
     if pos is not None:
@@ -3413,7 +3555,10 @@ def get_effective_vehicle_pos(sess: dict, fallback=None):
 
 def record_client_vehicle_position(sess: dict, pos, yaw: float):
     prev = sess.get('client_vehicle_pos')
+    prev_time = float(sess.get('client_vehicle_last_update_time', 0.0))
     now = time.time()
+    if prev is None:
+        print(f"    [client_pos] FIRST set client_vehicle_pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) yaw={yaw:.2f}")
     if prev is not None:
         dx = pos[0] - prev[0]
         dy = pos[1] - prev[1]
@@ -3424,17 +3569,37 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
         if xz_dist > TANK_SLOPE_SAMPLE_MIN_XZ:
             slope = dy / xz_dist
             prev_slope = float(sess.get('client_vehicle_slope', 0.0))
-            sess['client_vehicle_slope'] = (
+            new_slope = (
                 prev_slope * TANK_SLOPE_SMOOTHING +
                 slope * (1.0 - TANK_SLOPE_SMOOTHING))
+            sess['client_vehicle_slope'] = new_slope
             sess['client_vehicle_slope_time'] = now
-    sess['client_vehicle_pos'] = pos
-    sess['client_vehicle_yaw'] = yaw
-    sess['client_vehicle_last_update_time'] = now
+            sample_count = sess.get('client_vehicle_slope_sample_count', 0) + 1
+            sess['client_vehicle_slope_sample_count'] = sample_count
+            print(f"    [slope] sample dy={dy:+.2f} dxz={xz_dist:.2f} "
+                  f"raw={slope:+.3f} EMA={prev_slope:+.3f}->{new_slope:+.3f} "
+                  f"client_y={pos[1]:.2f}")
+        dt = max(0.001, min(1.0, now - prev_time)) if prev_time > 0.0 else 0.0
+        if dt > 0.0:
+            forward = dx * math.sin(yaw) + dz * math.cos(yaw)
+            sess['client_vehicle_observed_speed'] = forward / dt
+            sess['client_vehicle_observed_rspeed'] = normalize_angle(
+                yaw - float(sess.get('client_vehicle_yaw', yaw))) / dt
+        else:
+            sess['client_vehicle_observed_speed'] = 0.0
+            sess['client_vehicle_observed_rspeed'] = 0.0
+    else:
+        sess['client_vehicle_observed_speed'] = 0.0
+        sess['client_vehicle_observed_rspeed'] = 0.0
     if not sess.get('server_vehicle_authoritative', True):
         sess['battle_prev_pos'] = sess.get('battle_pos', pos)
         sess['battle_pos'] = pos
         sess['battle_yaw'] = yaw
+        sess['battle_speed'] = float(sess.get('client_vehicle_observed_speed', 0.0))
+        sess['battle_rspeed'] = float(sess.get('client_vehicle_observed_rspeed', 0.0))
+    sess['client_vehicle_pos'] = pos
+    sess['client_vehicle_yaw'] = yaw
+    sess['client_vehicle_last_update_time'] = now
 
 
 def is_plausible_avatar_vehicle_position(sess: dict, pos) -> bool:
@@ -3448,7 +3613,8 @@ def is_plausible_avatar_vehicle_position(sess: dict, pos) -> bool:
 
 
 def get_remote_vehicle_angles(remote_sess: dict):
-    if is_recent_client_vehicle_position(remote_sess):
+    if (not remote_sess.get('server_vehicle_authoritative', True) and
+            is_recent_client_vehicle_position(remote_sess)):
         yaw = float(remote_sess.get('client_vehicle_yaw', remote_sess.get('battle_yaw', 0.0)))
     else:
         yaw = float(remote_sess.get('battle_yaw', 0.0))
@@ -3578,18 +3744,26 @@ def start_battle_tick_loop(sock):
                 remote_payloads = []
                 for sess in sessions:
                     flags = sess.get('battle_motion_flags', 0)
-                    pos, yaw, speed, rspeed = advance_battle_motion(sess, flags)
-                    addr = sess.get('addr')
-                    if addr:
-                        send_avatar_messages(sock, addr, sess,
-                                             build_battle_motion_tick(pos, yaw),
-                                             '',
-                                             reliable=False)
+                    if sess.get('server_vehicle_authoritative', True):
+                        pos, yaw, speed, rspeed = advance_battle_motion(sess, flags)
+                        addr = sess.get('addr')
+                        if addr:
+                            send_avatar_messages(sock, addr, sess,
+                                                 build_battle_motion_tick(pos, yaw),
+                                                 '',
+                                                 reliable=False)
+                    else:
+                        pos = get_effective_vehicle_pos(
+                            sess, sess.get('battle_pos',
+                                           ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
+                        yaw = float(sess.get('client_vehicle_yaw',
+                                             sess.get('battle_yaw', 0.0)))
                     source_account_id = sess.get('account_id')
                     remote_id = get_remote_vehicle_id(sess)
                     _yaw, gun_pitch, turret_yaw = get_remote_vehicle_angles(sess)
                     remote_pos = get_effective_vehicle_pos(sess, pos)
-                    if is_recent_client_vehicle_position(sess):
+                    if (not sess.get('server_vehicle_authoritative', True) and
+                            is_recent_client_vehicle_position(sess)):
                         yaw = float(sess.get('client_vehicle_yaw', yaw))
                     remote_msg = build_vehicle_motion_update_for(remote_id, remote_pos, yaw,
                                                                  gun_pitch, turret_yaw)
@@ -3704,7 +3878,7 @@ def distance_xz(pos, base_pos) -> float:
 
 
 def get_base_capture_vehicle_pos(sess: dict):
-    pos = sess.get('client_vehicle_pos')
+    pos = sess.get('client_vehicle_pos') if not sess.get('server_vehicle_authoritative', True) else None
     if pos is not None:
         last = float(sess.get('client_vehicle_last_update_time', 0.0))
         if time.time() - last <= BASE_CAPTURE_CLIENT_POSITION_MAX_AGE:
@@ -3788,8 +3962,12 @@ def send_avatar_messages(sock, addr, sess, msgs: bytes, label: str,
 def init_battle_state(sess: dict, spawn_pos):
     vehicle = sess.get('battle_vehicle') or {}
     spawn_yaw = spawn_yaw_for_base(get_session_spawn_base(sess))
+    print(f"    [motion] {format_battle_motion_params(vehicle)}")
     sess['battle_generation'] = sess.get('battle_generation', 0) + 1
-    sess['battle_pos'] = tuple(float(v) for v in spawn_pos)
+    arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
+    sx, sy, sz = (float(v) for v in spawn_pos)
+    sy, _normal = sample_terrain(arena_type_id, sx, sz, sy)
+    sess['battle_pos'] = (sx, sy, sz)
     sess['battle_prev_pos'] = sess['battle_pos']
     sess['battle_yaw'] = spawn_yaw
     sess['battle_speed'] = 0.0
@@ -3801,8 +3979,13 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_motion_loop_started'] = False
     sess['battle_client_control_enabled'] = False
     sess['server_vehicle_authoritative'] = True
+    sess['client_vehicle_pos'] = None
+    sess['client_vehicle_yaw'] = spawn_yaw
+    sess['client_vehicle_last_update_time'] = 0.0
+    sess['client_vehicle_last_move_time'] = 0.0
     sess['client_vehicle_slope'] = 0.0
     sess['client_vehicle_slope_time'] = 0.0
+    sess['client_vehicle_slope_sample_count'] = 0
     sess['battle_period_active'] = False
     sess['battle_turret_yaw'] = spawn_yaw
     sess['battle_gun_pitch'] = 0.0
@@ -3853,21 +4036,16 @@ def battle_motion_targets(flags: int, vehicle: dict = None):
     elif flags & 32:
         speed_scale = 0.25
 
+    forward_limit, backward_limit = get_vehicle_speed_limits(vehicle)
     if movement_dir > 0:
-        forward_limit, backward_limit = get_vehicle_speed_limits(vehicle)
         target_speed = forward_limit * speed_scale
     elif movement_dir < 0:
-        forward_limit, backward_limit = get_vehicle_speed_limits(vehicle)
         target_speed = -backward_limit * speed_scale
     else:
         target_speed = 0.0
 
-    rotation_limit = float((vehicle or {}).get('chassisRotationSpeed',
-                           BATTLE_MAX_ROTATION_SPEED))
-    if movement_dir == 0:
-        target_rspeed = max(rotation_limit, BATTLE_PIVOT_ROTATION_SPEED) * rotation_dir
-    else:
-        target_rspeed = rotation_limit * rotation_dir
+    rotation_limit = get_vehicle_rotation_speed(vehicle)
+    target_rspeed = rotation_limit * rotation_dir
     return target_speed, target_rspeed
 
 
@@ -3878,6 +4056,9 @@ def advance_battle_motion(sess: dict, flags: int = None):
     sess['battle_last_motion_time'] = now
 
     x, y, z = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
+    current_height, current_normal = sample_terrain(arena_type_id, x, z, y)
+    y = current_height
     prev_pos = (x, y, z)
     yaw = float(sess.get('battle_yaw', 0.0))
     if flags is None:
@@ -3885,23 +4066,53 @@ def advance_battle_motion(sess: dict, flags: int = None):
 
     vehicle = sess.get('battle_vehicle')
     target_speed, target_rspeed = battle_motion_targets(flags, vehicle)
+    raw_target_speed = target_speed
     speed = float(sess.get('battle_speed', 0.0))
     rspeed = float(sess.get('battle_rspeed', 0.0))
-
     accel, decel = get_vehicle_motion_rates(vehicle)
     rot_accel, rot_decel = get_vehicle_rotation_rates(vehicle)
-    speed_rate = accel if abs(target_speed) > abs(speed) else decel
-    rspeed_rate = rot_accel if abs(target_rspeed) > abs(rspeed) else rot_decel
+
+    min_normal_y = float((vehicle or {}).get('chassisMinPlaneNormalY') or 0.0)
+    if min_normal_y <= 0.0:
+        climb_angle = float((vehicle or {}).get('chassisMaxClimbAngleRad') or math.radians(35.0))
+        min_normal_y = math.cos(climb_angle)
+
+    slope_branch = 'OK'
+    candidate_probe_y = y
+    candidate_probe_normal = current_normal
+    if abs(target_speed) > 0.001:
+        probe_dist = max(1.0, min(4.0, abs(speed) * dt + 2.0))
+        probe_sign = 1.0 if target_speed > 0.0 else -1.0
+        probe_x = x + math.sin(yaw) * probe_dist * probe_sign
+        probe_z = z + math.cos(yaw) * probe_dist * probe_sign
+        candidate_probe_y, candidate_probe_normal = sample_terrain(arena_type_id, probe_x, probe_z, y)
+        if candidate_probe_normal[1] < min_normal_y and candidate_probe_y > y + 0.05:
+            target_speed = min(0.0, speed) if target_speed > 0.0 else max(0.0, speed)
+            slope_branch = 'CLIMB_LIMIT'
+        elif current_normal[1] < min_normal_y and candidate_probe_y > y + 0.05:
+            target_speed = 0.0
+            slope_branch = 'PLANE_LIMIT'
+
+    same_direction = (
+        abs(speed) < 0.001 or abs(target_speed) < 0.001 or
+        (speed > 0.0 and target_speed > 0.0) or
+        (speed < 0.0 and target_speed < 0.0)
+    )
+    speed_rate = accel if same_direction and abs(target_speed) > abs(speed) else decel
     speed = approach(speed, target_speed, speed_rate, dt)
+
     turn_factor = 1.0
     if abs(target_speed) > 0.01 and abs(speed) > 0.01:
         turn_factor = BATTLE_MIN_TURN_FACTOR
         turn_factor += (1.0 - BATTLE_MIN_TURN_FACTOR) * min(
             1.0, abs(speed) / max(0.01, abs(target_speed)))
     target_rspeed *= turn_factor
+    rspeed_rate = rot_accel if abs(target_rspeed) > abs(rspeed) else rot_decel
     rspeed = approach(rspeed, target_rspeed, rspeed_rate, dt)
 
-    if abs(target_rspeed) < 0.001 and abs(rspeed) < 0.01:
+    if abs(target_speed) < 0.001 and abs(speed) < BATTLE_STOP_SPEED:
+        speed = 0.0
+    if abs(target_rspeed) < 0.001 and abs(rspeed) < BATTLE_STOP_ROT_SPEED:
         rspeed = 0.0
     prev_yaw = yaw
     yaw += rspeed * dt
@@ -3910,41 +4121,52 @@ def advance_battle_motion(sess: dict, flags: int = None):
         turret_yaw = float(sess.get('battle_turret_yaw', prev_yaw))
         sess['battle_turret_yaw'] = normalize_angle(turret_yaw + yaw - prev_yaw)
 
-    slope_climb_blocked = False
-    slope_age = now - float(sess.get('client_vehicle_slope_time', 0.0))
-    if slope_age <= 1.5:
-        slope = float(sess.get('client_vehicle_slope', 0.0))
-        if speed > 0.001 and slope > TANK_SLOPE_LIMIT_TAN:
-            speed = 0.0
-            slope_climb_blocked = True
-        elif speed < -0.001 and slope < -TANK_SLOPE_LIMIT_TAN:
-            speed = 0.0
-            slope_climb_blocked = True
-        elif speed > 0.001 and slope > TANK_SLOPE_SOFT_TAN:
-            soft_factor = max(
-                0.0,
-                1.0 - (slope - TANK_SLOPE_SOFT_TAN) /
-                max(0.001, TANK_SLOPE_LIMIT_TAN - TANK_SLOPE_SOFT_TAN))
-            speed *= soft_factor
-        elif speed < -0.001 and slope < -TANK_SLOPE_SOFT_TAN:
-            soft_factor = max(
-                0.0,
-                1.0 - (-slope - TANK_SLOPE_SOFT_TAN) /
-                max(0.001, TANK_SLOPE_LIMIT_TAN - TANK_SLOPE_SOFT_TAN))
-            speed *= soft_factor
-
+    blocked_dbg = False
     if abs(speed) > 0.001:
         cand_x = x + math.sin(yaw) * speed * dt
         cand_z = z + math.cos(yaw) * speed * dt
-        arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
         new_x, new_z, blocked = resolve_motion_against_obstacles(
             arena_type_id, x, z, cand_x, cand_z)
-        x, z = new_x, new_z
+        new_y, new_normal = sample_terrain(arena_type_id, new_x, new_z, y)
+        uphill_blocked = new_normal[1] < min_normal_y and new_y > y + 0.05
+        if uphill_blocked:
+            blocked = True
+        if not blocked:
+            x, y, z = new_x, new_y, new_z
         if blocked:
             speed = 0.0
+            blocked_dbg = True
+    else:
+        y = current_height
 
-    if slope_climb_blocked and abs(speed) < 0.001:
-        speed = 0.0
+    prev_branch = sess.get('battle_dbg_last_slope_branch', 'none')
+    last_log = float(sess.get('battle_dbg_last_log_time', 0.0))
+    branch_changed = (prev_branch != slope_branch)
+    blocked_changed = (bool(sess.get('battle_dbg_last_blocked', False)) != blocked_dbg)
+    should_log = (
+        (flags != 0 or abs(speed) > 0.05) and
+        (now - last_log >= 0.5 or branch_changed or blocked_changed)
+    )
+    if should_log:
+        client_pos = sess.get('client_vehicle_pos')
+        if client_pos:
+            cy = client_pos[1]
+            srv_y = y
+            y_diff = cy - srv_y
+            client_str = (f"client=({client_pos[0]:.1f},{cy:.1f},{client_pos[2]:.1f}) "
+                          f"dY={y_diff:+.2f}")
+        else:
+            client_str = "client=None"
+        print(f"    [motion] flags=0x{flags:02x} pos=({x:.1f},{y:.1f},{z:.1f}) "
+              f"yaw={yaw:.2f} spd={speed:+.2f}->t={target_speed:+.2f}"
+              f"(raw={raw_target_speed:+.2f}) "
+              f"normalY={current_normal[1]:+.3f}->{candidate_probe_normal[1]:+.3f} "
+              f"terrainY={current_height:.2f}->{candidate_probe_y:.2f} "
+              f"branch={slope_branch} blocked={blocked_dbg} dt={dt*1000:.0f}ms "
+              f"{client_str}")
+        sess['battle_dbg_last_log_time'] = now
+        sess['battle_dbg_last_slope_branch'] = slope_branch
+        sess['battle_dbg_last_blocked'] = blocked_dbg
 
     sess['battle_prev_pos'] = prev_pos
     sess['battle_pos'] = (x, y, z)
@@ -3985,6 +4207,10 @@ def disable_client_vehicle_control_message(sess):
 
 
 def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
+    dbg_count = sess.get('avu_dbg_count', 0) + 1
+    sess['avu_dbg_count'] = dbg_count
+    log_this = (dbg_count % 40 == 1)
+
     if msg_id == 2:
         decoded = decode_client_coord_ypr(payload, 0)
         if decoded is None:
@@ -3992,20 +4218,25 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
         pos, yaw, _pitch, _roll = decoded
         sess['avatar_pos'] = pos
         sess['avatar_yaw'] = yaw
-        if (sess.get('battle_bundle_sent') and
-                is_plausible_avatar_vehicle_position(sess, pos)):
-            record_client_vehicle_position(sess, pos, yaw)
+        plausible = is_plausible_avatar_vehicle_position(sess, pos)
+        if log_this:
+            base = sess.get('client_vehicle_pos') or sess.get('battle_pos')
+            base_str = f"({base[0]:.1f},{base[1]:.1f},{base[2]:.1f})" if base else "None"
+            print(f"    [avu] msg=0x02 avatarUpdateImplicit pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) "
+                  f"yaw={yaw:.2f} base={base_str} plausible={plausible} bundle={sess.get('battle_bundle_sent', False)}")
         return True
 
     if msg_id == 3:
         if len(payload) < 25:
             return False
+        rel_id = struct.unpack_from('<I', payload, 0)[0]
         pos, yaw, _pitch, _roll = decode_client_coord_ypr(payload, 8)
         sess['avatar_pos'] = pos
         sess['avatar_yaw'] = yaw
-        if (sess.get('battle_bundle_sent') and
-                is_plausible_avatar_vehicle_position(sess, pos)):
-            record_client_vehicle_position(sess, pos, yaw)
+        plausible = is_plausible_avatar_vehicle_position(sess, pos)
+        if log_this:
+            print(f"    [avu] msg=0x03 avatarUpdate rel_id={rel_id} pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) "
+                  f"yaw={yaw:.2f} plausible={plausible}")
         return True
 
     if msg_id == 4:
@@ -4016,6 +4247,9 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
         if decoded is None:
             return False
         pos, yaw, _pitch, _roll = decoded
+        if log_this:
+            print(f"    [avu] msg=0x04 wardUpdate ward_id={ward_id} pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) "
+                  f"yaw={yaw:.2f} match_PV={ward_id == PLAYER_VEHICLE_ID}")
         if ward_id == PLAYER_VEHICLE_ID:
             record_client_vehicle_position(sess, pos, yaw)
             count = sess.get('client_vehicle_update_count', 0) + 1
@@ -4030,10 +4264,14 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
         if len(payload) < 28:
             return False
         ward_id = struct.unpack_from('<I', payload, 0)[0]
+        rel_id = struct.unpack_from('<I', payload, 4)[0]
         decoded = decode_client_coord_ypr(payload, 12)
         if decoded is None:
             return False
         pos, yaw, _pitch, _roll = decoded
+        if log_this:
+            print(f"    [avu] msg=0x05 wardUpdate ward_id={ward_id} rel_id={rel_id} "
+                  f"pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) yaw={yaw:.2f} match_PV={ward_id == PLAYER_VEHICLE_ID}")
         if ward_id == PLAYER_VEHICLE_ID:
             record_client_vehicle_position(sess, pos, yaw)
         return True
@@ -4123,8 +4361,8 @@ def schedule_battle_period(sock, addr, sess):
             return
         now = current_server_time(sess)
         sess['battle_period_active'] = True
-        sess['server_vehicle_authoritative'] = True
-        sess['battle_client_control_enabled'] = False
+        sess['server_vehicle_authoritative'] = not CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
+        sess['battle_client_control_enabled'] = CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
         sess['battle_last_motion_time'] = time.time()
         msgs = build_avatar_update_arena(
             ARENA_UPDATE_PERIOD,
@@ -4135,9 +4373,14 @@ def schedule_battle_period(sock, addr, sess):
             sess.get('battle_yaw', 0.0),
             0.0, 0.0,
             bind_avatar=True)
-        msgs += disable_client_vehicle_control_message(sess)
+        if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
+            msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
+        else:
+            msgs += disable_client_vehicle_control_message(sess)
         send_avatar_messages(sock, addr, sess, msgs,
-                             "PERIOD=BATTLE + server vehicle control")
+                             "PERIOD=BATTLE + client vehicle control"
+                             if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
+                             else "PERIOD=BATTLE + server vehicle control")
         start_battle_tick_loop(sock)
 
     delay = max(0.0, start_wall - time.time())
@@ -4528,6 +4771,191 @@ def marker_vehicle_box_score(marker_pos, pos, yaw):
 def signed_chunk_coord(value: str) -> int:
     coord = int(value, 16)
     return coord - 0x10000 if coord >= 0x8000 else coord
+
+
+def unsigned_chunk_name(coord: int) -> str:
+    return f"{int(coord) & 0xffff:04x}"
+
+
+def decode_png_bytes(data: bytes):
+    if not data.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError('bad png signature')
+    pos = 8
+    width = height = bit_depth = color_type = None
+    idat = bytearray()
+    while pos + 8 <= len(data):
+        length = struct.unpack_from('>I', data, pos)[0]
+        ctype = data[pos + 4:pos + 8]
+        pos += 8
+        chunk = data[pos:pos + length]
+        pos += length + 4
+        if ctype == b'IHDR':
+            width, height, bit_depth, color_type, _comp, _flt, _interlace = struct.unpack('>IIBBBBB', chunk)
+        elif ctype == b'IDAT':
+            idat.extend(chunk)
+        elif ctype == b'IEND':
+            break
+    if width is None or height is None:
+        raise ValueError('png missing ihdr')
+    if bit_depth != 8 or color_type != 6:
+        raise ValueError(f'unsupported png format {bit_depth}/{color_type}')
+    raw = zlib.decompress(bytes(idat))
+    channels = 4
+    stride = width * channels
+    rows = []
+    prev = bytearray(stride)
+    idx = 0
+    for _ in range(height):
+        filter_type = raw[idx]
+        idx += 1
+        row = bytearray(raw[idx:idx + stride])
+        idx += stride
+        for i in range(stride):
+            left = row[i - channels] if i >= channels else 0
+            up = prev[i]
+            up_left = prev[i - channels] if i >= channels else 0
+            if filter_type == 1:
+                row[i] = (row[i] + left) & 0xff
+            elif filter_type == 2:
+                row[i] = (row[i] + up) & 0xff
+            elif filter_type == 3:
+                row[i] = (row[i] + ((left + up) >> 1)) & 0xff
+            elif filter_type == 4:
+                p = left + up - up_left
+                pa = abs(p - left)
+                pb = abs(p - up)
+                pc = abs(p - up_left)
+                pr = left if pa <= pb and pa <= pc else up if pb <= pc else up_left
+                row[i] = (row[i] + pr) & 0xff
+            elif filter_type != 0:
+                raise ValueError(f'unsupported png filter {filter_type}')
+        rows.append(bytes(row))
+        prev = row
+    return width, height, b''.join(rows)
+
+
+def decode_terrain2_heights(data: bytes):
+    if len(data) < 36:
+        raise ValueError('height block too small')
+    magic, width, height, _compression, version, _min_height, _max_height, _pad = struct.unpack_from('<5I2fI', data, 0)
+    if magic != 0x00706d68 or version != 4:
+        raise ValueError(f'unsupported height map {magic:08x}/{version}')
+    qpng = struct.unpack_from('<I', data, 32)[0]
+    if qpng != 0x71706e67:
+        raise ValueError(f'unsupported height compression {qpng:08x}')
+    png_w, png_h, pixels = decode_png_bytes(data[36:])
+    if png_w != width or png_h != height:
+        raise ValueError(f'height size mismatch {png_w}x{png_h} != {width}x{height}')
+    values = []
+    for row in range(height):
+        start = row * width * 4
+        values.append([
+            struct.unpack_from('<i', pixels, start + col * 4)[0] * 0.001
+            for col in range(width)
+        ])
+    return values
+
+
+class TerrainBlock2:
+    def __init__(self, heights, chunk_x: int, chunk_z: int):
+        self.heights = heights
+        self.chunk_x = int(chunk_x)
+        self.chunk_z = int(chunk_z)
+        self.height_count = len(heights)
+        self.width_count = len(heights[0]) if heights else 0
+        self.visible_offset = BATTLE_TERRAIN_VISIBLE_OFFSET
+        self.blocks_x = max(1, self.width_count - self.visible_offset * 2 - 1)
+        self.blocks_z = max(1, self.height_count - self.visible_offset * 2 - 1)
+        self.spacing_x = BATTLE_TERRAIN_CHUNK_SIZE / float(self.blocks_x)
+        self.spacing_z = BATTLE_TERRAIN_CHUNK_SIZE / float(self.blocks_z)
+
+    def _grid_height(self, x_idx: int, z_idx: int) -> float:
+        x_idx = max(0, min(self.width_count - 1, int(x_idx)))
+        z_idx = max(0, min(self.height_count - 1, int(z_idx)))
+        return float(self.heights[z_idx][x_idx])
+
+    def height_at_local(self, local_x: float, local_z: float) -> float:
+        local_x = max(0.0, min(BATTLE_TERRAIN_CHUNK_SIZE, float(local_x)))
+        local_z = max(0.0, min(BATTLE_TERRAIN_CHUNK_SIZE, float(local_z)))
+        xs = local_x / self.spacing_x + self.visible_offset
+        zs = local_z / self.spacing_z + self.visible_offset
+        x_off = int(math.floor(xs))
+        z_off = int(math.floor(zs))
+        xf = xs - math.floor(xs)
+        zf = zs - math.floor(zs)
+        x_off = max(0, min(self.width_count - 2, x_off))
+        z_off = max(0, min(self.height_count - 2, z_off))
+        if (x_off ^ z_off) & 1:
+            h01 = self._grid_height(x_off, z_off + 1)
+            h10 = self._grid_height(x_off + 1, z_off)
+            if (1.0 - xf) > zf:
+                h00 = self._grid_height(x_off, z_off)
+                return h00 + (h10 - h00) * xf + (h01 - h00) * zf
+            h11 = self._grid_height(x_off + 1, z_off + 1)
+            return h11 + (h01 - h11) * (1.0 - xf) + (h10 - h11) * (1.0 - zf)
+        h00 = self._grid_height(x_off, z_off)
+        h11 = self._grid_height(x_off + 1, z_off + 1)
+        if xf > zf:
+            h10 = self._grid_height(x_off + 1, z_off)
+            return h10 + (h00 - h10) * (1.0 - xf) + (h11 - h10) * zf
+        h01 = self._grid_height(x_off, z_off + 1)
+        return h01 + (h11 - h01) * xf + (h00 - h01) * (1.0 - zf)
+
+    def height_at_world(self, x: float, z: float) -> float:
+        return self.height_at_local(
+            float(x) - self.chunk_x * BATTLE_TERRAIN_CHUNK_SIZE,
+            float(z) - self.chunk_z * BATTLE_TERRAIN_CHUNK_SIZE)
+
+
+def load_terrain_block(arena_type_id: int, chunk_x: int, chunk_z: int):
+    arena_type_id = normalize_arena_type_id(arena_type_id)
+    cache_key = (arena_type_id, int(chunk_x), int(chunk_z))
+    if cache_key in BATTLE_TERRAIN_BLOCK_CACHE:
+        return BATTLE_TERRAIN_BLOCK_CACHE[cache_key]
+    block = None
+    space_dir = find_client_space_dir(arena_type_id)
+    if space_dir:
+        name = unsigned_chunk_name(chunk_x) + unsigned_chunk_name(chunk_z) + 'o.cdata'
+        path = os.path.join(space_dir, name)
+        try:
+            with zipfile.ZipFile(path, 'r') as zf:
+                heights = decode_terrain2_heights(zf.read('terrain2/heights'))
+            block = TerrainBlock2(heights, chunk_x, chunk_z)
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile, zlib.error) as exc:
+            warn_key = (arena_type_id, int(chunk_x), int(chunk_z), str(exc))
+            if warn_key not in BATTLE_TERRAIN_WARNED:
+                print(f"[!] terrain warning arena={arena_type_id} chunk=({chunk_x},{chunk_z}): {exc}")
+                BATTLE_TERRAIN_WARNED.add(warn_key)
+    else:
+        warn_key = (arena_type_id, 'space_missing')
+        if warn_key not in BATTLE_TERRAIN_WARNED:
+            print(f"[!] terrain warning arena={arena_type_id}: client space dir not found")
+            BATTLE_TERRAIN_WARNED.add(warn_key)
+    BATTLE_TERRAIN_BLOCK_CACHE[cache_key] = block
+    return block
+
+
+def terrain_height_only(arena_type_id: int, x: float, z: float, fallback_y=None):
+    chunk_x = math.floor(float(x) / BATTLE_TERRAIN_CHUNK_SIZE)
+    chunk_z = math.floor(float(z) / BATTLE_TERRAIN_CHUNK_SIZE)
+    block = load_terrain_block(arena_type_id, chunk_x, chunk_z)
+    if block is None:
+        return float(fallback_y if fallback_y is not None else 0.0)
+    return block.height_at_world(x, z)
+
+
+def sample_terrain(arena_type_id: int, x: float, z: float, fallback_y=None):
+    height = terrain_height_only(arena_type_id, x, z, fallback_y)
+    step = BATTLE_TERRAIN_NORMAL_STEP
+    hx0 = terrain_height_only(arena_type_id, x - step, z, height)
+    hx1 = terrain_height_only(arena_type_id, x + step, z, height)
+    hz0 = terrain_height_only(arena_type_id, x, z - step, height)
+    hz1 = terrain_height_only(arena_type_id, x, z + step, height)
+    dhdx = (hx1 - hx0) / (2.0 * step)
+    dhdz = (hz1 - hz0) / (2.0 * step)
+    nx, ny, nz = -dhdx, 1.0, -dhdz
+    length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+    return height, (nx / length, ny / length, nz / length)
 
 
 def find_client_space_dir(arena_type_id: int):
@@ -5665,11 +6093,11 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             sess['battle_last_motion_time'] = time.time()
         move_count = sess.get('battle_move_update_count', 0) + 1
         sess['battle_move_update_count'] = move_count
-        if move_count % 20 == 1 or flags == 0:
+        if flags != prev_flags:
             mode = "server authoritative" if sess.get(
                 'server_vehicle_authoritative', True) else "client controlled"
             move, turn = battle_motion_targets(flags, sess.get('battle_vehicle'))
-            print(f"    [>] Vehicle.input(flags=0x{flags:02x}) "
+            print(f"    [>] Vehicle.input(flags=0x{prev_flags:02x}->0x{flags:02x}) "
                   f"[{mode}, target=({move:.1f},{turn:.2f})]")
         if not sess.get('server_vehicle_authoritative', True):
             return True
