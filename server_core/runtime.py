@@ -4,6 +4,14 @@ import socket
 import time
 
 
+FORCED_POSITION_BROADCAST_INTERVAL = 1.0
+LONG_CALLBACK_THRESHOLD_MS = 100.0
+SOCKET_BUFFER_BYTES = 1 << 20
+MAX_SOCKET_READS_PER_TURN = 32
+OUTBOUND_QUEUE_WARN_THRESHOLD = 128
+RUNTIME_DIAG_INTERVAL = 5.0
+
+
 class ScheduledCall:
     __slots__ = ("when", "seq", "callback", "cancelled")
 
@@ -54,6 +62,9 @@ class EventLoopRuntime:
         self.battle_tick_last_dbg = time.time()
         self.battle_tick_last_count = 0
         self.battle_tick_max_ms = 0.0
+        self.outbound_max_len = 0
+        self.read_burst_max = 0
+        self.runtime_diag_last = time.time()
 
     def call_later(self, delay, callback):
         self.seq += 1
@@ -65,7 +76,13 @@ class EventLoopRuntime:
         if isinstance(sock, PacketSocketAdapter):
             sock = sock.sock
         self.outbound.append((sock, bytes(data), addr))
+        self.outbound_max_len = max(self.outbound_max_len, len(self.outbound))
         return len(data)
+
+    def _next_session_tick_byte(self, sess):
+        tick_byte = int(sess.get("session_tick_counter", 0)) & 0xFF
+        sess["session_tick_counter"] = (tick_byte + 1) & 0xFF
+        return tick_byte
 
     def start_session_tick(self, sock, addr, sess):
         key = id(sess)
@@ -78,8 +95,7 @@ class EventLoopRuntime:
             if not sess.get("init_sent") or sess.get("addr") != addr:
                 self.session_ticks.discard(key)
                 return
-            tick_byte = self.module.tick_counter & 0xFF
-            self.module.tick_counter += 1
+            tick_byte = self._next_session_tick_byte(sess)
             pkt = self.module.msg_fixed(0x0D, self.module.struct.pack("<B", tick_byte))
             pkt = self.module.build_channel_packet(pkt, sess, reliable=False)
             pkt = self.module.bw_encrypt_packet(pkt, sess["bf_key"])
@@ -184,6 +200,8 @@ class EventLoopRuntime:
         for observer, payload in remote_payloads:
             mod.send_avatar_messages(sock, observer.get("addr"), observer,
                                      b"".join(payload), "", reliable=False)
+        self._broadcast_filter_resets(sock, active_sessions, prebattle_sessions,
+                                      iter_start)
         processed_matches = set()
         for sess in active_sessions:
             match_id = sess.get("battle_match_id")
@@ -206,6 +224,34 @@ class EventLoopRuntime:
             self.battle_tick_last_count = self.battle_tick_count
             self.battle_tick_max_ms = 0.0
 
+    def _broadcast_filter_resets(self, sock, active_sessions, prebattle_sessions,
+                                 now):
+        if not active_sessions:
+            return
+        mod = self.module
+        interval = float(getattr(mod, "FORCED_POSITION_BROADCAST_INTERVAL",
+                                 FORCED_POSITION_BROADCAST_INTERVAL))
+        space_id = int(getattr(mod, "SPACE_ID", 1))
+        own_id = int(getattr(mod, "PLAYER_VEHICLE_ID", 200))
+        spawn_default = mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA]
+        for sess in active_sessions:
+            addr = sess.get("addr")
+            if not addr:
+                continue
+            last_reset = sess.get("battle_last_filter_reset_time")
+            if last_reset is None:
+                sess["battle_last_filter_reset_time"] = now
+                continue
+            if now - float(last_reset) < interval:
+                continue
+            pos = sess.get("battle_pos") or spawn_default
+            yaw = float(sess.get("battle_yaw", 0.0))
+            msgs = mod.build_forced_position(own_id, pos, yaw,
+                                             space_id=space_id, vehicle_id=0)
+            mod.send_avatar_messages(sock, addr, sess, msgs, "",
+                                     reliable=False)
+            sess["battle_last_filter_reset_time"] = now
+
     def _timeout(self):
         if self.outbound:
             return 0
@@ -219,7 +265,12 @@ class EventLoopRuntime:
             _when, _seq, item = heapq.heappop(self.scheduled)
             if item.cancelled:
                 continue
+            cb_start = time.time()
             item.callback()
+            cb_ms = (time.time() - cb_start) * 1000.0
+            if cb_ms > LONG_CALLBACK_THRESHOLD_MS:
+                print(f"[!] scheduled callback blocked the loop "
+                      f"for {cb_ms:.0f}ms")
             now = time.time()
 
     def _flush_outbound(self):
@@ -230,18 +281,49 @@ class EventLoopRuntime:
             except OSError:
                 pass
 
+    def _report_runtime_diag(self):
+        now = time.time()
+        if now - self.runtime_diag_last < RUNTIME_DIAG_INTERVAL:
+            return
+        if (self.outbound_max_len > OUTBOUND_QUEUE_WARN_THRESHOLD or
+                self.read_burst_max >= MAX_SOCKET_READS_PER_TURN):
+            print(f"    [net] maxOutbound={self.outbound_max_len} "
+                  f"maxReadBurst={self.read_burst_max}")
+        self.outbound_max_len = 0
+        self.read_burst_max = 0
+        self.runtime_diag_last = now
+
     def _read_socket(self, sock, handler):
-        while True:
+        processed = 0
+        while processed < MAX_SOCKET_READS_PER_TURN:
             try:
                 data, addr = sock.recvfrom(65535)
             except BlockingIOError:
+                self.read_burst_max = max(self.read_burst_max, processed)
                 return
             except ConnectionResetError:
+                self.read_burst_max = max(self.read_burst_max, processed)
                 return
+            processed += 1
             adapter = PacketSocketAdapter(self, sock, data, addr)
             try:
+                h_start = time.time()
                 handler(adapter)
+                h_ms = (time.time() - h_start) * 1000.0
+                if h_ms > LONG_CALLBACK_THRESHOLD_MS:
+                    print(f"[!] packet handler blocked the loop "
+                          f"for {h_ms:.0f}ms")
             except ConnectionResetError:
+                pass
+            if self.outbound:
+                self._flush_outbound()
+        self.read_burst_max = max(self.read_burst_max, processed)
+
+    def _tune_socket(self, sock):
+        for opt in (socket.SO_RCVBUF, socket.SO_SNDBUF):
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, opt, SOCKET_BUFFER_BYTES)
+            except OSError:
                 pass
 
     def run(self):
@@ -250,9 +332,11 @@ class EventLoopRuntime:
         mod.init_database()
         self.login_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.login_sock.setblocking(False)
+        self._tune_socket(self.login_sock)
         self.login_sock.bind(("0.0.0.0", mod.LOGIN_PORT))
         self.base_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.base_sock.setblocking(False)
+        self._tune_socket(self.base_sock)
         self.base_sock.bind(("0.0.0.0", mod.BASEAPP_PORT))
         self.selector.register(self.login_sock, selectors.EVENT_READ, mod.handle_loginapp)
         self.selector.register(self.base_sock, selectors.EVENT_READ, mod.handle_baseapp)
@@ -266,7 +350,9 @@ class EventLoopRuntime:
         while self.running:
             self._run_due()
             self._flush_outbound()
+            self._report_runtime_diag()
             for key, _mask in self.selector.select(self._timeout()):
                 self._read_socket(key.fileobj, key.data)
             self._run_due()
             self._flush_outbound()
+            self._report_runtime_diag()

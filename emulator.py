@@ -1369,17 +1369,18 @@ def update_in_seq_state(sess: dict, seq: int):
     if seq is None:
         return
 
-    in_seq = sess.setdefault('in_seq_at', 0)
+    seq = int(seq) & PACKET_SEQ_MASK
     buffered = sess.setdefault('in_seq_buffered', set())
+    if not sess.get('in_seq_initialized'):
+        sess['in_seq_at'] = (seq + 1) & PACKET_SEQ_MASK
+        sess['in_seq_initialized'] = True
+        buffered.clear()
+        return
 
-    if seq == in_seq:
-        in_seq = (in_seq + 1) & PACKET_SEQ_MASK
-        while in_seq in buffered:
-            buffered.remove(in_seq)
-            in_seq = (in_seq + 1) & PACKET_SEQ_MASK
-        sess['in_seq_at'] = in_seq
-    elif seq > in_seq:
-        buffered.add(seq)
+    in_seq = int(sess.get('in_seq_at', 0)) & PACKET_SEQ_MASK
+    if seq >= in_seq:
+        sess['in_seq_at'] = (seq + 1) & PACKET_SEQ_MASK
+        buffered.clear()
 
 def build_channel_packet(messages: bytes, sess: dict, reliable=False) -> bytes:
     # BigWorld С‚СЂРёРјР°С” Р”Р’Рђ РѕРєСЂРµРјРёС… Р»С–С‡РёР»СЊРЅРёРєРё sequence:
@@ -3206,6 +3207,7 @@ BATTLE_TIMER_SECONDS = 15 * 60
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
 BATTLE_MOTION_TICK = 0.05
+BATTLE_VERBOSE_DEBUG = os.environ.get('WOT_BATTLE_VERBOSE_DEBUG', '0') == '1'
 BASE_CAPTURE_RADIUS = 50.0
 BASE_CAPTURE_POINTS_MAX = 100
 BASE_CAPTURE_POINTS_PER_SECOND = 1.0
@@ -4501,6 +4503,7 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['avatar_ready_sent'] = False
     sess['battle_period_timer_started'] = False
     sess['battle_forced_position_sent_for_motion'] = False
+    sess['battle_last_filter_reset_time'] = None
 
 
 def approach(current: float, target: float, rate: float, dt: float) -> float:
@@ -4636,6 +4639,7 @@ def advance_battle_motion(sess: dict, flags: int = None):
     branch_changed = (prev_branch != slope_branch)
     blocked_changed = (bool(sess.get('battle_dbg_last_blocked', False)) != blocked_dbg)
     should_log = (
+        BATTLE_VERBOSE_DEBUG and
         (flags != 0 or abs(speed) > 0.05) and
         (now - last_log >= 0.5 or branch_changed or blocked_changed)
     )
@@ -4707,7 +4711,7 @@ def disable_client_vehicle_control_message(sess):
 def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
     dbg_count = sess.get('avu_dbg_count', 0) + 1
     sess['avu_dbg_count'] = dbg_count
-    log_this = (dbg_count % 40 == 1)
+    log_this = BATTLE_VERBOSE_DEBUG and (dbg_count % 100 == 1)
 
     if msg_id == 2:
         decoded = decode_client_coord_ypr(payload, 0)
@@ -6281,7 +6285,7 @@ def process_base_capture(sock, match_id):
         state['last_update'] = now
         debug_now = time.time()
         debug_last = float(state.get('_debug_last_log', 0.0))
-        debug_emit = (debug_now - debug_last) >= 2.0
+        debug_emit = (debug_now - debug_last) >= 10.0
         if debug_emit:
             state['_debug_last_log'] = debug_now
         for base_team, base in state.get('bases', {}).items():
@@ -6716,7 +6720,7 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             sess['battle_last_motion_time'] = time.time()
         move_count = sess.get('battle_move_update_count', 0) + 1
         sess['battle_move_update_count'] = move_count
-        if flags != prev_flags:
+        if BATTLE_VERBOSE_DEBUG and flags != prev_flags:
             mode = "server authoritative" if sess.get(
                 'server_vehicle_authoritative', True) else "client controlled"
             vehicle = get_session_battle_vehicle(sess)
@@ -6748,10 +6752,10 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
         if target_pos is None:
             return True
         now = time.time()
-        msgs = build_targeting_for_point(sess, target_pos)
         if now - float(sess.get('last_targeting_update', 0.0)) < TARGETING_UPDATE_INTERVAL:
             return True
         sess['last_targeting_update'] = now
+        msgs = build_targeting_for_point(sess, target_pos)
         send_avatar_messages(
             sock, addr, sess, msgs,
             '',
@@ -7153,8 +7157,12 @@ def start_tick_thread(sock, addr, sess=None):
         global tick_counter
         while True:
             time.sleep(0.1)
-            tick_byte = tick_counter & 0xFF
-            tick_counter += 1
+            if sess:
+                tick_byte = int(sess.get('session_tick_counter', 0)) & 0xFF
+                sess['session_tick_counter'] = (tick_byte + 1) & 0xFF
+            else:
+                tick_byte = tick_counter & 0xFF
+                tick_counter += 1
             pkt = msg_fixed(0x0D, struct.pack('<B', tick_byte))
             if sess:
                 send_lock = sess.setdefault('send_lock', threading.RLock())
@@ -7207,6 +7215,7 @@ def handle_loginapp(sock):
         'username': account['username'],
         'account_id': account['id'],
         'known_remote_accounts': set(),
+        'session_tick_counter': 0,
     }
     print(f"[+] Р›РѕРіС–РЅ: '{account['username']}' "
           f"dbid={account['id']} | Token: {token.hex()}")
@@ -7291,8 +7300,10 @@ def handle_baseapp(sock):
         sess['tick_started'] = False
         sess['in_seq_at'] = 0
         sess['in_seq_buffered'] = set()
+        sess['in_seq_initialized'] = False
         sess['out_channel_seq'] = 0
         sess['out_nub_seq'] = 0
+        sess['session_tick_counter'] = 0
         baseapp_clients[addr] = sess
 
         # 1) Р’С–РґРїРѕРІС–РґСЊ РЅР° baseAppLogin: РїСЂРѕСЃС‚Рѕ echo token СЏРє SessionKey
@@ -7315,7 +7326,9 @@ def handle_baseapp(sock):
             # Spam filter: client sends authenticate + avatar/vehicle movement
             # updates almost every frame. Print only occasional samples.
             movement_msg_ids = (0x01, 0x02, 0x03, 0x04, 0x05)
-            high_rate_battle_msg_ids = movement_msg_ids + tuple(AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS) + tuple(AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS)
+            correction_ack_msg_ids = (0x06, 0x07)
+            extra_high_rate_msg_ids = (0x0c, 0x82)
+            high_rate_battle_msg_ids = movement_msg_ids + correction_ack_msg_ids + extra_high_rate_msg_ids + tuple(AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS) + tuple(AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS)
             avatar_update_only = all(m in movement_msg_ids for m, _, _ in messages) \
                 and any(m in (0x02, 0x03, 0x04, 0x05) for m, _, _ in messages)
             if avatar_update_only:
