@@ -69,6 +69,22 @@ matchmaking_timer = None
 next_battle_id = 1
 battle_tick_started = False
 battle_tick_sock = None
+SERVER_RUNTIME = None
+
+
+def runtime_call_later(delay, callback):
+    if SERVER_RUNTIME is not None:
+        return SERVER_RUNTIME.call_later(delay, callback)
+    timer = threading.Timer(delay, callback)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def runtime_sendto(sock, data, addr):
+    if SERVER_RUNTIME is not None:
+        return SERVER_RUNTIME.sendto(sock, data, addr)
+    return sock.sendto(data, addr)
 
 print("[*] Р—Р°РІР°РЅС‚Р°Р¶СѓС”РјРѕ RSA РєР»СЋС‡С–...")
 try:
@@ -1593,8 +1609,7 @@ def build_init_bundle(session_key_int: int, account_name: str = 'qwerty',
     # 0x01 bandwidthNotification вЂ“ 64 KB/s
     msgs += msg_fixed(0x01, struct.pack('<I', 64000))
 
-    # 0x02 updateFrequencyNotification вЂ“ 10 Hz
-    msgs += msg_fixed(0x02, struct.pack('<B', 10))
+    msgs += msg_fixed(0x02, struct.pack('<B', int(1.0 / BATTLE_MOTION_TICK)))
 
     # 0x03 setGameTime вЂ“ tick 0
     msgs += msg_fixed(0x03, struct.pack('<I', 0))
@@ -1729,7 +1744,7 @@ VEHICLE_MAX_HEALTH_OVERRIDES = {
     'Lowe': 1650,
 }
 
-VEHICLE_SPEED_MULTIPLIER = 1.5
+VEHICLE_SPEED_MULTIPLIER = 1.0
 VEHICLE_ROTATION_MULTIPLIER = 1.5
 
 
@@ -2059,14 +2074,15 @@ def get_vehicle_max_health(vehicle: dict) -> int:
 
 
 def get_vehicle_speed_limits(vehicle: dict):
-    """Forward / backward in m/s from XML <speedLimits>. Falls back to defaults
-    only if the JSON entry is missing/invalid (warning is emitted at load)."""
     limits = (vehicle or {}).get('speedLimits') or ()
     if len(limits) >= 2:
         forward = float(limits[0] or 0.0)
         backward = float(limits[1] or 0.0)
         if forward > 0.0 and backward > 0.0:
             return forward, backward
+    if vehicle and vehicle.get('name'):
+        print(f"[!] HARD vehicle speedLimits invalid for {vehicle.get('name')}; "
+              f"falling back to battle defaults — fix _vehicles.json dump")
     return BATTLE_DEFAULT_FORWARD_SPEED, BATTLE_DEFAULT_BACKWARD_SPEED
 
 
@@ -3064,7 +3080,7 @@ def send_zlib_pickle_stream(sock, addr, sess, req_id: int, blob: bytes,
         with send_lock:
             pkt = build_channel_packet(msgs, sess, reliable=True)
             pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-            sock.sendto(pkt, addr)
+            runtime_sendto(sock, pkt, addr)
     except Exception:
         return
 
@@ -3077,7 +3093,7 @@ def send_zlib_pickle_stream(sock, addr, sess, req_id: int, blob: bytes,
             with send_lock:
                 pkt = build_channel_packet(msg, sess, reliable=True)
                 pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-                sock.sendto(pkt, addr)
+                runtime_sendto(sock, pkt, addr)
         except Exception:
             return
 
@@ -3147,7 +3163,7 @@ def send_shop_stream(sock, addr, sess, req_id: int):
         with send_lock:
             pkt = build_channel_packet(msgs, sess, reliable=True)
             pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-            sock.sendto(pkt, addr)
+            runtime_sendto(sock, pkt, addr)
     except Exception:
         return
     print(f"    [>] Shop STREAM: req={req_id}, blob={len(blob)}B "
@@ -3189,7 +3205,7 @@ PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
-BATTLE_MOTION_TICK = 0.1
+BATTLE_MOTION_TICK = 0.05
 BASE_CAPTURE_RADIUS = 50.0
 BASE_CAPTURE_POINTS_MAX = 100
 BASE_CAPTURE_POINTS_PER_SECOND = 1.0
@@ -4155,6 +4171,11 @@ def broadcast_remote_vehicle_position(sock, source_sess: dict, force: bool = Fal
 
 def start_battle_tick_loop(sock):
     global battle_tick_started, battle_tick_sock
+    if SERVER_RUNTIME is not None:
+        SERVER_RUNTIME.start_battle_tick(sock)
+        battle_tick_sock = sock
+        battle_tick_started = True
+        return
     battle_tick_sock = sock
     if battle_tick_started:
         return
@@ -4394,7 +4415,7 @@ def send_avatar_arena_update(sock, addr, sess, update_type: int, data, label: st
         with send_lock:
             pkt = build_channel_packet(msg, sess, reliable=True)
             pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-            sock.sendto(pkt, addr)
+            runtime_sendto(sock, pkt, addr)
     except Exception:
         return
     print(f"    [>] Avatar.updateArena({label})")
@@ -4409,7 +4430,7 @@ def send_avatar_messages(sock, addr, sess, msgs: bytes, label: str,
         with send_lock:
             pkt = build_channel_packet(msgs, sess, reliable=reliable)
             pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-            sock.sendto(pkt, addr)
+            runtime_sendto(sock, pkt, addr)
     except Exception:
         return False
     if label:
@@ -4479,6 +4500,7 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_ended'] = False
     sess['avatar_ready_sent'] = False
     sess['battle_period_timer_started'] = False
+    sess['battle_forced_position_sent_for_motion'] = False
 
 
 def approach(current: float, target: float, rate: float, dt: float) -> float:
@@ -4860,9 +4882,7 @@ def schedule_battle_period(sock, addr, sess):
         start_battle_tick_loop(sock)
 
     delay = max(0.0, start_wall - time.time())
-    timer = threading.Timer(delay, _start_battle)
-    timer.daemon = True
-    timer.start()
+    runtime_call_later(delay, _start_battle)
 
 
 def send_avatar_player(sock, addr, sess):
@@ -4898,7 +4918,7 @@ def send_avatar_player(sock, addr, sess):
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
     try:
-        sock.sendto(pkt, addr)
+        runtime_sendto(sock, pkt, addr)
     except Exception:
         return
     sess['battle_bundle_sent'] = True
@@ -4981,9 +5001,7 @@ def start_matchmaking_timer(sock):
             except Exception as e:
                 print(f"    [!] matchmaker switch_to_avatar error: {e}")
 
-    matchmaking_timer = threading.Timer(delay, _launch)
-    matchmaking_timer.daemon = True
-    matchmaking_timer.start()
+    matchmaking_timer = runtime_call_later(delay, _launch)
     print(f"    [matchmaker] battle starts in {delay:.1f}s")
 
 def enqueue_for_matchmaking(sock, addr, sess):
@@ -5049,7 +5067,7 @@ def send_account_event(sock, addr, sess, msg_id: int, label: str,
         with send_lock:
             pkt = build_channel_packet(msg, sess, reliable=True)
             pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-            sock.sendto(pkt, addr)
+            runtime_sendto(sock, pkt, addr)
     except Exception:
         return
     print(f"    [>] {label}  (msgID=0x{msg_id:02x})")
@@ -6178,13 +6196,11 @@ def send_afterbattle_music_nudge(sock, viewer_sess: dict,
     send_avatar_messages(sock, addr, viewer_sess, msg,
                          "Avatar.updateArena(PERIOD=BATTLE music nudge)",
                          reliable=True)
-    timer = threading.Timer(
+    runtime_call_later(
         0.2,
         lambda: send_afterbattle_period(sock, viewer_sess,
                                         winner_display_team, reason,
                                         period_end_time))
-    timer.daemon = True
-    timer.start()
 
 
 def finish_battle_by_base_capture(sock, match_id, winner_team: int,
@@ -6219,21 +6235,17 @@ def finish_battle_by_base_capture(sock, match_id, winner_team: int,
         send_avatar_messages(sock, addr, viewer, msgs,
                              "Battle finished by base capture",
                              reliable=True)
-        period_timer = threading.Timer(
+        runtime_call_later(
             0.75,
             lambda v=viewer, w=winner_display_team, t=period_end_time:
                 send_afterbattle_music_nudge(sock, v, w,
                                              BATTLE_FINISH_REASON_BASE, t))
-        period_timer.daemon = True
-        period_timer.start()
         timer_sessions = list(sessions)
-        timer = threading.Timer(
+        runtime_call_later(
             1.5,
             lambda v=viewer, ss=timer_sessions, w=winner_display_team, t=period_end_time:
                 send_delayed_battle_results(sock, v, ss, w,
                                             BATTLE_FINISH_REASON_BASE, t))
-        timer.daemon = True
-        timer.start()
     print(f"    [battle] finished match={match_id} winnerTeam={winner_team} reason=base")
     persisted_battle_ids = set()
     for sess in sessions:
@@ -6468,21 +6480,17 @@ def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
         send_avatar_messages(sock, addr, viewer, msgs,
                              "Battle finished",
                              reliable=True)
-        period_timer = threading.Timer(
+        runtime_call_later(
             0.75,
             lambda v=viewer, w=winner_display_team, t=now + 30:
                 send_afterbattle_music_nudge(sock, v, w,
                                              BATTLE_FINISH_REASON_EXTERMINATION, t))
-        period_timer.daemon = True
-        period_timer.start()
         timer_sessions = list(sessions)
-        timer = threading.Timer(
+        runtime_call_later(
             1.5,
             lambda v=viewer, ss=timer_sessions, w=winner_display_team, t=now + 30:
                 send_delayed_battle_results(sock, v, ss, w,
                                             BATTLE_FINISH_REASON_EXTERMINATION, t))
-        timer.daemon = True
-        timer.start()
     print(f"    [battle] finished match={match_id} winnerTeam={winner_team}")
     persisted_battle_ids = set()
     for sess in sessions:
@@ -6583,9 +6591,7 @@ def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
                              "Vehicle.reload.done",
                              reliable=True)
 
-    timer = threading.Timer(max(0.05, reload_time), _reload_done)
-    timer.daemon = True
-    timer.start()
+    runtime_call_later(max(0.05, reload_time), _reload_done)
     return True
 
 
@@ -6720,6 +6726,19 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
                   f"[{mode}, tank={(vehicle or {}).get('name', 'unknown')}, "
                   f"target=({move:.2f}m/s {move * 3.6:.1f}km/h,"
                   f"{turn:.2f}), current={current_speed * 3.6:.1f}km/h]")
+        if (sess.get('server_vehicle_authoritative', True) and
+                sess.get('battle_period_active') and
+                prev_flags == 0 and flags != 0 and
+                not sess.get('battle_forced_position_sent_for_motion')):
+            sess['battle_forced_position_sent_for_motion'] = True
+            pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+            yaw = float(sess.get('battle_yaw', 0.0))
+            send_avatar_messages(
+                sock, addr, sess,
+                build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
+                                      space_id=SPACE_ID, vehicle_id=0),
+                "Vehicle.forced_position (filter reset on first motion)",
+                reliable=True)
         if not sess.get('server_vehicle_authoritative', True):
             return True
         return True
@@ -7108,7 +7127,7 @@ def send_init_bundle(sock, addr, sess):
     with send_lock:
         init_pkt = build_channel_packet(init_msgs, sess, reliable=True)
         init_pkt = bw_encrypt_packet(init_pkt, sess['bf_key'])
-        sock.sendto(init_pkt, addr)
+        runtime_sendto(sock, init_pkt, addr)
     sess['init_sent'] = True
     sess['server_time_zero_wall'] = time.time()
     print(f"[>] Init bundle: authenticate+bandwidth+setGameTime"
@@ -7127,6 +7146,9 @@ tick_counter = 0
 def start_tick_thread(sock, addr, sess=None):
     """Send tickSync (MsgID 0x0D, 1 byte tick counter) every 100 ms."""
     global tick_counter
+    if SERVER_RUNTIME is not None and sess is not None:
+        SERVER_RUNTIME.start_session_tick(sock, addr, sess)
+        return
     def _loop():
         global tick_counter
         while True:
@@ -7139,12 +7161,12 @@ def start_tick_thread(sock, addr, sess=None):
                 with send_lock:
                     pkt = build_channel_packet(pkt, sess, reliable=False)
                     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
-                    try: sock.sendto(pkt, addr)
+                    try: runtime_sendto(sock, pkt, addr)
                     except: break
                 continue
             else:
                 pkt = make_bundle(pkt)
-            try: sock.sendto(pkt, addr)
+            try: runtime_sendto(sock, pkt, addr)
             except: break
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
@@ -7175,7 +7197,7 @@ def handle_loginapp(sock):
                         + struct.pack('<I', len(err_msg))
                         + err_msg)
         resp = b'\x00\x00\xff' + struct.pack('<I', len(resp_payload)) + resp_payload
-        sock.sendto(resp, addr)
+        runtime_sendto(sock, resp, addr)
         return
 
     token = os.urandom(4)
@@ -7202,7 +7224,7 @@ def handle_loginapp(sock):
 
     resp_payload = reply_id + b'\x01' + enc   # status=LOGGED_ON(0x01)
     resp = b'\x00\x00\xff' + struct.pack('<I', len(resp_payload)) + resp_payload
-    sock.sendto(resp, addr)
+    runtime_sendto(sock, resp, addr)
     print(f"[>] LOGGED_ON РІС–РґРїСЂР°РІР»РµРЅРѕ, РєР»С–С”РЅС‚ С–РґРµ РЅР° BaseApp:{BASEAPP_PORT}")
 
 # в”Ђв”Ђ BaseApp handler в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -7276,7 +7298,7 @@ def handle_baseapp(sock):
         # 1) Р’С–РґРїРѕРІС–РґСЊ РЅР° baseAppLogin: РїСЂРѕСЃС‚Рѕ echo token СЏРє SessionKey
         reply = make_reply(reply_id, token_received)
         reply = bw_encrypt_packet(reply, sess['bf_key'])
-        sock.sendto(reply, addr)
+        runtime_sendto(sock, reply, addr)
         print(f"[>] baseAppLogin Reply РІС–РґРїСЂР°РІР»РµРЅРѕ")
 
         # 2) Init РІС–РґРїСЂР°РІРёРјРѕ РїС–СЃР»СЏ РїРµСЂС€РѕРіРѕ enableEntities/authenticate РІС–Рґ РєР»С–С”РЅС‚Р°.
@@ -7346,33 +7368,9 @@ def handle_baseapp(sock):
 # в”Ђв”Ђ Main loop в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 def main():
-    init_database()
-    login_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    login_sock.bind(('0.0.0.0', LOGIN_PORT))
-
-    base_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    base_sock.bind(('0.0.0.0', BASEAPP_PORT))
-
-    print(f"[*] WoT 0.6.5 Emulator | LoginApp:{LOGIN_PORT} | BaseApp:{BASEAPP_PORT}")
-    print(f"[*] PUBLIC_HOST={PUBLIC_HOST} (advertised to clients in LoginReply)")
-    if PUBLIC_HOST in ('127.0.0.1', 'localhost'):
-        print("[!] PUBLIC_HOST=127.0.0.1 — only local clients can connect.")
-        print("[!] For remote players, set env: WOT_PUBLIC_HOST=<your_public_ip_or_domain>")
-    print("[*] Р—Р°РїСѓСЃРєР°Р№ РіСЂСѓ С– С‚РёСЃРЅРё Connect!\n")
-
-    while True:
-        readable, _, _ = select.select([login_sock, base_sock], [], [], 1.0)
-        for s in readable:
-            if s is login_sock:
-                try:
-                    handle_loginapp(s)
-                except ConnectionResetError:
-                    continue
-            elif s is base_sock:
-                try:
-                    handle_baseapp(s)
-                except ConnectionResetError:
-                    continue
+    import sys
+    from server_core import EventLoopRuntime
+    EventLoopRuntime(sys.modules[__name__]).run()
 
 if __name__ == '__main__':
     main()
