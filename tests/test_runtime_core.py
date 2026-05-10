@@ -1,6 +1,8 @@
 import struct
 import threading
+import time
 import unittest
+from unittest import mock
 
 import emulator
 from server_core import EventLoopRuntime
@@ -91,7 +93,82 @@ def _make_session(account_id, period_active):
     }
 
 
+def _make_combat_vehicle(health=300, hull=(50.0, 40.0, 35.0),
+                         turret=(60.0, 45.0, 40.0)):
+    return {
+        "name": "TestTank",
+        "maxHealth": health,
+        "armorModel": {
+            "hull": {
+                "primaryArmor": list(hull),
+                "armorHomogenization": 1.0,
+            },
+            "turret": {
+                "primaryArmor": list(turret),
+                "armorHomogenization": 1.0,
+            },
+            "dimensions": {
+                "halfWidth": 2.4,
+                "halfLength": 5.2,
+                "minHeight": 0.15,
+                "hullTop": 2.15,
+                "maxHeight": 3.8,
+                "centerHeight": 1.3,
+            },
+        },
+        "shells": [],
+    }
+
+
+def _make_shell(kind="ARMOR_PIERCING", penetration=200.0, damage=100.0):
+    return {
+        "kind": kind,
+        "piercingPower": [penetration, penetration],
+        "piercingPowerRandomization": 0.0,
+        "damage": [damage, damage],
+        "damageRandomization": 0.0,
+        "normalizationAngle": 0.0,
+        "ricochetAngleCos": emulator.SHOT_ARMOR_AUTORICOCHET_COS,
+        "effectsIndex": 0,
+    }
+
+
+def _make_combat_session(account_id, team, pos, health=300,
+                         vehicle=None):
+    sess = _make_session(account_id, period_active=True)
+    sess.update({
+        "username": f"p{account_id}",
+        "battle_team": team,
+        "battle_pos": pos,
+        "battle_prev_pos": pos,
+        "battle_yaw": 0.0,
+        "battle_vehicle": vehicle or _make_combat_vehicle(health=health),
+        "battle_vehicle_health": health,
+        "battle_damage_dealt": 0,
+        "battle_damage_received": 0,
+        "battle_hits": 0,
+        "battle_shots_received": 0,
+        "battle_damaged_vehicle_ids": set(),
+        "battle_killed_vehicle_ids": set(),
+        "battle_frags": 0,
+        "battle_bundle_sent": True,
+        "battle_period_active": True,
+    })
+    return sess
+
+
 class RuntimeCoreTests(unittest.TestCase):
+    def setUp(self):
+        self._active_battle_accounts = dict(emulator.active_battle_accounts)
+        self._enable_client_shot_damage_effects = emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS
+        emulator.active_battle_accounts.clear()
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
+
+    def tearDown(self):
+        emulator.active_battle_accounts.clear()
+        emulator.active_battle_accounts.update(self._active_battle_accounts)
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = self._enable_client_shot_damage_effects
+
     def test_a20_speed_limits_are_xml_values(self):
         vehicle = next(v for v in emulator.load_all_vehicles() if v["name"] == "A-20")
         forward, backward = emulator.get_vehicle_speed_limits(vehicle)
@@ -328,6 +405,240 @@ class RuntimeCoreTests(unittest.TestCase):
         forced_sends = [s for s in fake.avatar_sends
                         if s["msgs"][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])]
         self.assertEqual(forced_sends, [])
+
+    def test_ap_penetration_reduces_health_and_updates_stats(self):
+        source = _make_combat_session(101, 1, (0.0, 0.0, 40.0))
+        target = _make_combat_session(102, 2, (0.0, 0.0, 20.0), health=300)
+        source["battle_last_shot_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        shell = _make_shell(penetration=200.0, damage=100.0)
+        sent_messages = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit", return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell, (0.0, 1.0, 40.0), (0.0, 0.0, -1.0))
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 100)
+        self.assertEqual(target["battle_vehicle_health"], 200)
+        self.assertEqual(source["battle_damage_dealt"], 100)
+        self.assertEqual(target["battle_damage_received"], 100)
+        self.assertEqual(source["battle_hits"], 1)
+        self.assertEqual(target["battle_shots_received"], 1)
+        self.assertIn(102, source["battle_damaged_vehicle_ids"])
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
+        self.assertTrue(sent_messages)
+        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+                         [msg[:1] for msg in sent_messages])
+
+    def test_ap_ricochet_does_not_reduce_health(self):
+        source = _make_combat_session(111, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(112, 2, (0.0, 0.0, 20.0), health=300)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 0.2,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+
+        with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
+                mock.patch.object(emulator, "pack_damage_segment",
+                                  side_effect=AssertionError("damage segment should stay disabled")), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            _target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(), (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+
+        self.assertEqual(damage, 0)
+        self.assertEqual(target["battle_vehicle_health"], 300)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_RICOCHET)
+        self.assertEqual(source["battle_hits"], 1)
+        self.assertEqual(target["battle_shots_received"], 1)
+
+    def test_ap_non_penetration_does_not_reduce_health(self):
+        source = _make_combat_session(121, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(122, 2, (0.0, 0.0, 20.0), health=300)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 300.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+        sent_messages = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
+                mock.patch.object(emulator, "pack_damage_segment",
+                                  side_effect=AssertionError("damage segment should stay disabled")), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            _target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(penetration=100.0),
+                (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+
+        self.assertEqual(damage, 0)
+        self.assertEqual(target["battle_vehicle_health"], 300)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
+        self.assertEqual(sent_messages, [])
+
+    def test_he_non_penetration_deals_reduced_damage(self):
+        source = _make_combat_session(131, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(132, 2, (0.0, 0.0, 20.0), health=300)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 300.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+
+        with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            _target, damage, resolved = emulator.apply_shot_damage(
+                object(), source,
+                _make_shell(kind="HIGH_EXPLOSIVE", penetration=10.0, damage=100.0),
+                (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+
+        self.assertEqual(damage, 18)
+        self.assertEqual(target["battle_vehicle_health"], 282)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
+
+    def test_dead_target_and_stale_marker_are_safe_misses(self):
+        source = _make_combat_session(141, 1, (0.0, 0.0, 40.0))
+        target = _make_combat_session(142, 2, (0.0, 0.0, 20.0), health=0)
+        source["battle_last_shot_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(), (0.0, 1.0, 40.0), (0.0, 0.0, -1.0))
+
+        self.assertIsNone(hit_target)
+        self.assertEqual(damage, 0)
+        self.assertIsNone(resolved)
+        self.assertEqual(source["battle_hits"], 0)
+        source["battle_last_shot_target_pos_time"] = time.time() - 10.0
+
+        hit_target, damage, resolved = emulator.apply_shot_damage(
+            object(), source, _make_shell(), (0.0, 1.0, 40.0), (0.0, 0.0, -1.0))
+
+        self.assertIsNone(hit_target)
+        self.assertEqual(damage, 0)
+        self.assertIsNone(resolved)
+        self.assertEqual(source["battle_hits"], 0)
+
+    def test_kill_updates_frags_and_killed_ids(self):
+        source = _make_combat_session(151, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(152, 2, (0.0, 0.0, 20.0), health=80)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None), \
+                mock.patch.object(emulator, "runtime_call_later", return_value=None), \
+                mock.patch.object(emulator, "mark_battle_finished", return_value=None):
+            _target, damage, _resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(penetration=200.0, damage=100.0),
+                (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+
+        self.assertEqual(damage, 80)
+        self.assertEqual(target["battle_vehicle_health"], 0)
+        self.assertEqual(source["battle_frags"], 1)
+        self.assertIn(152, source["battle_killed_vehicle_ids"])
+        self.assertEqual(target["battle_killer_account_id"], 151)
+
+    def test_pack_damage_segment_clamps_to_uint64(self):
+        for component in ("hull", "turret", "unknown"):
+            value = emulator.pack_damage_segment({
+                "component": component,
+                "result": 999,
+                "hitLocal": (float("nan"), 9999.0, -9999.0),
+                "dimensions": {
+                    "halfWidth": -10.0,
+                    "halfLength": 0.0,
+                    "minHeight": 5.0,
+                    "hullTop": 5.0,
+                    "maxHeight": 5.0,
+                },
+                "localShotDir": (float("inf"), 0.0, 0.0),
+            })
+
+            self.assertIsInstance(value, int)
+            self.assertGreaterEqual(value, 0)
+            self.assertLessEqual(value, 0xffffffffffffffff)
+
+    def test_client_damage_effects_debug_path_can_pack_segment(self):
+        source = _make_combat_session(161, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(162, 2, (0.0, 0.0, 20.0), health=300)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+            "result": emulator.SHOT_RESULT_ARMOR_PIERCED,
+        }
+        sent_messages = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            emulator.broadcast_vehicle_shot_feedback(
+                object(), target, source, hit_info, 0, 100)
+
+        self.assertTrue(sent_messages)
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+                      [msg[:1] for msg in sent_messages])
 
 
 if __name__ == "__main__":

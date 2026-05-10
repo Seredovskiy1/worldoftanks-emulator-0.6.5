@@ -1540,7 +1540,8 @@ AVATAR_EXPLODE_PROJECTILE_MSG_ID    = 0x8e
 AVATAR_ON_VEHICLE_LEFT_ARENA_MSG_ID = 0x91
 VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
 VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID = 0x82
-ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
+ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = os.environ.get(
+    'WOT_CLIENT_SHOT_DAMAGE_EFFECTS', '0') == '1'
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
 CLIENT_CONTROL_ENTITY_MSG_ID        = 0x33
@@ -2256,12 +2257,15 @@ def get_current_vehicle_shell(sess: dict):
 def get_shell_damage(shell: dict) -> int:
     damage = (shell or {}).get('damage') or ()
     if damage:
-        base = float(damage[0])
+        base = safe_float(damage[0], 0.0, 0.0)
     else:
         match = re.search(r'(\d+)mm', str((shell or {}).get('name', '')))
         caliber = int(match.group(1)) if match else 75
         base = max(20.0, caliber * 1.6)
-    randomization = float((shell or {}).get('damageRandomization', 0.25))
+    if base <= 0.0:
+        base = max(20.0, get_shell_caliber(shell) * 1.6)
+    randomization = safe_float((shell or {}).get('damageRandomization', 0.25),
+                               0.25, 0.0, 0.95)
     return max(1, int(round(base * random.uniform(1.0 - randomization,
                                                   1.0 + randomization))))
 
@@ -2292,7 +2296,7 @@ def is_hollow_charge_shell(shell: dict) -> bool:
 
 
 def get_shell_caliber(shell: dict) -> float:
-    caliber = float((shell or {}).get('caliber') or 0.0)
+    caliber = safe_float((shell or {}).get('caliber'), 0.0, 0.0)
     if caliber > 0.0:
         return caliber
     match = re.search(r'(\d+)mm', str((shell or {}).get('name', '')))
@@ -2301,12 +2305,13 @@ def get_shell_caliber(shell: dict) -> float:
 
 def get_shell_base_penetration(shell: dict, distance: float) -> float:
     power = list((shell or {}).get('piercingPower') or [])
-    if len(power) >= 2 and float(power[0] or 0.0) > 0.0:
-        near = float(power[0] or 0.0)
-        far = float(power[1] or near)
+    if len(power) >= 2 and safe_float(power[0], 0.0, 0.0) > 0.0:
+        near = safe_float(power[0], 0.0, 0.0)
+        far = safe_float(power[1], near, 0.0)
     else:
         near = max(20.0, get_shell_caliber(shell) * 1.6)
         far = near * 0.8
+    distance = safe_float(distance, 0.0, 0.0)
     if distance <= SHOT_PENETRATION_NEAR_DISTANCE:
         return near
     if distance >= SHOT_PENETRATION_FAR_DISTANCE:
@@ -2318,12 +2323,13 @@ def get_shell_base_penetration(shell: dict, distance: float) -> float:
 
 def get_randomized_penetration(shell: dict, distance: float) -> float:
     base = get_shell_base_penetration(shell, distance)
-    randomization = float((shell or {}).get('piercingPowerRandomization', 0.25))
+    randomization = safe_float((shell or {}).get('piercingPowerRandomization', 0.25),
+                               0.25, 0.0, 0.95)
     return base * random.uniform(1.0 - randomization, 1.0 + randomization)
 
 
 def vehicle_armor_model(vehicle: dict) -> dict:
-    model = dict((vehicle or {}).get('armorModel') or {})
+    model = safe_dict((vehicle or {}).get('armorModel'))
     if model:
         return model
     return {
@@ -2334,14 +2340,23 @@ def vehicle_armor_model(vehicle: dict) -> dict:
 
 
 def armor_dimensions(model: dict) -> dict:
-    dims = dict((model or {}).get('dimensions') or {})
+    dims = safe_dict((model or {}).get('dimensions'))
+    half_width = safe_float(dims.get('halfWidth'), SHOT_TANK_HALF_WIDTH, 0.25, 20.0)
+    half_length = safe_float(dims.get('halfLength'), SHOT_TANK_HALF_LENGTH, 0.25, 30.0)
+    min_height = safe_float(dims.get('minHeight'), SHOT_TANK_MIN_HEIGHT, -5.0, 20.0)
+    max_height = safe_float(dims.get('maxHeight'), SHOT_TANK_MAX_HEIGHT,
+                            min_height + 0.25, 30.0)
+    hull_top = safe_float(dims.get('hullTop'), 2.15, min_height + 0.05,
+                          max_height - 0.05)
+    center_height = safe_float(dims.get('centerHeight'), SHOT_TANK_CENTER_HEIGHT,
+                               min_height, max_height)
     return {
-        'halfWidth': float(dims.get('halfWidth') or SHOT_TANK_HALF_WIDTH),
-        'halfLength': float(dims.get('halfLength') or SHOT_TANK_HALF_LENGTH),
-        'minHeight': float(dims.get('minHeight') or SHOT_TANK_MIN_HEIGHT),
-        'hullTop': float(dims.get('hullTop') or 2.15),
-        'maxHeight': float(dims.get('maxHeight') or SHOT_TANK_MAX_HEIGHT),
-        'centerHeight': float(dims.get('centerHeight') or SHOT_TANK_CENTER_HEIGHT),
+        'halfWidth': half_width,
+        'halfLength': half_length,
+        'minHeight': min_height,
+        'hullTop': hull_top,
+        'maxHeight': max_height,
+        'centerHeight': center_height,
     }
 
 
@@ -2353,6 +2368,9 @@ def vehicle_hit_yaw(target_sess: dict) -> float:
 
 
 def world_to_vehicle_local(point, pos, yaw: float):
+    point = safe_vec3(point)
+    pos = safe_vec3(pos)
+    yaw = safe_float(yaw, 0.0)
     dx = float(point[0]) - float(pos[0])
     dy = float(point[1]) - float(pos[1])
     dz = float(point[2]) - float(pos[2])
@@ -2366,6 +2384,8 @@ def world_to_vehicle_local(point, pos, yaw: float):
 
 
 def local_to_world_vector(vec, yaw: float):
+    vec = safe_vec3(vec, (0.0, 0.0, 1.0))
+    yaw = safe_float(yaw, 0.0)
     sin_yaw = math.sin(yaw)
     cos_yaw = math.cos(yaw)
     return (
@@ -2376,6 +2396,13 @@ def local_to_world_vector(vec, yaw: float):
 
 
 def ray_vehicle_box_hit(shot_pos, shot_vec, vehicle_pos, yaw: float, dims: dict):
+    shot_pos = safe_vec3(shot_pos, None)
+    shot_vec = safe_vec3(shot_vec, None)
+    vehicle_pos = safe_vec3(vehicle_pos, None)
+    if shot_pos is None or shot_vec is None or vehicle_pos is None:
+        return None
+    shot_vec = normalize_vec(shot_vec)
+    dims = armor_dimensions({'dimensions': dims})
     local_origin = world_to_vehicle_local(shot_pos, vehicle_pos, yaw)
     local_dir = world_to_vehicle_local(
         (shot_pos[0] + shot_vec[0], shot_pos[1] + shot_vec[1], shot_pos[2] + shot_vec[2]),
@@ -2433,6 +2460,11 @@ def ray_vehicle_box_hit(shot_pos, shot_vec, vehicle_pos, yaw: float, dims: dict)
 
 
 def fallback_hit_from_marker(marker_pos, vehicle_pos, yaw: float, dims: dict):
+    marker_pos = safe_vec3(marker_pos, None)
+    vehicle_pos = safe_vec3(vehicle_pos, None)
+    if marker_pos is None or vehicle_pos is None:
+        return None
+    dims = armor_dimensions({'dimensions': dims})
     local = world_to_vehicle_local(marker_pos, vehicle_pos, yaw)
     face_x = dims['halfWidth'] - abs(local[0])
     face_z = dims['halfLength'] - abs(local[2])
@@ -2449,6 +2481,9 @@ def fallback_hit_from_marker(marker_pos, vehicle_pos, yaw: float, dims: dict):
 
 
 def armor_component_and_zone(hit_local, normal, dims: dict):
+    hit_local = safe_vec3(hit_local, (0.0, SHOT_TANK_CENTER_HEIGHT, 0.0))
+    normal = safe_vec3(normal, (0.0, 0.0, 1.0))
+    dims = armor_dimensions({'dimensions': dims})
     component = 'turret' if hit_local[1] >= dims['hullTop'] else 'hull'
     if abs(normal[2]) >= abs(normal[0]):
         zone = 'front' if normal[2] > 0.0 else 'rear'
@@ -2460,25 +2495,26 @@ def armor_component_and_zone(hit_local, normal, dims: dict):
 
 
 def get_zone_armor(armor_model: dict, component: str, zone: str) -> float:
-    comp = dict((armor_model or {}).get(component) or {})
+    comp = safe_dict((armor_model or {}).get(component))
     primary = list(comp.get('primaryArmor') or [])
     while len(primary) < 3:
         primary.append(50.0)
     if zone == 'front':
-        return float(primary[0] or 50.0)
+        return safe_float(primary[0], 50.0, 1.0, 1000.0)
     if zone == 'lower_front':
-        return float(primary[0] or 50.0) * 0.85
+        return safe_float(primary[0], 50.0, 1.0, 1000.0) * 0.85
     if zone == 'side':
-        return float(primary[1] or primary[0] or 40.0)
-    return float(primary[2] or primary[1] or 35.0)
+        return safe_float(primary[1], safe_float(primary[0], 40.0), 1.0, 1000.0)
+    return safe_float(primary[2], safe_float(primary[1], 35.0), 1.0, 1000.0)
 
 
 def get_component_homogenization(armor_model: dict, component: str) -> float:
-    comp = dict((armor_model or {}).get(component) or {})
-    return max(0.1, float(comp.get('armorHomogenization') or 1.0))
+    comp = safe_dict((armor_model or {}).get(component))
+    return safe_float(comp.get('armorHomogenization'), 1.0, 0.1, 10.0)
 
 
 def impact_cosine(shot_vec, normal, yaw: float) -> float:
+    shot_vec = normalize_vec(safe_vec3(shot_vec, (0.0, 0.0, 1.0)))
     world_normal = local_to_world_vector(normal, yaw)
     return max(0.0, -(
         float(shot_vec[0]) * world_normal[0] +
@@ -2487,16 +2523,19 @@ def impact_cosine(shot_vec, normal, yaw: float) -> float:
 
 
 def resolve_shot_armor(shell: dict, hit_info: dict) -> dict:
-    distance = float(hit_info.get('distance') or 0.0)
-    armor = float(hit_info.get('armor') or 0.0)
-    cos_value = max(0.0, min(1.0, float(hit_info.get('impactCos') or 0.0)))
+    hit_info = safe_dict(hit_info)
+    distance = safe_float(hit_info.get('distance'), 0.0, 0.0)
+    armor = safe_float(hit_info.get('armor'), 0.0, 0.0, 1000.0)
+    cos_value = safe_float(hit_info.get('impactCos'), 0.0, 0.0, 1.0)
     normalized_cos = cos_value
     if is_armor_piercing_shell(shell):
         angle = math.acos(max(-1.0, min(1.0, cos_value)))
-        angle = max(0.0, angle - float((shell or {}).get('normalizationAngle') or 0.0))
+        angle = max(0.0, angle - safe_float((shell or {}).get('normalizationAngle'),
+                                             0.0, 0.0, math.pi / 2.0))
         normalized_cos = math.cos(angle)
     effective = armor / max(SHOT_ARMOR_MIN_COS, normalized_cos)
-    ricochet_cos = float((shell or {}).get('ricochetAngleCos', SHOT_ARMOR_AUTORICOCHET_COS))
+    ricochet_cos = safe_float((shell or {}).get('ricochetAngleCos'),
+                              SHOT_ARMOR_AUTORICOCHET_COS, 0.0, 1.0)
     can_ricochet = is_armor_piercing_shell(shell) or is_hollow_charge_shell(shell)
     if can_ricochet and cos_value <= ricochet_cos:
         result = SHOT_RESULT_RICOCHET
@@ -2526,11 +2565,13 @@ def resolve_shot_armor(shell: dict, hit_info: dict) -> dict:
 
 
 def pack_damage_segment(hit_info: dict) -> int:
+    hit_info = safe_dict(hit_info)
     component = hit_info.get('component') or 'hull'
     comp_idx = {'chassis': 0, 'hull': 1, 'turret': 2, 'gun': 3}.get(component, 1)
-    result = int(hit_info.get('result', SHOT_RESULT_ARMOR_NOT_PIERCED)) & 0xff
-    local = hit_info.get('hitLocal') or (0.0, SHOT_TANK_CENTER_HEIGHT, 0.0)
-    dims = hit_info.get('dimensions') or armor_dimensions({})
+    result = int(safe_float(hit_info.get('result'),
+                            SHOT_RESULT_ARMOR_NOT_PIERCED, 0.0, 255.0)) & 0xff
+    local = safe_vec3(hit_info.get('hitLocal'), (0.0, SHOT_TANK_CENTER_HEIGHT, 0.0))
+    dims = armor_dimensions({'dimensions': hit_info.get('dimensions') or {}})
     if component == 'turret':
         bounds = (
             (-dims['halfWidth'] * 0.6, dims['halfWidth'] * 0.6),
@@ -2543,7 +2584,8 @@ def pack_damage_segment(hit_info: dict) -> int:
             (dims['minHeight'], dims['hullTop']),
             (-dims['halfLength'], dims['halfLength']),
         )
-    direction = hit_info.get('localShotDir') or (0.0, 0.0, 1.0)
+    direction = normalize_vec(safe_vec3(hit_info.get('localShotDir'),
+                                        (0.0, 0.0, 1.0)))
     start = (
         local[0] - direction[0] * 0.4,
         local[1] - direction[1] * 0.4,
@@ -2558,7 +2600,8 @@ def pack_damage_segment(hit_info: dict) -> int:
     def enc(value, low, high):
         if high <= low:
             return 0
-        return int(round(clamp((float(value) - low) / (high - low), 0.0, 1.0) * 255.0)) & 0xff
+        value = safe_float(value, low, low, high)
+        return int(round(clamp((value - low) / (high - low), 0.0, 1.0) * 255.0)) & 0xff
 
     sx = enc(start[0], *bounds[0]); sy = enc(start[1], *bounds[1]); sz = enc(start[2], *bounds[2])
     ex = enc(end[0], *bounds[0]); ey = enc(end[1], *bounds[1]); ez = enc(end[2], *bounds[2])
@@ -3273,6 +3316,7 @@ SHOT_PENETRATION_FAR_DISTANCE = 500.0
 SHOT_HE_NONPEN_DAMAGE_FACTOR = 0.18
 SHOT_HE_MIN_SPLASH_DAMAGE = 1
 TARGET_HIT_RADIUS = 8.0
+TARGET_AIM_RADIUS = 8.0
 SHOT_TARGET_OVERSHOOT = 10.0
 STATIC_OBSTACLE_MOVE_RADIUS_FACTOR = 0.65
 STATIC_OBSTACLE_MOVE_RADIUS_MIN = 2.0
@@ -3654,7 +3698,8 @@ def build_avatar_update_targeting_info(turret_yaw: float = 0.0,
 def build_avatar_update_vehicle_health(health: int,
                                        is_crew_active: bool = True) -> bytes:
     em = struct.pack('<I', AVATAR_ENTITY_ID)
-    em += struct.pack('<hB', int(health), 1 if is_crew_active else 0)
+    health = int(safe_float(health, 0.0, -32768.0, 32767.0))
+    em += struct.pack('<hB', health, 1 if is_crew_active else 0)
     return msg_varlen(AVATAR_UPDATE_VEHICLE_HEALTH_MSG_ID, em)
 
 
@@ -3694,7 +3739,7 @@ def build_avatar_show_tracer(shot_id: int, shot_pos, velocity,
     em = struct.pack('<I', AVATAR_ENTITY_ID)
     em += struct.pack('<I', vehicle_id)
     em += struct.pack('<f', float(shot_id))
-    em += struct.pack('<B', int(effects_index) & 0xff)
+    em += struct.pack('<B', safe_effects_index(effects_index))
     em += struct.pack('<fff', *shot_pos)
     em += struct.pack('<fff', *velocity)
     em += struct.pack('<f', float(gravity))
@@ -3713,7 +3758,7 @@ def build_avatar_explode_projectile(shot_id: int, effects_index: int,
                                     velocity_dir) -> bytes:
     em = struct.pack('<I', AVATAR_ENTITY_ID)
     em += struct.pack('<f', float(shot_id))
-    em += struct.pack('<BB', int(effects_index) & 0xff,
+    em += struct.pack('<BB', safe_effects_index(effects_index),
                       int(material_index) & 0xff)
     em += struct.pack('<fff', *end_pos)
     em += struct.pack('<fff', *velocity_dir)
@@ -3730,7 +3775,7 @@ def build_vehicle_damage_from_shot(vehicle_id: int, attacker_id: int,
     payload = struct.pack('<I', int(vehicle_id))
     payload += struct.pack('<I', int(attacker_id))
     payload += pack_uint64_array(points)
-    payload += struct.pack('<B', int(effects_index) & 0xff)
+    payload += struct.pack('<B', safe_effects_index(effects_index))
     return msg_varlen(VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID, payload)
 
 
@@ -3738,7 +3783,8 @@ def build_vehicle_health_property_update(vehicle_id: int, health: int,
                                          is_crew_active: bool = True) -> bytes:
     payload = struct.pack('<I', vehicle_id)
     payload += struct.pack('<B', 2)
-    payload += struct.pack('<Bh', 1, int(health))
+    health = int(safe_float(health, 0.0, -32768.0, 32767.0))
+    payload += struct.pack('<Bh', 1, health)
     payload += struct.pack('<BB', 2, 1 if is_crew_active else 0)
     return msg_varlen(0x09, payload)
 
@@ -4782,11 +4828,54 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
 
 
 def normalize_vec(vec):
+    vec = safe_vec3(vec, (0.0, 0.0, 1.0))
     x, y, z = vec
     length = math.sqrt(x * x + y * y + z * z)
     if length <= 0.0001:
         return (0.0, 0.0, 1.0)
     return (x / length, y / length, z / length)
+
+
+def safe_float(value, default=0.0, min_value=None, max_value=None):
+    try:
+        value = float(value)
+    except (TypeError, ValueError, OverflowError):
+        value = float(default)
+    if not math.isfinite(value):
+        value = float(default)
+    if min_value is not None:
+        value = max(float(min_value), value)
+    if max_value is not None:
+        value = min(float(max_value), value)
+    return value
+
+
+def safe_dict(value):
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def safe_vec3(value, default=(0.0, 0.0, 0.0)):
+    if value is None:
+        return default
+    try:
+        if len(value) < 3:
+            return default
+        out = (float(value[0]), float(value[1]), float(value[2]))
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if not all(math.isfinite(v) for v in out):
+        return default
+    return out
+
+
+def safe_effects_index(value):
+    try:
+        value = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    if value < 0 or value > 255:
+        return 0
+    return value
 
 
 def build_targeting_for_point(sess: dict, target_pos):
@@ -5263,9 +5352,9 @@ def get_session_shot_direction(sess: dict):
 def unique_positions(points):
     out = []
     for point in points:
-        if not point:
+        pos = safe_vec3(point, None)
+        if pos is None:
             continue
-        pos = tuple(float(v) for v in point)
         if all(sum((pos[i] - other[i]) ** 2 for i in range(3)) > 0.01 for other in out):
             out.append(pos)
     return out
@@ -5737,7 +5826,8 @@ def aim_point_miss(target_pos, center):
 
 
 def is_target_marker_fresh(source_sess: dict, marker_time=None) -> bool:
-    last = float(source_sess.get('battle_target_pos_time', 0.0) if marker_time is None else marker_time)
+    last = safe_float(source_sess.get('battle_target_pos_time', 0.0)
+                      if marker_time is None else marker_time, 0.0)
     return last > 0.0 and time.time() - last <= TARGET_MARKER_OCCLUSION_MAX_AGE
 
 
@@ -5755,6 +5845,12 @@ def marker_blocks_shot(source_sess: dict, target_ray_distance, hit_distance,
 
 
 def find_shot_target(source_sess: dict, shot_pos, shot_vec):
+    shot_pos = safe_vec3(shot_pos, None)
+    shot_vec = safe_vec3(shot_vec, None)
+    if shot_pos is None or shot_vec is None:
+        print("    [shot] miss: invalid shot vector")
+        return None
+    shot_vec = normalize_vec(shot_vec)
     source_account_id = source_sess.get('account_id')
     source_team = source_sess.get('battle_team')
     match_id = source_sess.get('battle_match_id')
@@ -5762,6 +5858,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     marker_pos = source_sess.get('battle_last_shot_target_pos')
     marker_time = source_sess.get('battle_last_shot_target_pos_time',
                                   source_sess.get('battle_target_pos_time', 0.0))
+    marker_pos = safe_vec3(marker_pos, None)
     if marker_pos is None or not is_target_marker_fresh(source_sess, marker_time):
         print("    [shot] miss: no fresh client aim marker")
         return None
@@ -5791,7 +5888,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
         if not positions:
             continue
         for pos in positions:
-            center = (float(pos[0]), float(pos[1]) + SHOT_TANK_CENTER_HEIGHT, float(pos[2]))
+            center = (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2])
             dx = center[0] - float(marker_pos[0])
             dz = center[2] - float(marker_pos[2])
             horizontal = math.sqrt(dx * dx + dz * dz)
@@ -5829,7 +5926,7 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
             ))
             uname = target.get('username') or 'bot'
             for pos in positions:
-                center = (float(pos[0]), float(pos[1]) + SHOT_TANK_CENTER_HEIGHT, float(pos[2]))
+                center = (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2])
                 dx = center[0] - float(marker_pos[0])
                 dz = center[2] - float(marker_pos[2])
                 horizontal = math.sqrt(dx * dx + dz * dz)
@@ -5843,7 +5940,11 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     yaw = vehicle_hit_yaw(best_target)
     ray_hit = ray_vehicle_box_hit(shot_pos, shot_vec, best_pos, yaw, dims)
     if ray_hit is None:
-        hit_local, hit_world, normal = fallback_hit_from_marker(marker_pos, best_pos, yaw, dims)
+        fallback_hit = fallback_hit_from_marker(marker_pos, best_pos, yaw, dims)
+        if fallback_hit is None:
+            print("    [shot] miss: invalid fallback hit")
+            return None
+        hit_local, hit_world, normal = fallback_hit
         dx = hit_world[0] - shot_pos[0]
         dy = hit_world[1] - shot_pos[1]
         dz = hit_world[2] - shot_pos[2]
@@ -5937,6 +6038,7 @@ def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
 def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
                                     hit_info: dict, effects_index: int,
                                     damage: int):
+    effects_index = safe_effects_index(effects_index)
     if not ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS:
         if damage > 0:
             broadcast_vehicle_health(sock, target_sess, source_sess, damage)
@@ -6509,11 +6611,21 @@ def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
 
 
 def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
-    hit_info = find_shot_target(source_sess, shot_pos, shot_vec)
+    try:
+        hit_info = find_shot_target(source_sess, shot_pos, shot_vec)
+    except Exception as exc:
+        print(f"    [shot] miss: target resolution failed: {exc}")
+        return None, 0, None
     if hit_info is None:
         return None, 0, None
-    resolved = resolve_shot_armor(shell, hit_info)
+    try:
+        resolved = resolve_shot_armor(shell, hit_info)
+    except Exception as exc:
+        print(f"    [armor] resolve failed: {exc}")
+        return None, 0, None
     target = resolved.get('target')
+    if not isinstance(target, dict):
+        return None, 0, None
     health = int(target.get('battle_vehicle_health') or get_vehicle_max_health(
         get_session_battle_vehicle(target)))
     if health <= 0:
@@ -6543,7 +6655,7 @@ def apply_shot_damage(sock, source_sess: dict, shell: dict, shot_pos, shot_vec):
           f"eff={float(resolved.get('effectiveArmor') or 0.0):.1f} "
           f"angle={float(resolved.get('impactAngleDeg') or 0.0):.1f} "
           f"damage={damage}")
-    effects_index = int(shell.get('effectsIndex', 0))
+    effects_index = safe_effects_index((shell or {}).get('effectsIndex', 0))
     broadcast_vehicle_shot_feedback(sock, target, source_sess, resolved,
                                     effects_index, damage)
     if damage > 0:
