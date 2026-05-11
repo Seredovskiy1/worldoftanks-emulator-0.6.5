@@ -1,3 +1,4 @@
+import math
 import struct
 import threading
 import time
@@ -120,8 +121,11 @@ def _make_combat_vehicle(health=300, hull=(50.0, 40.0, 35.0),
     }
 
 
-def _make_shell(kind="ARMOR_PIERCING", penetration=200.0, damage=100.0):
+def _make_shell(kind="ARMOR_PIERCING", penetration=200.0, damage=100.0,
+                explosion_radius=0.0, compact=9001, speed=500.0,
+                gravity=9.81):
     return {
+        "compactDescr": compact,
         "kind": kind,
         "piercingPower": [penetration, penetration],
         "piercingPowerRandomization": 0.0,
@@ -129,7 +133,10 @@ def _make_shell(kind="ARMOR_PIERCING", penetration=200.0, damage=100.0):
         "damageRandomization": 0.0,
         "normalizationAngle": 0.0,
         "ricochetAngleCos": emulator.SHOT_ARMOR_AUTORICOCHET_COS,
+        "explosionRadius": explosion_radius,
         "effectsIndex": 0,
+        "speed": speed,
+        "gravity": gravity,
     }
 
 
@@ -157,6 +164,30 @@ def _make_combat_session(account_id, team, pos, health=300,
     return sess
 
 
+def _message_ids(messages):
+    out = []
+    pos = 0
+    while pos + 3 <= len(messages):
+        msg_id = messages[pos]
+        size = struct.unpack_from("<H", messages, pos + 1)[0]
+        out.append(msg_id)
+        pos += 3 + size
+    return out
+
+
+def _message_payloads(messages, wanted_id):
+    out = []
+    pos = 0
+    while pos + 3 <= len(messages):
+        msg_id = messages[pos]
+        size = struct.unpack_from("<H", messages, pos + 1)[0]
+        payload = messages[pos + 3:pos + 3 + size]
+        if msg_id == wanted_id:
+            out.append(payload)
+        pos += 3 + size
+    return out
+
+
 class RuntimeCoreTests(unittest.TestCase):
     def setUp(self):
         self._active_battle_accounts = dict(emulator.active_battle_accounts)
@@ -181,6 +212,18 @@ class RuntimeCoreTests(unittest.TestCase):
         speed, rspeed = emulator.battle_motion_targets(1, vehicle)
         self.assertAlmostEqual(speed, 20.0)
         self.assertGreaterEqual(rspeed, 0.0)
+
+    def test_vehicle_class_tags_identify_artillery_and_tank_destroyers(self):
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        for name in ("S-51", "SU-18", "M7_Priest", "Hummel"):
+            self.assertEqual(vehicles[name]["vehicleClass"], "SPG")
+            self.assertTrue(vehicles[name]["isSPG"])
+            self.assertTrue(emulator.is_artillery_vehicle(vehicles[name]))
+        for name in ("SU-85", "AT-1", "T95"):
+            self.assertEqual(vehicles[name]["vehicleClass"], "AT-SPG")
+            self.assertTrue(vehicles[name]["isATSPG"])
+            self.assertFalse(emulator.is_artillery_vehicle(vehicles[name]))
+        self.assertFalse(emulator.is_artillery_vehicle(vehicles["T-34"]))
 
     def test_channel_reliable_and_unreliable_sequences_are_separate(self):
         sess = {"in_seq_at": 0}
@@ -405,6 +448,235 @@ class RuntimeCoreTests(unittest.TestCase):
         forced_sends = [s for s in fake.avatar_sends
                         if s["msgs"][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])]
         self.assertEqual(forced_sends, [])
+
+    def test_artillery_direct_hit_uses_marker_target(self):
+        artillery = _make_combat_vehicle()
+        artillery.update({
+            "vehicleClass": "SPG",
+            "isSPG": True,
+            "tags": frozenset(("SPG",)),
+        })
+        source = _make_combat_session(91, 1, (0.0, 0.0, 40.0),
+                                      vehicle=artillery)
+        target = _make_combat_session(92, 2, (0.0, 0.0, 20.0), health=300)
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=300.0,
+                            damage=120.0, explosion_radius=6.0)
+        source["battle_last_shot_shell"] = shell
+        source["battle_last_shot_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell, (0.0, 2.0, 40.0),
+                emulator.normalize_vec((0.0, -0.2, -1.0)))
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 120)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
+        self.assertTrue(resolved["artilleryDirectHit"])
+        self.assertEqual(target["battle_vehicle_health"], 180)
+
+    def test_artillery_he_splash_deals_scaled_damage_near_marker(self):
+        artillery = _make_combat_vehicle()
+        artillery.update({
+            "vehicleClass": "SPG",
+            "isSPG": True,
+            "tags": frozenset(("SPG",)),
+        })
+        source = _make_combat_session(93, 1, (0.0, 0.0, 40.0),
+                                      vehicle=artillery)
+        target = _make_combat_session(94, 2, (0.0, 0.0, 20.0), health=300)
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=5.0,
+                            damage=100.0, explosion_radius=10.0)
+        source["battle_last_shot_shell"] = shell
+        source["battle_last_shot_target_pos"] = (4.0, 1.3, 20.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell, (0.0, 2.0, 40.0),
+                emulator.normalize_vec((0.2, -0.2, -1.0)))
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 86)
+        self.assertTrue(resolved["artillerySplash"])
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_CRITICAL_HIT)
+        self.assertEqual(target["battle_vehicle_health"], 214)
+
+    def test_artillery_he_splash_misses_outside_radius(self):
+        artillery = _make_combat_vehicle()
+        artillery.update({
+            "vehicleClass": "SPG",
+            "isSPG": True,
+            "tags": frozenset(("SPG",)),
+        })
+        source = _make_combat_session(95, 1, (0.0, 0.0, 40.0),
+                                      vehicle=artillery)
+        target = _make_combat_session(96, 2, (0.0, 0.0, 20.0), health=300)
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=5.0,
+                            damage=100.0, explosion_radius=5.0)
+        source["battle_last_shot_shell"] = shell
+        source["battle_last_shot_target_pos"] = (12.0, 1.3, 20.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        hit_target, damage, resolved = emulator.apply_shot_damage(
+            object(), source, shell, (0.0, 2.0, 40.0),
+            emulator.normalize_vec((0.2, -0.2, -1.0)))
+
+        self.assertIsNone(hit_target)
+        self.assertEqual(damage, 0)
+        self.assertIsNone(resolved)
+        self.assertEqual(target["battle_vehicle_health"], 300)
+
+    def test_artillery_shot_delays_impact_after_tracer(self):
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=5.0,
+                            damage=100.0, explosion_radius=10.0,
+                            compact=9001, speed=120.0, gravity=160.0)
+        artillery = _make_combat_vehicle()
+        artillery.update({
+            "vehicleClass": "SPG",
+            "isSPG": True,
+            "tags": frozenset(("SPG",)),
+            "reloadTime": 5.0,
+            "defaultAmmo": [9001, 3],
+            "shells": [shell],
+        })
+        source = _make_combat_session(97, 1, (0.0, 0.0, 40.0),
+                                      vehicle=artillery)
+        target = _make_combat_session(98, 2, (0.0, 0.0, 20.0), health=300)
+        source["battle_current_shell"] = 9001
+        source["battle_next_shell"] = 9001
+        source["battle_ammo_stock"] = {9001: 3}
+        source["battle_target_pos"] = (4.0, 1.3, 20.0)
+        source["battle_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        sent_messages = []
+        scheduled = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return None
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "broadcast_remote_vehicle_shot", return_value=None), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=capture_later):
+            emulator.handle_vehicle_shot(object(), source["addr"], source)
+
+        immediate_ids = []
+        show_tracers = []
+        for messages in sent_messages:
+            immediate_ids.extend(_message_ids(messages))
+            show_tracers.extend(_message_payloads(
+                messages, emulator.AVATAR_SHOW_TRACER_MSG_ID))
+        self.assertIn(emulator.AVATAR_SHOW_TRACER_MSG_ID, immediate_ids)
+        self.assertNotIn(emulator.AVATAR_STOP_TRACER_MSG_ID, immediate_ids)
+        self.assertNotIn(emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID,
+                         immediate_ids)
+        self.assertEqual(len(show_tracers), 1)
+        tracer = show_tracers[0]
+        self.assertEqual(struct.unpack_from("<I", tracer, 4)[0], 0)
+        tracer_start = struct.unpack_from("<fff", tracer, 13)
+        tracer_velocity = struct.unpack_from("<fff", tracer, 25)
+        tracer_gravity = struct.unpack_from("<f", tracer, 37)[0]
+        marker = source["battle_target_pos"]
+        tracer_marker_distance = math.sqrt(
+            (tracer_start[0] - marker[0]) ** 2 +
+            (tracer_start[2] - marker[2]) ** 2)
+        self.assertAlmostEqual(tracer_marker_distance,
+                               emulator.ARTILLERY_VISIBLE_TRACER_BACK_DISTANCE,
+                               places=4)
+        self.assertGreater(tracer_start[1],
+                           marker[1] + emulator.ARTILLERY_VISIBLE_TRACER_HEIGHT - 0.1)
+        self.assertLess(tracer_velocity[1], 0.0)
+        self.assertGreaterEqual(tracer_gravity, 12.0)
+        self.assertEqual(target["battle_vehicle_health"], 300)
+        self.assertGreaterEqual(scheduled[0][0], emulator.ARTILLERY_FLIGHT_TIME_MIN)
+        self.assertAlmostEqual(scheduled[0][0],
+                               emulator.ARTILLERY_VISIBLE_TRACER_TIME)
+
+        before_callback = len(sent_messages)
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            scheduled[0][1]()
+        delayed_ids = []
+        for messages in sent_messages[before_callback:]:
+            delayed_ids.extend(_message_ids(messages))
+        self.assertIn(emulator.AVATAR_STOP_TRACER_MSG_ID, delayed_ids)
+        self.assertIn(emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID, delayed_ids)
+        self.assertEqual(target["battle_vehicle_health"], 214)
+
+    def test_artillery_visible_tracer_keeps_nonzero_x_velocity(self):
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", compact=9101,
+                            speed=120.0, gravity=160.0)
+        artillery = _make_combat_vehicle()
+        artillery.update({
+            "vehicleClass": "SPG",
+            "isSPG": True,
+            "tags": frozenset(("SPG",)),
+            "defaultAmmo": [9101, 1],
+            "shells": [shell],
+        })
+        source = _make_combat_session(171, 1, (0.0, 0.0, 40.0),
+                                      vehicle=artillery)
+        source["battle_current_shell"] = 9101
+        source["battle_ammo_stock"] = {9101: 1}
+        source["battle_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_target_pos_time"] = time.time()
+
+        msgs, _reload_time, _shell_cd, fired = emulator.build_vehicle_shot_messages(source)
+
+        self.assertTrue(fired)
+        show_tracers = _message_payloads(msgs, emulator.AVATAR_SHOW_TRACER_MSG_ID)
+        self.assertEqual(len(show_tracers), 1)
+        tracer = show_tracers[0]
+        self.assertEqual(struct.unpack_from("<I", tracer, 4)[0], 0)
+        tracer_velocity = struct.unpack_from("<fff", tracer, 25)
+        self.assertGreaterEqual(abs(tracer_velocity[0]),
+                                emulator.ARTILLERY_VISIBLE_TRACER_MIN_VX)
+        server_velocity = source["battle_last_server_shot_info"][2]
+        self.assertAlmostEqual(server_velocity[0], 0.0, places=5)
+        self.assertEqual(source["battle_last_visual_flight_time"],
+                         emulator.ARTILLERY_VISIBLE_TRACER_TIME)
+
+    def test_non_artillery_tracer_keeps_player_vehicle_id(self):
+        shell = _make_shell(compact=9102, speed=120.0, gravity=9.81)
+        tank = _make_combat_vehicle()
+        tank.update({
+            "defaultAmmo": [9102, 1],
+            "shells": [shell],
+        })
+        source = _make_combat_session(172, 1, (0.0, 0.0, 40.0),
+                                      vehicle=tank)
+        source["battle_current_shell"] = 9102
+        source["battle_ammo_stock"] = {9102: 1}
+        source["battle_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_target_pos_time"] = time.time()
+
+        msgs, _reload_time, _shell_cd, fired = emulator.build_vehicle_shot_messages(source)
+
+        self.assertTrue(fired)
+        show_tracers = _message_payloads(msgs, emulator.AVATAR_SHOW_TRACER_MSG_ID)
+        self.assertEqual(len(show_tracers), 1)
+        tracer = show_tracers[0]
+        self.assertEqual(struct.unpack_from("<I", tracer, 4)[0],
+                         emulator.PLAYER_VEHICLE_ID)
+        tracer_velocity = struct.unpack_from("<fff", tracer, 25)
+        self.assertAlmostEqual(tracer_velocity[0], 0.0, places=5)
+        self.assertIsNone(source["battle_last_visual_flight_time"])
 
     def test_ap_penetration_reduces_health_and_updates_stats(self):
         source = _make_combat_session(101, 1, (0.0, 0.0, 40.0))

@@ -114,6 +114,7 @@ def get_int(n, default=0):
 
 NATIONS = ['ussr', 'germany', 'usa']  # 0.6.5 has these
 NATION_ID = {n: i for i, n in enumerate(NATIONS)}
+VEHICLE_CLASS_TAGS = ('lightTank', 'mediumTank', 'heavyTank', 'SPG', 'AT-SPG')
 
 base = r'C:\Users\qwerty\Desktop\World_of_Tanks\res\scripts\item_defs\vehicles'
 
@@ -166,8 +167,16 @@ def parse_list_xml(nation):
         idn = find(c, 'id')
         if idn is None:
             continue
-        vehicles.append((c['name'], get_int(idn)))
+        tags = (get_text(find(c, 'tags')) or '').split()
+        vehicles.append((c['name'], get_int(idn), tags))
     return vehicles
+
+
+def vehicle_class_from_tags(tags):
+    for tag in tags:
+        if tag in VEHICLE_CLASS_TAGS:
+            return tag
+    return ''
 
 
 def make_compact_descr(nation_id, vtype_id, chassis, engine, fuel, radio, turret, gun):
@@ -435,7 +444,7 @@ for nation in NATIONS:
     print(f"\n=== {nation} (nationID={nid}) ===")
 
     skipped = 0
-    for veh_name, vtype_id in parse_list_xml(nation):
+    for veh_name, vtype_id, vehicle_tags in parse_list_xml(nation):
         veh_xml_path = os.path.join(nat_dir, veh_name + '.xml')
         veh = load(veh_xml_path)
         if veh is None:
@@ -567,11 +576,16 @@ for nation in NATIONS:
 
         cd = make_compact_descr(nid, vtype_id, chassis_id, engine_id,
                                 fuel_id, radio_id, turret_id, gun_id)
+        vehicle_class = vehicle_class_from_tags(vehicle_tags)
         print(f"  [{vtype_id:3d}] {veh_name:25s} ch={chassis_id:3d} en={engine_id:3d} "
               f"fl={fuel_id:3d} rd={radio_id:3d} tr={turret_id:3d} gn={gun_id:3d} crew={crew_size}")
         result['vehicles'].append({
             'nation': nation, 'nationID': nid,
             'name': veh_name, 'vehicleTypeID': vtype_id,
+            'tags': vehicle_tags,
+            'vehicleClass': vehicle_class,
+            'isSPG': vehicle_class == 'SPG',
+            'isATSPG': vehicle_class == 'AT-SPG',
             'compactDescr_hex': cd.hex(),
             'crewSize': crew_size,
             'turretCompactDescr': make_int_compact_descr(3, nid, turret_id),
