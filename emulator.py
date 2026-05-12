@@ -1541,8 +1541,9 @@ AVATAR_EXPLODE_PROJECTILE_MSG_ID    = 0x8e
 AVATAR_ON_VEHICLE_LEFT_ARENA_MSG_ID = 0x91
 VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
 VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID = 0x82
+VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID = 0x83
 ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = os.environ.get(
-    'WOT_CLIENT_SHOT_DAMAGE_EFFECTS', '0') == '1'
+    'WOT_CLIENT_SHOT_DAMAGE_EFFECTS', '1') != '0'
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
 CLIENT_CONTROL_ENTITY_MSG_ID        = 0x33
@@ -3934,6 +3935,16 @@ def build_vehicle_damage_from_shot(vehicle_id: int, attacker_id: int,
     return msg_varlen(VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID, payload)
 
 
+def build_vehicle_damage_from_explosion(vehicle_id: int, attacker_id: int,
+                                        center, effects_index: int) -> bytes:
+    safe_center = safe_vec3(center, (0.0, 0.0, 0.0))
+    payload = struct.pack('<I', int(vehicle_id))
+    payload += struct.pack('<I', int(attacker_id))
+    payload += struct.pack('<fff', *safe_center)
+    payload += struct.pack('<B', safe_effects_index(effects_index))
+    return msg_varlen(VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID, payload)
+
+
 def build_vehicle_health_property_update(vehicle_id: int, health: int,
                                          is_crew_active: bool = True) -> bytes:
     payload = struct.pack('<I', vehicle_id)
@@ -5319,6 +5330,12 @@ def start_matchmaking_timer(sock):
             sess = queued.get('sess')
             if sess:
                 sess['battle_capture_state'] = capture_state
+        if arena_type_id not in STATIC_OBSTACLE_CACHE:
+            prewarm_start = time.time()
+            load_static_obstacles_for_arena(arena_type_id)
+            prewarm_ms = (time.time() - prewarm_start) * 1000.0
+            print(f"    [battle] prewarmed static obstacles for "
+                  f"arenaType={arena_type_id} in {prewarm_ms:.0f}ms")
         print(f"    [battle] capture bases={capture_state.get('bases')}")
         team_counts = {1: 0, 2: 0}
         base_assignment = {}
@@ -6659,7 +6676,7 @@ def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
 
 def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
                                     hit_info: dict, effects_index: int,
-                                    damage: int):
+                                    damage: int, shell: dict = None):
     effects_index = safe_effects_index(effects_index)
     if not ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS:
         if damage > 0:
@@ -6668,7 +6685,8 @@ def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
     match_id = target_sess.get('battle_match_id')
     target_account_id = target_sess.get('account_id')
     source_account_id = source_sess.get('account_id')
-    segment = pack_damage_segment(hit_info)
+    info = safe_dict(hit_info)
+    center = safe_vec3(info.get('hitWorld'), (0.0, 0.0, 0.0))
     with battle_lock:
         viewers = [sess for sess in active_battle_accounts.values()
                    if sess.get('battle_match_id') == match_id]
@@ -6683,8 +6701,8 @@ def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
             send_remote_vehicle(sock, viewer, source_sess)
         target_id = viewer_vehicle_id(viewer, target_sess)
         attacker_id = viewer_vehicle_id(viewer, source_sess)
-        msg = build_vehicle_damage_from_shot(
-            target_id, attacker_id, [segment], effects_index)
+        msg = build_vehicle_damage_from_explosion(
+            target_id, attacker_id, center, effects_index)
         if damage > 0:
             msg += build_health_update_for_viewer(viewer, target_sess)
         send_avatar_messages(sock, addr, viewer, msg, '', reliable=True)
@@ -7285,7 +7303,7 @@ def apply_resolved_shot_damage(sock, source_sess: dict, shell: dict,
           f"damage={damage}")
     effects_index = safe_effects_index((shell or {}).get('effectsIndex', 0))
     broadcast_vehicle_shot_feedback(sock, target, source_sess, resolved,
-                                    effects_index, damage)
+                                    effects_index, damage, shell)
     if damage > 0:
         capture_drop_result = drop_invader_capture_on_damage(target, source_sess)
         if capture_drop_result is not None:

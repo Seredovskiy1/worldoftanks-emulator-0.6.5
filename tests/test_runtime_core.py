@@ -223,7 +223,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self._active_battle_accounts = dict(emulator.active_battle_accounts)
         self._enable_client_shot_damage_effects = emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS
         emulator.active_battle_accounts.clear()
-        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
 
     def tearDown(self):
         emulator.active_battle_accounts.clear()
@@ -716,6 +716,32 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(obstacles[0][0], 112.0)
         self.assertAlmostEqual(obstacles[0][2], 234.0)
 
+    def test_static_obstacle_cache_lookup_skips_disk_when_prewarmed(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        sentinel_obstacles = [
+            (1.0, 0.0, 2.0, 3.0, 4.0, b"prewarmed/sentinel.model")
+        ]
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = sentinel_obstacles
+
+            def _explode(*_args, **_kwargs):
+                raise AssertionError(
+                    "load_static_obstacles_for_arena must not touch disk when cache is warm")
+
+            with mock.patch.object(emulator, "find_client_space_dir",
+                                   side_effect=_explode), \
+                    mock.patch.object(emulator.os, "listdir",
+                                      side_effect=_explode), \
+                    mock.patch("builtins.open", side_effect=_explode):
+                result = emulator.load_static_obstacles_for_arena(
+                    emulator.ARENA_TYPE_KARELIA)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIs(result, sentinel_obstacles)
+
     def test_artillery_direct_hit_uses_marker_target(self):
         artillery = _make_combat_vehicle()
         artillery.update({
@@ -1182,8 +1208,8 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIn(102, source["battle_damaged_vehicle_ids"])
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
         self.assertTrue(sent_messages)
-        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
-                         [msg[:1] for msg in sent_messages])
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+                      [msg[:1] for msg in sent_messages])
 
     def test_direct_marker_hit_prevents_false_side_ricochet(self):
         source = _make_combat_session(
@@ -1258,8 +1284,6 @@ class RuntimeCoreTests(unittest.TestCase):
         }
 
         with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
-                mock.patch.object(emulator, "pack_damage_segment",
-                                  side_effect=AssertionError("damage segment should stay disabled")), \
                 mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
                 mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
             _target, damage, resolved = emulator.apply_shot_damage(
@@ -1274,6 +1298,8 @@ class RuntimeCoreTests(unittest.TestCase):
     def test_ap_non_penetration_does_not_reduce_health(self):
         source = _make_combat_session(121, 1, (0.0, 0.0, 0.0))
         target = _make_combat_session(122, 2, (0.0, 0.0, 20.0), health=300)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
         hit_info = {
             "target": target,
             "distance": 100.0,
@@ -1292,8 +1318,6 @@ class RuntimeCoreTests(unittest.TestCase):
             return True
 
         with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
-                mock.patch.object(emulator, "pack_damage_segment",
-                                  side_effect=AssertionError("damage segment should stay disabled")), \
                 mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
                 mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
             _target, damage, resolved = emulator.apply_shot_damage(
@@ -1303,7 +1327,9 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(damage, 0)
         self.assertEqual(target["battle_vehicle_health"], 300)
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
-        self.assertEqual(sent_messages, [])
+        self.assertTrue(sent_messages)
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+                      [msg[:1] for msg in sent_messages])
 
     def test_he_non_penetration_deals_reduced_damage(self):
         source = _make_combat_session(131, 1, (0.0, 0.0, 0.0))
@@ -1410,7 +1436,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertGreaterEqual(value, 0)
             self.assertLessEqual(value, 0xffffffffffffffff)
 
-    def test_client_damage_effects_debug_path_can_pack_segment(self):
+    def test_client_damage_effects_always_uses_explosion_message(self):
         source = _make_combat_session(161, 1, (0.0, 0.0, 0.0))
         target = _make_combat_session(162, 2, (0.0, 0.0, 20.0), health=300)
         emulator.active_battle_accounts[source["account_id"]] = source
@@ -1422,6 +1448,7 @@ class RuntimeCoreTests(unittest.TestCase):
             "impactCos": 1.0,
             "component": "hull",
             "zone": "front",
+            "hitWorld": (0.0, 1.0, 20.0),
             "hitLocal": (0.0, 1.0, 5.2),
             "dimensions": emulator.armor_dimensions({}),
             "localShotDir": (0.0, 0.0, -1.0),
@@ -1440,8 +1467,137 @@ class RuntimeCoreTests(unittest.TestCase):
                 object(), target, source, hit_info, 0, 100)
 
         self.assertTrue(sent_messages)
-        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
-                      [msg[:1] for msg in sent_messages])
+        msg_ids = [msg[:1] for msg in sent_messages]
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+                      msg_ids)
+        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+                         msg_ids)
+
+    def test_artillery_splash_uses_damage_from_explosion_message(self):
+        source = _make_combat_session(181, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(182, 2, (0.0, 0.0, 20.0), health=300)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 0.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "splash",
+            "hitWorld": (1.5, 0.5, 22.0),
+            "hitLocal": (1.5, 0.5, 2.0),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, -1.0, 0.0),
+            "result": emulator.SHOT_RESULT_CRITICAL_HIT,
+            "artillerySplash": True,
+            "artilleryDirectHit": False,
+        }
+        sent_messages = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            emulator.broadcast_vehicle_shot_feedback(
+                object(), target, source, hit_info, 11, 150)
+
+        self.assertTrue(sent_messages)
+        msg_ids = [msg[:1] for msg in sent_messages]
+        self.assertIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+            msg_ids)
+        self.assertNotIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+            msg_ids)
+
+    def test_ap_direct_hit_uses_damage_from_explosion_message(self):
+        source = _make_combat_session(183, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(184, 2, (0.0, 0.0, 20.0), health=300)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitWorld": (0.0, 1.0, 20.0),
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+            "result": emulator.SHOT_RESULT_ARMOR_PIERCED,
+            "artillerySplash": False,
+            "artilleryDirectHit": False,
+        }
+        shell = _make_shell(kind="ARMOR_PIERCING", penetration=200.0)
+        sent_messages = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            emulator.broadcast_vehicle_shot_feedback(
+                object(), target, source, hit_info, 6, 120, shell)
+
+        self.assertTrue(sent_messages)
+        msg_ids = [msg[:1] for msg in sent_messages]
+        self.assertIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+            msg_ids)
+        self.assertNotIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+            msg_ids)
+
+    def test_he_direct_hit_uses_damage_from_explosion_message(self):
+        source = _make_combat_session(185, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(186, 2, (0.0, 0.0, 20.0), health=300)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitWorld": (0.0, 1.0, 20.0),
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+            "result": emulator.SHOT_RESULT_CRITICAL_HIT,
+            "artillerySplash": False,
+            "artilleryDirectHit": True,
+        }
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=80.0,
+                            explosion_radius=5.0)
+        sent_messages = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent_messages.append(bytes(msgs))
+            return True
+
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            emulator.broadcast_vehicle_shot_feedback(
+                object(), target, source, hit_info, 11, 1156, shell)
+
+        self.assertTrue(sent_messages)
+        msg_ids = [msg[:1] for msg in sent_messages]
+        self.assertIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+            msg_ids)
+        self.assertNotIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+            msg_ids)
 
 
 if __name__ == "__main__":

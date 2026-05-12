@@ -118,6 +118,59 @@ VEHICLE_CLASS_TAGS = ('lightTank', 'mediumTank', 'heavyTank', 'SPG', 'AT-SPG')
 
 base = r'C:\Users\qwerty\Desktop\World_of_Tanks\res\scripts\item_defs\vehicles'
 
+SHELL_KIND_TO_EFFECT_SUFFIX = {
+    'ARMOR_PIERCING': 'ArmorPiercing',
+    'ARMOR_PIERCING_CR': 'APCR',
+    'HIGH_EXPLOSIVE': 'HighExplosive',
+    'HOLLOW_CHARGE': 'HollowCharge',
+}
+
+
+def shell_caliber_prefix(caliber):
+    try:
+        c = int(caliber)
+    except (TypeError, ValueError):
+        return 'main'
+    if c < 37:
+        return 'small'
+    if c < 76:
+        return 'medium'
+    if c < 122:
+        return 'main'
+    return 'large'
+
+
+def infer_shell_effect_name(kind, caliber):
+    suffix = SHELL_KIND_TO_EFFECT_SUFFIX.get(kind or '', 'ArmorPiercing')
+    return shell_caliber_prefix(caliber) + suffix
+
+
+def load_shot_effects_index_map():
+    path = os.path.join(base, 'common', 'shot_effects.xml')
+    n = load(path)
+    if n is None:
+        return {}
+    out = {}
+    for idx, c in enumerate(n['children']):
+        out[c['name']] = idx
+    return out
+
+
+SHOT_EFFECT_INDEX = load_shot_effects_index_map()
+
+
+def resolve_shell_effects_index(shell_node, kind, caliber):
+    name = None
+    eff = find(shell_node, 'effects') if shell_node is not None else None
+    if eff is not None and eff.get('type') == DT_STRING and eff['data']:
+        try:
+            name = eff['data'].decode('latin1').strip()
+        except Exception:
+            name = None
+    if not name or name not in SHOT_EFFECT_INDEX:
+        name = infer_shell_effect_name(kind, caliber)
+    return SHOT_EFFECT_INDEX.get(name, 0)
+
 
 def parse_components_xml(path):
     """Структура: <ids><Name1>id1</Name1><Name2>id2</Name2>...</ids>+<shared>...</shared>.
@@ -322,12 +375,14 @@ def parse_shells_xml(path, nation_id):
         if c['name'] == 'icons':
             continue
         shell_id = get_int(find(c, 'id'))
+        kind = get_text(find(c, 'kind')) or ''
+        caliber = get_int(find(c, 'caliber'), 1)
         out[c['name']] = {
             'id': shell_id,
             'compactDescr': make_int_compact_descr(10, nation_id, shell_id),
             'price': get_price(find(c, 'price')),
-            'kind': get_text(find(c, 'kind')) or '',
-            'caliber': get_int(find(c, 'caliber'), 1),
+            'kind': kind,
+            'caliber': caliber,
             'damage': [
                 get_float(find_path(c, 'damage/armor'), 0.0),
                 get_float(find_path(c, 'damage/devices'), 0.0),
@@ -337,6 +392,7 @@ def parse_shells_xml(path, nation_id):
             'normalizationAngle': math.radians(get_float(find(c, 'normalizationAngle'), 0.0)),
             'ricochetAngleCos': math.cos(math.radians(get_float(find(c, 'ricochetAngle'), 70.0))),
             'explosionRadius': get_float(find(c, 'explosionRadius'), 0.0),
+            'effectsIndex': resolve_shell_effects_index(c, kind, caliber),
         }
     return out
 
@@ -372,7 +428,7 @@ def parse_gun_shots(path, gun_name, nation_id, shells_map):
             'speed': get_float(find(shot, 'speed'), 800.0),
             'gravity': get_float(find(shot, 'gravity'), 9.81),
             'maxDistance': get_float(find(shot, 'maxDistance'), 720.0),
-            'effectsIndex': get_int(find(shot, 'effectsIndex'), 0),
+            'effectsIndex': int(shell.get('effectsIndex', 0)),
         })
     return out
 
