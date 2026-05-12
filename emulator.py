@@ -67,6 +67,7 @@ active_battle_accounts = {}
 matchmaking_queue = []
 matchmaking_timer = None
 next_battle_id = 1
+next_visual_shot_id = 1
 battle_tick_started = False
 battle_tick_sock = None
 SERVER_RUNTIME = None
@@ -2517,6 +2518,35 @@ def fallback_hit_from_marker(marker_pos, vehicle_pos, yaw: float, dims: dict):
     return clamped, tuple(float(v) for v in marker_pos), normal
 
 
+def marker_inside_vehicle_box(marker_pos, vehicle_pos, yaw: float, dims: dict,
+                              margin: float = 0.35):
+    marker_pos = safe_vec3(marker_pos, None)
+    vehicle_pos = safe_vec3(vehicle_pos, None)
+    if marker_pos is None or vehicle_pos is None:
+        return None
+    dims = armor_dimensions({'dimensions': dims})
+    local = world_to_vehicle_local(marker_pos, vehicle_pos, yaw)
+    margin = safe_float(margin, 0.35, 0.0, 3.0)
+    if abs(local[0]) > dims['halfWidth'] + margin:
+        return None
+    if abs(local[2]) > dims['halfLength'] + margin:
+        return None
+    if local[1] < dims['minHeight'] - margin or local[1] > dims['maxHeight'] + margin:
+        return None
+    return (
+        clamp(local[0], -dims['halfWidth'], dims['halfWidth']),
+        clamp(local[1], dims['minHeight'], dims['maxHeight']),
+        clamp(local[2], -dims['halfLength'], dims['halfLength']),
+    )
+
+
+def direct_marker_entry_normal(local_shot_dir):
+    local_shot_dir = normalize_vec(safe_vec3(local_shot_dir, (0.0, 0.0, 1.0)))
+    if abs(local_shot_dir[0]) > abs(local_shot_dir[2]):
+        return (-1.0 if local_shot_dir[0] > 0.0 else 1.0, 0.0, 0.0)
+    return (0.0, 0.0, -1.0 if local_shot_dir[2] > 0.0 else 1.0)
+
+
 def armor_component_and_zone(hit_local, normal, dims: dict):
     hit_local = safe_vec3(hit_local, (0.0, SHOT_TANK_CENTER_HEIGHT, 0.0))
     normal = safe_vec3(normal, (0.0, 0.0, 1.0))
@@ -2596,9 +2626,13 @@ def resolve_shot_armor(shell: dict, hit_info: dict) -> dict:
             result = SHOT_RESULT_ARMOR_PIERCED
             damage = get_shell_damage(shell)
         elif is_high_explosive_shell(shell):
-            result = SHOT_RESULT_ARMOR_NOT_PIERCED
-            damage = max(SHOT_HE_MIN_SPLASH_DAMAGE,
-                         int(round(get_shell_damage(shell) * SHOT_HE_NONPEN_DAMAGE_FACTOR)))
+            if hit_info.get('artilleryDirectHit'):
+                result = SHOT_RESULT_CRITICAL_HIT
+                damage = artillery_direct_he_damage(shell)
+            else:
+                result = SHOT_RESULT_ARMOR_NOT_PIERCED
+                damage = max(SHOT_HE_MIN_SPLASH_DAMAGE,
+                             int(round(get_shell_damage(shell) * SHOT_HE_NONPEN_DAMAGE_FACTOR)))
         else:
             result = SHOT_RESULT_ARMOR_NOT_PIERCED
             damage = 0
@@ -3298,6 +3332,7 @@ BATTLE_FINISH_REASON_BASE = 2
 ARENA_TYPE_KARELIA   = 1
 PREBATTLE_TIMER_SECONDS = 10
 BATTLE_TIMER_SECONDS = 15 * 60
+BATTLE_READY_GUARD_SECONDS = 1.0
 MATCHMAKING_MIN_SECONDS = 15
 MATCHMAKING_MAX_SECONDS = 20
 BATTLE_MOTION_TICK = 0.05
@@ -3367,6 +3402,7 @@ SHOT_PENETRATION_FAR_DISTANCE = 500.0
 SHOT_HE_NONPEN_DAMAGE_FACTOR = 0.18
 SHOT_HE_MIN_SPLASH_DAMAGE = 1
 ARTILLERY_SPLASH_MIN_FACTOR = 0.35
+ARTILLERY_DIRECT_HE_DAMAGE_FACTOR = 0.55
 ARTILLERY_SPLASH_RADIUS_FACTOR = 2.0
 ARTILLERY_SPLASH_CALIBER_FACTOR = 15.0
 ARTILLERY_SPLASH_MAX_RADIUS = 18.0
@@ -3379,17 +3415,22 @@ ARTILLERY_VISIBLE_TRACER_BACK_DISTANCE = 70.0
 ARTILLERY_VISIBLE_TRACER_HEIGHT = 80.0
 ARTILLERY_VISIBLE_TRACER_GRAVITY_FACTOR = 0.15
 ARTILLERY_VISIBLE_TRACER_MIN_VX = 8.0
+DIRECT_PROJECTILE_IMPACT_MIN_DELAY = 0.08
+DIRECT_PROJECTILE_IMPACT_MAX_DELAY = 0.35
+REMOTE_SHOT_SOUND_DELAY = 0.25
 TARGET_HIT_RADIUS = 8.0
 TARGET_AIM_RADIUS = 8.0
 SHOT_TARGET_OVERSHOOT = 10.0
-STATIC_OBSTACLE_MOVE_RADIUS_FACTOR = 0.65
+STATIC_OBSTACLE_MOVE_RADIUS_FACTOR = 0.5
 STATIC_OBSTACLE_MOVE_RADIUS_MIN = 2.0
-STATIC_OBSTACLE_MOVE_RADIUS_MAX = 8.0
+STATIC_OBSTACLE_MOVE_RADIUS_MAX = 6.0
 STATIC_OBSTACLE_SHOT_RADIUS_PAD = 1.0
 STATIC_OBSTACLE_SHOOTER_GAP = 4.0
 STATIC_OBSTACLE_TARGET_GAP = 4.0
 STATIC_OBSTACLE_Y_BELOW = 1.5
 STATIC_OBSTACLE_Y_HEIGHT = 5.0
+STATIC_OBSTACLE_CHUNK_MARGIN = 80.0
+STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE = 6.0
 TANK_COLLISION_RADIUS = 2.5
 TANK_SLOPE_LIMIT_TAN = math.tan(math.radians(35.0))
 TANK_SLOPE_SOFT_TAN = math.tan(math.radians(30.0))
@@ -3482,8 +3523,8 @@ ARENA_SPAWN_POS = {
     38: (-350.0, 80.0, -350.0),
 }
 
-KARELIA_STONE_MODEL_RE = re.compile(
-    rb'content/Environment/[^\x00]{0,160}Stones[^\x00]{0,160}\.modelx?')
+STATIC_OBSTACLE_MODEL_RE = re.compile(
+    rb'content/Environment/[^\x00]{0,180}(?:[Ss]tones?|[Rr]ocks?)[^\x00]{0,180}\.modelx?')
 STATIC_OBSTACLE_CACHE = {}
 STATIC_MODEL_RADIUS_CACHE = {}
 
@@ -4662,7 +4703,9 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_killer_account_id'] = 0
     sess['battle_ended'] = False
     sess['avatar_ready_sent'] = False
+    sess['battle_client_ready'] = False
     sess['battle_period_timer_started'] = False
+    sess['battle_late_period_timer_started'] = False
     sess['battle_forced_position_sent_for_motion'] = False
     sess['battle_last_filter_reset_time'] = None
 
@@ -5058,42 +5101,136 @@ def build_battle_vehicle_state_messages(sess: dict):
     return msgs
 
 
+def build_battle_period_start_messages(sess: dict):
+    now = current_server_time(sess)
+    msgs = build_avatar_update_arena(
+        ARENA_UPDATE_PERIOD,
+        (ARENA_PERIOD_BATTLE, now + BATTLE_TIMER_SECONDS,
+         BATTLE_TIMER_SECONDS, None))
+    msgs += build_battle_motion_sync(
+        sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
+        sess.get('battle_yaw', 0.0),
+        0.0, 0.0,
+        bind_avatar=True)
+    if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
+        msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
+    else:
+        msgs += disable_client_vehicle_control_message(sess)
+    return msgs
+
+
+def get_match_battle_sessions(match_id):
+    with battle_lock:
+        return [
+            sess for sess in active_battle_accounts.values()
+            if sess.get('battle_match_id') == match_id and
+            sess.get('battle_bundle_sent')
+        ]
+
+
+def broadcast_match_avatar_ready(sock, ready_sess: dict):
+    match_id = ready_sess.get('battle_match_id')
+    if match_id is None:
+        sessions = [ready_sess]
+    else:
+        sessions = get_match_battle_sessions(match_id)
+    for viewer in sessions:
+        addr = viewer.get('addr')
+        if not addr:
+            continue
+        vehicle_id = viewer_vehicle_id(viewer, ready_sess)
+        send_avatar_messages(
+            sock, addr, viewer,
+            build_avatar_update_arena(ARENA_UPDATE_AVATAR_READY, vehicle_id),
+            "Avatar.updateArena(AVATAR_READY)",
+            reliable=True)
+
+
 def schedule_battle_period(sock, addr, sess):
-    if sess.get('battle_period_timer_started'):
+    match_id = sess.get('battle_match_id')
+    sessions = (
+        get_match_battle_sessions(match_id)
+        if match_id is not None else [sess])
+    if not sessions:
         return
-    sess['battle_period_timer_started'] = True
-    generation = sess.get('battle_generation', 0)
-    start_wall = float(sess.get('battle_start_wall', time.time() + PREBATTLE_TIMER_SECONDS))
+    if any(player.get('battle_period_timer_started') for player in sessions):
+        if sess.get('battle_client_ready') and not sess.get('battle_period_active'):
+            start_wall = float(sess.get(
+                'battle_start_wall',
+                time.time() + PREBATTLE_TIMER_SECONDS))
+            if start_wall <= time.time() and not sess.get('battle_late_period_timer_started'):
+                generation = sess.get('battle_generation', 0)
+                sess['battle_late_period_timer_started'] = True
+
+                def _start_late_battle():
+                    if generation != sess.get('battle_generation', 0):
+                        return
+                    if not sess.get('battle_client_ready'):
+                        return
+                    if sess.get('battle_ended') or not sess.get('battle_bundle_sent'):
+                        return
+                    if start_battle_period_for_session(sock, sess):
+                        start_battle_tick_loop(sock)
+
+                runtime_call_later(BATTLE_READY_GUARD_SECONDS, _start_late_battle)
+        return
+    generations = {
+        id(player): player.get('battle_generation', 0)
+        for player in sessions
+    }
+    start_wall = max(
+        float(player.get(
+            'battle_start_wall',
+            time.time() + PREBATTLE_TIMER_SECONDS))
+        for player in sessions)
+    for player in sessions:
+        player['battle_period_timer_started'] = True
 
     def _start_battle():
-        if generation != sess.get('battle_generation', 0):
+        current_sessions = (
+            get_match_battle_sessions(match_id)
+            if match_id is not None else [sess])
+        if not current_sessions:
             return
-        now = current_server_time(sess)
-        sess['battle_period_active'] = True
-        sess['server_vehicle_authoritative'] = not CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
-        sess['battle_client_control_enabled'] = CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
-        sess['battle_last_motion_time'] = time.time()
-        msgs = build_avatar_update_arena(
-            ARENA_UPDATE_PERIOD,
-            (ARENA_PERIOD_BATTLE, now + BATTLE_TIMER_SECONDS,
-             BATTLE_TIMER_SECONDS, None))
-        msgs += build_battle_motion_sync(
-            sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
-            sess.get('battle_yaw', 0.0),
-            0.0, 0.0,
-            bind_avatar=True)
-        if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
-            msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
-        else:
-            msgs += disable_client_vehicle_control_message(sess)
-        send_avatar_messages(sock, addr, sess, msgs,
-                             "PERIOD=BATTLE + client vehicle control"
-                             if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
-                             else "PERIOD=BATTLE + server vehicle control")
-        start_battle_tick_loop(sock)
+        started = False
+        for player in current_sessions:
+            if generations.get(id(player)) != player.get('battle_generation', 0):
+                continue
+            if not player.get('battle_client_ready'):
+                continue
+            if player.get('battle_ended') or not player.get('battle_bundle_sent'):
+                continue
+            if start_battle_period_for_session(sock, player):
+                started = True
+        if started:
+            start_battle_tick_loop(sock)
 
-    delay = max(0.0, start_wall - time.time())
+    delay = start_wall - time.time()
+    if delay <= 0.0:
+        delay = BATTLE_READY_GUARD_SECONDS
     runtime_call_later(delay, _start_battle)
+
+
+def start_battle_period_for_session(sock, sess: dict) -> bool:
+    if sess.get('battle_period_active'):
+        return False
+    player_addr = sess.get('addr')
+    if not player_addr:
+        return False
+    now = time.time()
+    msgs = build_battle_period_start_messages(sess)
+    sent = send_avatar_messages(
+        sock, player_addr, sess, msgs,
+        "PERIOD=BATTLE + client vehicle control"
+        if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
+        else "PERIOD=BATTLE + server vehicle control")
+    if not sent:
+        return False
+    sess['battle_period_active'] = True
+    sess['server_vehicle_authoritative'] = not CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
+    sess['battle_client_control_enabled'] = CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
+    sess['battle_last_motion_time'] = now
+    return True
 
 
 def send_avatar_player(sock, addr, sess):
@@ -5243,13 +5380,13 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     if sess.get('avatar_ready_sent'):
         return
     sess['avatar_ready_sent'] = True
+    sess['battle_client_ready'] = True
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = sess.get('battle_yaw', 0.0)
     initial_target = (pos[0] + math.sin(yaw) * 100.0,
                       pos[1] + 2.0,
                       pos[2] + math.cos(yaw) * 100.0)
     msgs = b''
-    msgs += build_avatar_update_arena(ARENA_UPDATE_AVATAR_READY, PLAYER_VEHICLE_ID)
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
                                      bind_avatar=True)
     msgs += build_battle_vehicle_state_messages(sess)
@@ -5265,6 +5402,7 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
         (ARENA_PERIOD_PREBATTLE, now + prebattle_left,
          PREBATTLE_TIMER_SECONDS, None),
         "PERIOD=PREBATTLE")
+    broadcast_match_avatar_ready(sock, sess)
     schedule_battle_period(sock, addr, sess)
 
 
@@ -5339,6 +5477,17 @@ def parse_vector3_exposed(payload: bytes):
     return None
 
 
+def allocate_visual_shot_id(sess: dict) -> int:
+    global next_visual_shot_id
+    with battle_lock:
+        shot_id = next_visual_shot_id
+        next_visual_shot_id += 1
+        if next_visual_shot_id > 16000000:
+            next_visual_shot_id = 1
+    sess['battle_last_visual_shot_id'] = shot_id
+    return shot_id
+
+
 def build_vehicle_shot_messages(sess: dict):
     sess['battle_last_shot_info'] = None
     sess['battle_last_server_shot_info'] = None
@@ -5393,8 +5542,9 @@ def build_vehicle_shot_messages(sess: dict):
                                            server_shot_vec, shell))
         tracer_vehicle_id = 0
         print(f"    [shot] art_tracer start=({tracer_shot_pos[0]:.1f},{tracer_shot_pos[1]:.1f},{tracer_shot_pos[2]:.1f}) vel=({tracer_velocity[0]:.1f},{tracer_velocity[1]:.1f},{tracer_velocity[2]:.1f}) vx={tracer_velocity[0]:.1f} impact=({target_pos[0]:.1f},{target_pos[1]:.1f},{target_pos[2]:.1f})")
-    shot_id = int(sess.get('battle_shot_id', 1))
-    sess['battle_shot_id'] = shot_id + 1
+    local_shot_id = int(sess.get('battle_shot_id', 1))
+    sess['battle_shot_id'] = local_shot_id + 1
+    shot_id = allocate_visual_shot_id(sess)
     sess['battle_shots'] = int(sess.get('battle_shots', 0)) + 1
     sess['battle_reload_until'] = now + reload_time
     sess['battle_last_shot_info'] = (
@@ -5420,15 +5570,17 @@ def build_remote_vehicle_shot_messages(sess: dict, shot_id: int,
                                        shot_pos, velocity,
                                        gravity: float,
                                        effects_index: int,
-                                       tracer_vehicle_id=None) -> bytes:
+                                       tracer_vehicle_id=None,
+                                       include_shooting: bool = True) -> bytes:
     remote_id = get_remote_vehicle_id(sess)
     if tracer_vehicle_id is None:
         tracer_vehicle_id = remote_id
-    return (
-        build_vehicle_show_shooting(remote_id) +
-        build_avatar_show_tracer(shot_id, shot_pos, velocity, gravity,
-                                 effects_index, vehicle_id=tracer_vehicle_id)
-    )
+    msgs = b''
+    if include_shooting:
+        msgs += build_vehicle_show_shooting(remote_id)
+    msgs += build_avatar_show_tracer(shot_id, shot_pos, velocity, gravity,
+                                     effects_index, vehicle_id=tracer_vehicle_id)
+    return msgs
 
 
 def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
@@ -5445,14 +5597,37 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
     tracer_vehicle_id = 0 if is_artillery_session(source_sess) else None
     msg = build_remote_vehicle_shot_messages(source_sess, shot_id, shot_pos,
                                              velocity, gravity, effects_index,
-                                             tracer_vehicle_id)
+                                             tracer_vehicle_id,
+                                             include_shooting=True)
+    remote_id = get_remote_vehicle_id(source_sess)
     for observer in observers:
         if not observer.get('addr'):
             continue
-        if source_account_id not in observer.setdefault('known_remote_accounts', set()):
-            send_remote_vehicle(sock, observer, source_sess)
-        send_avatar_messages(sock, observer.get('addr'), observer,
-                             msg, '', reliable=True)
+        known = observer.setdefault('known_remote_accounts', set())
+        outbound = b''
+        was_known = source_account_id in known
+        if not was_known:
+            outbound += build_remote_vehicle_messages(observer, source_sess)
+        outbound += msg
+        if send_avatar_messages(sock, observer.get('addr'), observer,
+                                outbound, '', reliable=True):
+            known.add(source_account_id)
+            if not was_known:
+                generation = observer.get('battle_generation', 0)
+
+                def _remote_shot_sound(viewer=observer, gen=generation):
+                    if gen != viewer.get('battle_generation', 0):
+                        return
+                    if viewer.get('battle_match_id') != source_sess.get('battle_match_id'):
+                        return
+                    viewer_addr = viewer.get('addr')
+                    if not viewer_addr:
+                        return
+                    send_avatar_messages(sock, viewer_addr, viewer,
+                                         build_vehicle_show_shooting(remote_id),
+                                         '', reliable=True)
+
+                runtime_call_later(REMOTE_SHOT_SOUND_DELAY, _remote_shot_sound)
 
 
 def build_projectile_impact_messages(shot_id: int, effects_index: int,
@@ -5503,6 +5678,27 @@ def estimate_projectile_flight_time(shot_pos, impact_pos, velocity) -> float:
         return ARTILLERY_FLIGHT_TIME_MIN
     return clamp(distance / speed, ARTILLERY_FLIGHT_TIME_MIN,
                  ARTILLERY_FLIGHT_TIME_MAX)
+
+
+def estimate_direct_projectile_impact_delay(shot_pos, impact_pos, velocity) -> float:
+    shot_pos = safe_vec3(shot_pos, None)
+    impact_pos = safe_vec3(impact_pos, None)
+    velocity = safe_vec3(velocity, None)
+    if shot_pos is None or impact_pos is None or velocity is None:
+        return DIRECT_PROJECTILE_IMPACT_MIN_DELAY
+    dx = impact_pos[0] - shot_pos[0]
+    dy = impact_pos[1] - shot_pos[1]
+    dz = impact_pos[2] - shot_pos[2]
+    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    speed = math.sqrt(
+        velocity[0] * velocity[0] +
+        velocity[1] * velocity[1] +
+        velocity[2] * velocity[2])
+    if speed <= 0.001:
+        return DIRECT_PROJECTILE_IMPACT_MIN_DELAY
+    return clamp(distance / speed,
+                 DIRECT_PROJECTILE_IMPACT_MIN_DELAY,
+                 DIRECT_PROJECTILE_IMPACT_MAX_DELAY)
 
 
 def get_session_shot_direction(sess: dict):
@@ -5846,50 +6042,147 @@ def get_obstacle_shot_radius(obstacle) -> float:
     return float(obstacle[3])
 
 
+def is_static_obstacle_model(model_path: bytes) -> bool:
+    name = (model_path or b'').lower()
+    return (
+        name.startswith(b'content/environment/') and
+        (name.endswith(b'.model') or name.endswith(b'.modelx')) and
+        (b'stone' in name or b'rock' in name)
+    )
+
+
+def read_chunk_model_transform(data: bytes, offset: int):
+    if offset + 48 > len(data):
+        return None
+    try:
+        values = struct.unpack_from('<12f', data, offset)
+    except struct.error:
+        return None
+    if not all(math.isfinite(v) for v in values):
+        return None
+    axes = (values[0:3], values[3:6], values[6:9])
+    axis_lengths = []
+    for axis in axes:
+        length = math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2])
+        if length < 0.05 or length > 20.0:
+            return None
+        axis_lengths.append(length)
+    local_x, local_y, local_z = values[9], values[10], values[11]
+    if not (-1000.0 <= local_x <= 1000.0 and
+            -500.0 <= local_y <= 500.0 and
+            -1000.0 <= local_z <= 1000.0):
+        return None
+    return values
+
+
+def iter_static_model_instances_from_chunk(data: bytes, ignored=None):
+    for match in STATIC_OBSTACLE_MODEL_RE.finditer(data or b''):
+        model_path = match.group()
+        if not is_static_obstacle_model(model_path):
+            if ignored is not None:
+                ignored['resource'] = int(ignored.get('resource', 0)) + 1
+            continue
+        transform = read_chunk_model_transform(data, match.end())
+        if transform is None:
+            if ignored is not None:
+                ignored['transform'] = int(ignored.get('transform', 0)) + 1
+            continue
+        yield model_path, transform
+
+
+def validate_static_obstacle_instance(arena_type_id: int, chunk_x: int,
+                                      chunk_z: int, model_path: bytes,
+                                      transform, ignored=None):
+    if find_client_res_file(model_path) is None:
+        if ignored is not None:
+            ignored['missing_model'] = int(ignored.get('missing_model', 0)) + 1
+        return None
+    local_x, local_y, local_z = transform[9], transform[10], transform[11]
+    margin = STATIC_OBSTACLE_CHUNK_MARGIN
+    if not (-margin <= local_x <= BATTLE_TERRAIN_CHUNK_SIZE + margin and
+            -margin <= local_z <= BATTLE_TERRAIN_CHUNK_SIZE + margin):
+        if ignored is not None:
+            ignored['chunk_bounds'] = int(ignored.get('chunk_bounds', 0)) + 1
+        return None
+    x = chunk_x * BATTLE_TERRAIN_CHUNK_SIZE + local_x
+    z = chunk_z * BATTLE_TERRAIN_CHUNK_SIZE + local_z
+    terrain_y = terrain_height_only(arena_type_id, x, z, local_y)
+    if abs(local_y - terrain_y) > STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE:
+        if ignored is not None:
+            ignored['terrain_y'] = int(ignored.get('terrain_y', 0)) + 1
+        return None
+    visual_radius = (
+        stone_obstacle_radius(model_path) +
+        STATIC_OBSTACLE_SHOT_RADIUS_PAD)
+    move_radius = movement_obstacle_radius(visual_radius)
+    return (x, local_y, z, move_radius, visual_radius, model_path)
+
+
+def build_static_obstacles_from_chunk_data(arena_type_id: int, chunk_x: int,
+                                           chunk_z: int, data: bytes,
+                                           ignored=None):
+    obstacles = []
+    seen = set()
+    for model_path, transform in iter_static_model_instances_from_chunk(data, ignored):
+        obstacle = validate_static_obstacle_instance(
+            arena_type_id, chunk_x, chunk_z, model_path, transform, ignored)
+        if obstacle is None:
+            continue
+        key = (
+            model_path.lower(),
+            round(obstacle[0], 2),
+            round(obstacle[1], 2),
+            round(obstacle[2], 2),
+        )
+        if key in seen:
+            if ignored is not None:
+                ignored['duplicate'] = int(ignored.get('duplicate', 0)) + 1
+            continue
+        seen.add(key)
+        obstacles.append(obstacle)
+    return obstacles
+
+
 def load_static_obstacles_for_arena(arena_type_id: int):
     arena_type_id = normalize_arena_type_id(arena_type_id)
     if arena_type_id in STATIC_OBSTACLE_CACHE:
         return STATIC_OBSTACLE_CACHE[arena_type_id]
     obstacles = []
-    if arena_type_id == ARENA_TYPE_KARELIA:
-        space_dir = find_client_space_dir(arena_type_id)
-        if space_dir:
-            for name in os.listdir(space_dir):
-                if not name.endswith('.chunk') or len(name) < 14:
+    ignored = {}
+    seen = set()
+    space_dir = find_client_space_dir(arena_type_id)
+    if space_dir:
+        for name in os.listdir(space_dir):
+            if not name.endswith('.chunk') or len(name) < 14:
+                continue
+            stem = os.path.splitext(name)[0]
+            if len(stem) < 9 or not stem.endswith('o'):
+                continue
+            try:
+                chunk_x = signed_chunk_coord(stem[:4])
+                chunk_z = signed_chunk_coord(stem[4:8])
+                with open(os.path.join(space_dir, name), 'rb') as fh:
+                    data = fh.read()
+            except (OSError, ValueError):
+                ignored['read'] = int(ignored.get('read', 0)) + 1
+                continue
+            for obstacle in build_static_obstacles_from_chunk_data(
+                    arena_type_id, chunk_x, chunk_z, data, ignored):
+                key = (
+                    obstacle[5].lower(),
+                    round(obstacle[0], 2),
+                    round(obstacle[1], 2),
+                    round(obstacle[2], 2),
+                )
+                if key in seen:
+                    ignored['duplicate'] = int(ignored.get('duplicate', 0)) + 1
                     continue
-                stem = os.path.splitext(name)[0]
-                if len(stem) < 9 or not stem.endswith('o'):
-                    continue
-                try:
-                    chunk_x = signed_chunk_coord(stem[:4])
-                    chunk_z = signed_chunk_coord(stem[4:8])
-                    with open(os.path.join(space_dir, name), 'rb') as fh:
-                        data = fh.read()
-                except (OSError, ValueError):
-                    continue
-                for match in KARELIA_STONE_MODEL_RE.finditer(data):
-                    offset = match.end()
-                    if offset + 48 > len(data):
-                        continue
-                    values = struct.unpack_from('<12f', data, offset)
-                    local_x, local_y, local_z = values[9], values[10], values[11]
-                    if not (-80.0 <= local_x <= 180.0 and
-                            -80.0 <= local_z <= 180.0 and
-                            -20.0 <= local_y <= 120.0):
-                        continue
-                    x = chunk_x * 100.0 + local_x
-                    z = chunk_z * 100.0 + local_z
-                    visual_radius = (
-                        stone_obstacle_radius(match.group()) +
-                        STATIC_OBSTACLE_SHOT_RADIUS_PAD)
-                    move_radius = movement_obstacle_radius(visual_radius)
-                    if any((x - other[0]) ** 2 + (z - other[2]) ** 2 < 4.0
-                           for other in obstacles):
-                        continue
-                    obstacles.append((x, local_y, z, move_radius, visual_radius))
+                seen.add(key)
+                obstacles.append(obstacle)
     STATIC_OBSTACLE_CACHE[arena_type_id] = obstacles
-    if obstacles:
-        print(f"    [battle] loaded {len(obstacles)} static obstacle(s) for arenaType={arena_type_id}")
+    if obstacles or ignored:
+        ignored_text = ','.join(f"{k}={v}" for k, v in sorted(ignored.items())) or 'none'
+        print(f"    [battle] loaded {len(obstacles)} static obstacle(s) for arenaType={arena_type_id} ignored={ignored_text}")
     return obstacles
 
 
@@ -5915,8 +6208,11 @@ def resolve_motion_against_obstacles(arena_type_id: int,
                                      prev_x: float, prev_z: float,
                                      new_x: float, new_z: float,
                                      tank_radius: float = TANK_COLLISION_RADIUS):
-    if find_blocking_static_obstacle(arena_type_id, new_x, new_z, tank_radius) is None:
+    obstacle = find_blocking_static_obstacle(arena_type_id, new_x, new_z, tank_radius)
+    if obstacle is None:
         return new_x, new_z, False
+    if BATTLE_VERBOSE_DEBUG:
+        print(f"    [motion] static obstacle block pos=({new_x:.1f},{new_z:.1f}) obstacle=({obstacle[0]:.1f},{obstacle[1]:.1f},{obstacle[2]:.1f}) moveR={obstacle[3]:.1f} blockR={obstacle[5]:.1f}")
     if (find_blocking_static_obstacle(arena_type_id, new_x, prev_z, tank_radius) is None
             and (new_x != prev_x or new_z == prev_z)):
         return new_x, prev_z, True
@@ -6033,6 +6329,12 @@ def artillery_splash_damage(shell: dict, splash_distance: float,
     factor = ARTILLERY_SPLASH_MIN_FACTOR + (
         1.0 - ARTILLERY_SPLASH_MIN_FACTOR) * distance_factor
     return max(SHOT_HE_MIN_SPLASH_DAMAGE, int(round(base * factor)))
+
+
+def artillery_direct_he_damage(shell: dict) -> int:
+    base = get_shell_damage(shell)
+    return max(SHOT_HE_MIN_SPLASH_DAMAGE,
+               int(round(base * ARTILLERY_DIRECT_HE_DAMAGE_FACTOR)))
 
 
 def make_artillery_hit_info(source_sess: dict, target: dict, target_pos,
@@ -6276,9 +6578,6 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
             print(f"    [shot] debug: shot_pos={shot_pos} target_vec=({target_vec[0]:.3f},{target_vec[1]:.3f},{target_vec[2]:.3f}) best_center={best_center}")
             print(f"    [shot] debug: ray_at_obstacle=({closest_x:.1f},{ray_y_at:.1f},{closest_z:.1f}) miss_xz={miss_xz:.2f} y_band=[{obstacle_y - STATIC_OBSTACLE_Y_BELOW:.1f},{obstacle_y + STATIC_OBSTACLE_Y_HEIGHT:.1f}]")
             return None
-    component, zone = armor_component_and_zone(hit_local, normal, dims)
-    armor = get_zone_armor(armor_model, component, zone)
-    armor *= get_component_homogenization(armor_model, component)
     local_end = world_to_vehicle_local(
         (shot_pos[0] + shot_vec[0], shot_pos[1] + shot_vec[1], shot_pos[2] + shot_vec[2]),
         best_pos, yaw)
@@ -6288,6 +6587,22 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
         local_end[1] - local_origin[1],
         local_end[2] - local_origin[2],
     ))
+    marker_hit_local = marker_inside_vehicle_box(marker_pos, best_pos, yaw, dims)
+    if marker_hit_local is not None:
+        current_cos = impact_cosine(shot_vec, normal, yaw)
+        marker_normal = direct_marker_entry_normal(local_shot_dir)
+        marker_cos = impact_cosine(shot_vec, marker_normal, yaw)
+        if current_cos <= SHOT_ARMOR_AUTORICOCHET_COS and marker_cos > current_cos:
+            hit_local = marker_hit_local
+            hit_world = tuple(float(v) for v in marker_pos)
+            dx = hit_world[0] - shot_pos[0]
+            dy = hit_world[1] - shot_pos[1]
+            dz = hit_world[2] - shot_pos[2]
+            hit_distance = max(0.001, math.sqrt(dx * dx + dy * dy + dz * dz))
+            normal = marker_normal
+    component, zone = armor_component_and_zone(hit_local, normal, dims)
+    armor = get_zone_armor(armor_model, component, zone)
+    armor *= get_component_homogenization(armor_model, component)
     print(f"    [shot] hit: marker_h={best_h:.2f}m component={component} zone={zone}")
     return {
         'target': best_target,
@@ -7044,8 +7359,15 @@ def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
                 sock, sess, shell, server_shot_info[1], server_shot_vec)
             impact_pos = get_projectile_impact_pos(sess, shot_info[1],
                                                    visual_shot_vec, resolved)
-            broadcast_projectile_impact(sock, sess, shot_info[0], shot_info[4],
-                                        impact_pos, visual_shot_vec)
+            impact_delay = estimate_direct_projectile_impact_delay(
+                shot_info[1], impact_pos, shot_info[2])
+
+            def _direct_impact():
+                broadcast_projectile_impact(sock, sess, shot_info[0],
+                                            shot_info[4], impact_pos,
+                                            visual_shot_vec)
+
+            runtime_call_later(impact_delay, _direct_impact)
 
     def _reload_done():
         if time.time() + 0.05 < float(sess.get('battle_reload_until', 0.0)):
@@ -7131,9 +7453,11 @@ def send_player_back_to_hangar(sock, addr, sess: dict):
     sess['battle_ended'] = True
     sess['battle_period_active'] = False
     sess['battle_period_timer_started'] = False
+    sess['battle_late_period_timer_started'] = False
     sess['battle_motion_loop_started'] = False
     sess['battle_match_id'] = None
     sess['avatar_ready_sent'] = False
+    sess['battle_client_ready'] = False
     sess['battle_motion_flags'] = 0
     sess['battle_speed'] = 0.0
     sess['battle_rspeed'] = 0.0

@@ -1,3 +1,4 @@
+import io
 import math
 import struct
 import threading
@@ -140,6 +141,17 @@ def _make_shell(kind="ARMOR_PIERCING", penetration=200.0, damage=100.0,
     }
 
 
+def _mock_stone_chunk(model_path=b"content/Environment/Rocks/testStone.model",
+                      local=(12.0, 3.0, 34.0)):
+    matrix = (
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0,
+        float(local[0]), float(local[1]), float(local[2]),
+    )
+    return b"model\x00resource\x00" + model_path + struct.pack("<12f", *matrix)
+
+
 def _make_combat_session(account_id, team, pos, health=300,
                          vehicle=None):
     sess = _make_session(account_id, period_active=True)
@@ -186,6 +198,24 @@ def _message_payloads(messages, wanted_id):
             out.append(payload)
         pos += 3 + size
     return out
+
+
+def _make_loading_session(account_id, match_id=77, ready=False):
+    sess = _make_combat_session(account_id, 1 if account_id % 2 else 2,
+                                (0.0, 0.0, float(account_id)))
+    sess.update({
+        "battle_match_id": match_id,
+        "battle_bundle_sent": True,
+        "battle_period_active": False,
+        "battle_client_ready": ready,
+        "avatar_ready_sent": ready,
+        "battle_period_timer_started": False,
+        "battle_late_period_timer_started": False,
+        "battle_generation": 1,
+        "battle_start_wall": time.time() - 5.0,
+        "battle_ended": False,
+    })
+    return sess
 
 
 class RuntimeCoreTests(unittest.TestCase):
@@ -257,6 +287,130 @@ class RuntimeCoreTests(unittest.TestCase):
         emulator.update_in_seq_state(sess, 784)
 
         self.assertEqual(sess["in_seq_at"], 1044)
+
+    def test_first_ready_player_schedules_and_starts_without_waiting(self):
+        s1 = _make_loading_session(1)
+        s2 = _make_loading_session(2)
+        emulator.active_battle_accounts[1] = s1
+        emulator.active_battle_accounts[2] = s2
+        scheduled = []
+        sent = []
+        arena_updates = []
+
+        def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
+            sent.append((_sess, bytes(msgs), label, reliable))
+            return True
+
+        def capture_arena(_sock, _addr, _sess, update_type, data, label):
+            arena_updates.append((_sess, update_type, data, label))
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
+            emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
+            self.assertEqual(len(scheduled), 1)
+            self.assertAlmostEqual(scheduled[0][0],
+                                   emulator.BATTLE_READY_GUARD_SECONDS)
+            scheduled[0][1]()
+
+        self.assertTrue(s1["battle_client_ready"])
+        self.assertFalse(s2["battle_client_ready"])
+        self.assertTrue(s1["battle_period_active"])
+        self.assertFalse(s2["battle_period_active"])
+        self.assertTrue(s1["battle_period_timer_started"])
+        self.assertTrue(s2["battle_period_timer_started"])
+        self.assertEqual(len(arena_updates), 1)
+        ready_updates = []
+        for _sess, msgs, _label, _reliable in sent:
+            for payload in _message_payloads(
+                    msgs, emulator.AVATAR_UPDATEARENA_MSG_ID):
+                if payload[4] == emulator.ARENA_UPDATE_AVATAR_READY:
+                    ready_updates.append((_sess, payload))
+        self.assertEqual(len(ready_updates), 2)
+        battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
+        self.assertEqual(len(battle_sends), 1)
+        self.assertIs(battle_sends[0][0], s1)
+
+    def test_late_ready_player_enters_running_match(self):
+        s1 = _make_loading_session(1, ready=True)
+        s2 = _make_loading_session(2)
+        s1["battle_period_active"] = True
+        s1["battle_period_timer_started"] = True
+        s2["battle_period_timer_started"] = True
+        emulator.active_battle_accounts[1] = s1
+        emulator.active_battle_accounts[2] = s2
+        scheduled = []
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
+            sent.append((_sess, bytes(msgs), label, reliable))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_avatar_arena_update", return_value=None), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
+            emulator.send_avatar_ready_and_prebattle(object(), s2["addr"], s2)
+            self.assertEqual(len(scheduled), 1)
+            self.assertAlmostEqual(scheduled[0][0],
+                                   emulator.BATTLE_READY_GUARD_SECONDS)
+            scheduled[0][1]()
+
+        self.assertTrue(s1["battle_period_active"])
+        self.assertTrue(s2["battle_period_active"])
+        battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
+        self.assertEqual(len(battle_sends), 1)
+        self.assertIs(battle_sends[0][0], s2)
+
+    def test_stale_battle_generation_callback_does_not_start_match(self):
+        s1 = _make_loading_session(1, ready=True)
+        s2 = _make_loading_session(2, ready=True)
+        emulator.active_battle_accounts[1] = s1
+        emulator.active_battle_accounts[2] = s2
+        scheduled = []
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
+            sent.append((_sess, bytes(msgs), label, reliable))
+            return True
+
+        with mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
+            emulator.schedule_battle_period(object(), s1["addr"], s1)
+            self.assertEqual(len(scheduled), 1)
+            s1["battle_generation"] += 1
+            scheduled[0][1]()
+
+        self.assertFalse(s1["battle_period_active"])
+        self.assertTrue(s2["battle_period_active"])
+        battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
+        self.assertEqual(len(battle_sends), 1)
+        self.assertIs(battle_sends[0][0], s2)
+
+    def test_repeated_on_client_ready_is_idempotent(self):
+        s1 = _make_loading_session(1)
+        emulator.active_battle_accounts[1] = s1
+        scheduled = []
+        sent = []
+        arena_updates = []
+
+        def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
+            sent.append((_sess, bytes(msgs), label, reliable))
+            return True
+
+        def capture_arena(_sock, _addr, _sess, update_type, data, label):
+            arena_updates.append((_sess, update_type, data, label))
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+            emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
+            counts = (len(sent), len(arena_updates), len(scheduled))
+            emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
+
+        self.assertEqual(counts, (len(sent), len(arena_updates), len(scheduled)))
 
     def test_scheduler_order_and_cancel(self):
         runtime = EventLoopRuntime(emulator)
@@ -449,6 +603,119 @@ class RuntimeCoreTests(unittest.TestCase):
                         if s["msgs"][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])]
         self.assertEqual(forced_sends, [])
 
+    def test_static_obstacle_chunk_transform_creates_world_obstacle(self):
+        ignored = {}
+        data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
+
+        with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
+                mock.patch.object(emulator, "stone_obstacle_radius", return_value=4.0), \
+                mock.patch.object(emulator, "terrain_height_only", return_value=3.1):
+            obstacles = emulator.build_static_obstacles_from_chunk_data(
+                emulator.ARENA_TYPE_KARELIA, 2, -1, data, ignored)
+
+        self.assertEqual(len(obstacles), 1)
+        obstacle = obstacles[0]
+        self.assertAlmostEqual(obstacle[0], 212.0)
+        self.assertAlmostEqual(obstacle[1], 3.0)
+        self.assertAlmostEqual(obstacle[2], -66.0)
+        self.assertAlmostEqual(obstacle[3], 2.5)
+        self.assertAlmostEqual(obstacle[4], 5.0)
+        self.assertEqual(ignored, {})
+
+    def test_static_obstacle_text_match_without_transform_is_ignored(self):
+        ignored = {}
+        data = (b"content/Environment/Rocks/testStone.model" +
+                b"not-a-transform")
+
+        obstacles = emulator.build_static_obstacles_from_chunk_data(
+            emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
+
+        self.assertEqual(obstacles, [])
+        self.assertEqual(ignored.get("transform"), 1)
+
+    def test_static_obstacle_far_from_terrain_is_ignored(self):
+        ignored = {}
+        data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
+
+        with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
+                mock.patch.object(emulator, "terrain_height_only", return_value=30.0):
+            obstacles = emulator.build_static_obstacles_from_chunk_data(
+                emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
+
+        self.assertEqual(obstacles, [])
+        self.assertEqual(ignored.get("terrain_y"), 1)
+
+    def test_static_obstacle_blocks_motion_only_at_valid_position(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (10.0, 0.0, 10.0, 3.0, 4.0, b"content/Environment/Rocks/testStone.model")
+            ]
+
+            blocked = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 10.5, 10.0, tank_radius=2.5)
+            clear = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 30.0, 30.0, tank_radius=2.5)
+            new_x, new_z, was_blocked = emulator.resolve_motion_against_obstacles(
+                emulator.ARENA_TYPE_KARELIA, 0.0, 0.0, 10.5, 10.0,
+                tank_radius=2.5)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIsNotNone(blocked)
+        self.assertIsNone(clear)
+        self.assertTrue(was_blocked)
+        self.assertEqual((new_x, new_z), (10.5, 0.0))
+
+    def test_static_obstacle_blocks_shot_only_when_validated(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        source = _make_combat_session(81, 1, (0.0, 0.0, 0.0))
+        source["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (0.0, 1.0, 20.0, 3.0, 4.0, b"content/Environment/Rocks/testStone.model")
+            ]
+            hit = emulator.ray_static_obstacle_hit(
+                source, (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), 40.0,
+                shooter_gap=0.0, target_gap=0.0)
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = []
+            miss = emulator.ray_static_obstacle_hit(
+                source, (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), 40.0,
+                shooter_gap=0.0, target_gap=0.0)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIsNotNone(hit)
+        self.assertIsNone(miss)
+
+    def test_static_obstacles_load_for_non_karelia_arena(self):
+        data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+
+        def fake_open(_path, _mode="rb"):
+            return io.BytesIO(data)
+
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            with mock.patch.object(emulator, "find_client_space_dir", return_value="space"), \
+                    mock.patch.object(emulator.os, "listdir", return_value=["00010002o.chunk"]), \
+                    mock.patch("builtins.open", side_effect=fake_open), \
+                    mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
+                    mock.patch.object(emulator, "stone_obstacle_radius", return_value=4.0), \
+                    mock.patch.object(emulator, "terrain_height_only", return_value=3.0):
+                obstacles = emulator.load_static_obstacles_for_arena(2)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertEqual(len(obstacles), 1)
+        self.assertAlmostEqual(obstacles[0][0], 112.0)
+        self.assertAlmostEqual(obstacles[0][2], 234.0)
+
     def test_artillery_direct_hit_uses_marker_target(self):
         artillery = _make_combat_vehicle()
         artillery.update({
@@ -478,6 +745,38 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
         self.assertTrue(resolved["artilleryDirectHit"])
         self.assertEqual(target["battle_vehicle_health"], 180)
+
+    def test_artillery_direct_he_nonpenetration_uses_direct_damage(self):
+        artillery = _make_combat_vehicle()
+        artillery.update({
+            "vehicleClass": "SPG",
+            "isSPG": True,
+            "tags": frozenset(("SPG",)),
+        })
+        source = _make_combat_session(191, 1, (0.0, 0.0, 40.0),
+                                      vehicle=artillery)
+        target = _make_combat_session(
+            192, 2, (0.0, 0.0, 20.0), health=3200,
+            vehicle=_make_combat_vehicle(health=3200, hull=(200.0, 185.0, 160.0)))
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=80.0,
+                            damage=1000.0, explosion_radius=10.0)
+        source["battle_last_shot_shell"] = shell
+        source["battle_last_shot_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell, (0.0, 2.0, 40.0),
+                emulator.normalize_vec((0.0, -0.2, -1.0)))
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 550)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_CRITICAL_HIT)
+        self.assertTrue(resolved["artilleryDirectHit"])
+        self.assertEqual(target["battle_vehicle_health"], 2650)
 
     def test_artillery_he_splash_deals_scaled_damage_near_marker(self):
         artillery = _make_combat_vehicle()
@@ -582,6 +881,7 @@ class RuntimeCoreTests(unittest.TestCase):
             immediate_ids.extend(_message_ids(messages))
             show_tracers.extend(_message_payloads(
                 messages, emulator.AVATAR_SHOW_TRACER_MSG_ID))
+        self.assertIn(emulator.VEHICLE_SHOW_SHOOTING_MSG_ID, immediate_ids)
         self.assertIn(emulator.AVATAR_SHOW_TRACER_MSG_ID, immediate_ids)
         self.assertNotIn(emulator.AVATAR_STOP_TRACER_MSG_ID, immediate_ids)
         self.assertNotIn(emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID,
@@ -589,6 +889,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(len(show_tracers), 1)
         tracer = show_tracers[0]
         self.assertEqual(struct.unpack_from("<I", tracer, 4)[0], 0)
+        visual_shot_id = struct.unpack_from("<f", tracer, 8)[0]
         tracer_start = struct.unpack_from("<fff", tracer, 13)
         tracer_velocity = struct.unpack_from("<fff", tracer, 25)
         tracer_gravity = struct.unpack_from("<f", tracer, 37)[0]
@@ -613,10 +914,20 @@ class RuntimeCoreTests(unittest.TestCase):
                 mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
             scheduled[0][1]()
         delayed_ids = []
+        stop_tracers = []
+        explosions = []
         for messages in sent_messages[before_callback:]:
             delayed_ids.extend(_message_ids(messages))
+            stop_tracers.extend(_message_payloads(
+                messages, emulator.AVATAR_STOP_TRACER_MSG_ID))
+            explosions.extend(_message_payloads(
+                messages, emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID))
         self.assertIn(emulator.AVATAR_STOP_TRACER_MSG_ID, delayed_ids)
         self.assertIn(emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID, delayed_ids)
+        self.assertEqual(struct.unpack_from("<f", stop_tracers[0], 4)[0],
+                         visual_shot_id)
+        self.assertEqual(struct.unpack_from("<f", explosions[0], 4)[0],
+                         visual_shot_id)
         self.assertEqual(target["battle_vehicle_health"], 214)
 
     def test_artillery_visible_tracer_keeps_nonzero_x_velocity(self):
@@ -678,6 +989,169 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(tracer_velocity[0], 0.0, places=5)
         self.assertIsNone(source["battle_last_visual_flight_time"])
 
+    def test_visual_shot_ids_are_unique_across_players(self):
+        shell = _make_shell(compact=9103, speed=120.0, gravity=9.81)
+        tank = _make_combat_vehicle()
+        tank.update({
+            "defaultAmmo": [9103, 1],
+            "shells": [shell],
+        })
+        source_a = _make_combat_session(173, 1, (0.0, 0.0, 40.0),
+                                        vehicle=tank)
+        source_b = _make_combat_session(174, 2, (0.0, 0.0, -40.0),
+                                        vehicle=tank)
+        for source in (source_a, source_b):
+            source["battle_current_shell"] = 9103
+            source["battle_ammo_stock"] = {9103: 1}
+            source["battle_target_pos"] = (0.0, 1.3, 0.0)
+            source["battle_target_pos_time"] = time.time()
+            source["battle_shot_id"] = 1
+
+        msgs_a, _reload_a, _shell_a, fired_a = emulator.build_vehicle_shot_messages(source_a)
+        msgs_b, _reload_b, _shell_b, fired_b = emulator.build_vehicle_shot_messages(source_b)
+
+        self.assertTrue(fired_a)
+        self.assertTrue(fired_b)
+        shot_a = struct.unpack_from(
+            "<f",
+            _message_payloads(msgs_a, emulator.AVATAR_SHOW_TRACER_MSG_ID)[0],
+            8)[0]
+        shot_b = struct.unpack_from(
+            "<f",
+            _message_payloads(msgs_b, emulator.AVATAR_SHOW_TRACER_MSG_ID)[0],
+            8)[0]
+        self.assertNotEqual(shot_a, shot_b)
+
+    def test_known_remote_shot_bundles_shooting_before_tracer(self):
+        source = _make_combat_session(171, 1, (0.0, 0.0, 40.0))
+        observer = _make_combat_session(172, 2, (0.0, 0.0, 20.0))
+        observer["known_remote_accounts"].add(source["account_id"])
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+        scheduled = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return None
+
+        with mock.patch.object(emulator, "build_remote_vehicle_messages", return_value=b"INTRO"), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=capture_later):
+            emulator.broadcast_remote_vehicle_shot(
+                object(), source, 123.0, (0.0, 2.0, 40.0),
+                (0.0, 0.0, -100.0), 9.81, 0)
+
+        self.assertEqual(len(sent), 1)
+        self.assertIs(sent[0][0], observer)
+        self.assertFalse(sent[0][1].startswith(b"INTRO"))
+        self.assertEqual(
+            _message_ids(sent[0][1]),
+            [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID,
+             emulator.AVATAR_SHOW_TRACER_MSG_ID])
+        self.assertEqual(scheduled, [])
+
+    def test_unknown_remote_shot_retries_shooting_after_intro(self):
+        source = _make_combat_session(175, 1, (0.0, 0.0, 40.0))
+        observer = _make_combat_session(176, 2, (0.0, 0.0, 20.0))
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+        scheduled = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return None
+
+        with mock.patch.object(emulator, "build_remote_vehicle_messages", return_value=b"INTRO"), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=capture_later):
+            emulator.broadcast_remote_vehicle_shot(
+                object(), source, 123.0, (0.0, 2.0, 40.0),
+                (0.0, 0.0, -100.0), 9.81, 0)
+
+        self.assertEqual(len(sent), 1)
+        self.assertIs(sent[0][0], observer)
+        self.assertTrue(sent[0][1].startswith(b"INTRO"))
+        self.assertEqual(
+            _message_ids(sent[0][1][len(b"INTRO"):]),
+            [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID,
+             emulator.AVATAR_SHOW_TRACER_MSG_ID])
+        self.assertIn(source["account_id"], observer["known_remote_accounts"])
+        self.assertEqual(len(scheduled), 1)
+        self.assertAlmostEqual(scheduled[0][0], emulator.REMOTE_SHOT_SOUND_DELAY)
+
+        before_callback = len(sent)
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send):
+            scheduled[0][1]()
+        self.assertEqual(len(sent), before_callback + 1)
+        self.assertEqual(_message_ids(sent[-1][1]),
+                         [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID])
+
+    def test_direct_shot_impact_is_scheduled_with_stop_and_explode(self):
+        shell = _make_shell(compact=9104, penetration=200.0, damage=100.0,
+                            speed=500.0, gravity=9.81)
+        tank = _make_combat_vehicle()
+        tank.update({
+            "defaultAmmo": [9104, 1],
+            "shells": [shell],
+            "reloadTime": 5.0,
+        })
+        source = _make_combat_session(177, 1, (0.0, 0.0, 40.0),
+                                      vehicle=tank)
+        target = _make_combat_session(178, 2, (0.0, 0.0, 20.0), health=300)
+        source["battle_current_shell"] = 9104
+        source["battle_ammo_stock"] = {9104: 1}
+        source["battle_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        sent = []
+        scheduled = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return None
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit", return_value=None), \
+                mock.patch.object(emulator, "broadcast_remote_vehicle_shot", return_value=None), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=capture_later):
+            emulator.handle_vehicle_shot(object(), source["addr"], source)
+
+        immediate_ids = []
+        for messages in sent:
+            immediate_ids.extend(_message_ids(messages))
+        self.assertIn(emulator.AVATAR_SHOW_TRACER_MSG_ID, immediate_ids)
+        self.assertNotIn(emulator.AVATAR_STOP_TRACER_MSG_ID, immediate_ids)
+        self.assertNotIn(emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID, immediate_ids)
+        impact = min(scheduled, key=lambda item: item[0])
+        self.assertGreaterEqual(impact[0], emulator.DIRECT_PROJECTILE_IMPACT_MIN_DELAY)
+        self.assertLessEqual(impact[0], emulator.DIRECT_PROJECTILE_IMPACT_MAX_DELAY)
+
+        before_callback = len(sent)
+        with mock.patch.object(emulator, "send_remote_vehicle", return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send):
+            impact[1]()
+        delayed_ids = []
+        for messages in sent[before_callback:]:
+            delayed_ids.extend(_message_ids(messages))
+        self.assertIn(emulator.AVATAR_STOP_TRACER_MSG_ID, delayed_ids)
+        self.assertIn(emulator.AVATAR_EXPLODE_PROJECTILE_MSG_ID, delayed_ids)
+
     def test_ap_penetration_reduces_health_and_updates_stats(self):
         source = _make_combat_session(101, 1, (0.0, 0.0, 40.0))
         target = _make_combat_session(102, 2, (0.0, 0.0, 20.0), health=300)
@@ -710,6 +1184,63 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(sent_messages)
         self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
                          [msg[:1] for msg in sent_messages])
+
+    def test_direct_marker_hit_prevents_false_side_ricochet(self):
+        source = _make_combat_session(
+            181, 1, (-250.99546460964893, 34.04087404533013, -230.93543279776856))
+        target_vehicle = _make_combat_vehicle(
+            health=650, hull=(75.0, 50.0, 30.0), turret=(20.0, 0.0, 0.0))
+        target_vehicle["name"] = "Object_261"
+        target = _make_combat_session(
+            182, 2, (263.13701608027003, 36.74779019041238, 254.17239562026495),
+            health=650, vehicle=target_vehicle)
+        target["battle_yaw"] = math.radians(30.0)
+        marker = (262.0161133, 38.4567375, 254.5153198)
+        source["battle_last_shot_target_pos"] = marker
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        shell = _make_shell(compact=11290, penetration=241.0, damage=490.0,
+                            speed=920.0)
+        shot_pos = (-250.99546460964893, 36.04087404533013, -230.93543279776856)
+        shot_vec = emulator.normalize_vec((
+            marker[0] - shot_pos[0],
+            marker[1] - shot_pos[1],
+            marker[2] - shot_pos[2],
+        ))
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit", return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell, shot_pos, shot_vec)
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 490)
+        self.assertEqual(target["battle_vehicle_health"], 160)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
+        self.assertGreater(resolved["impactCos"], emulator.SHOT_ARMOR_AUTORICOCHET_COS)
+
+    def test_direct_marker_fix_ignores_off_silhouette_marker(self):
+        source = _make_combat_session(183, 1, (3.2, 0.0, -50.0))
+        target = _make_combat_session(184, 2, (0.0, 0.0, 0.0), health=300)
+        marker = (3.2, 1.3, 0.0)
+        source["battle_last_shot_target_pos"] = marker
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit", return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(penetration=500.0, damage=100.0),
+                (3.2, 1.3, -50.0), (0.0, 0.0, 1.0))
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 0)
+        self.assertEqual(target["battle_vehicle_health"], 300)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_RICOCHET)
 
     def test_ap_ricochet_does_not_reduce_health(self):
         source = _make_combat_session(111, 1, (0.0, 0.0, 0.0))
