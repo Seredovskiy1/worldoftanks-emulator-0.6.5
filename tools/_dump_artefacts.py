@@ -123,6 +123,8 @@ def parse_artefacts(root):
     return items
 
 
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+DATA_DIR = os.path.join(ROOT_DIR, 'data')
 BASE = r'C:\Users\qwerty\Desktop\World_of_Tanks\res\scripts\item_defs\vehicles\common'
 
 
@@ -141,8 +143,8 @@ def main():
         print(f'[*] {kind}: {len(items)} items')
         for it in items[:5]:
             print('    ' + repr(it).encode('ascii', 'replace').decode('ascii'))
-    target = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          '_artefacts.json')
+    os.makedirs(DATA_DIR, exist_ok=True)
+    target = os.path.join(DATA_DIR, '_artefacts.json')
     with open(target, 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
     print(f'[*] wrote {target}')

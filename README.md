@@ -8,6 +8,30 @@
 pip install -r requirements.txt
 ```
 
+## Configuration
+
+Editable server settings now live in `config/*.example.json`. For private local values, create matching `config/*.local.json` files. Local files override examples and are ignored by git.
+
+Common local override example:
+
+```json
+{
+  "server": {
+    "public_host": "123.45.67.89"
+  },
+  "database": {
+    "password": "your_mysql_password"
+  },
+  "maps": {
+    "enabled_arena_type_ids": [1]
+  }
+}
+```
+
+Environment variables still have the highest priority for compatibility: `WOT_PUBLIC_HOST`, `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`, `WOT_BATTLE_TICK_HZ`, `WOT_CLIENT_ROOT`.
+
+Generated game data is read from `data/_vehicles.json`, `data/_tankmen.json`, and `data/_artefacts.json`. The old root paths are still supported as fallback.
+
 ## База даних — MySQL / MariaDB
 
 Сервер тримає всі персистентні дані (акаунти, валюта, бої, досьє) у MySQL,

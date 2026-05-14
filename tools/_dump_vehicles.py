@@ -116,6 +116,8 @@ NATIONS = ['ussr', 'germany', 'usa']  # 0.6.5 has these
 NATION_ID = {n: i for i, n in enumerate(NATIONS)}
 VEHICLE_CLASS_TAGS = ('lightTank', 'mediumTank', 'heavyTank', 'SPG', 'AT-SPG')
 
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+DATA_DIR = os.path.join(ROOT_DIR, 'data')
 base = r'C:\Users\qwerty\Desktop\World_of_Tanks\res\scripts\item_defs\vehicles'
 
 SHELL_KIND_TO_EFFECT_SUFFIX = {
@@ -683,8 +685,9 @@ for nation in NATIONS:
     if skipped:
         print(f"  [{nation}] skipped {skipped} vehicles")
 
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       '_vehicles.json'), 'w') as f:
+os.makedirs(DATA_DIR, exist_ok=True)
+target = os.path.join(DATA_DIR, '_vehicles.json')
+with open(target, 'w') as f:
     json.dump(result, f, indent=2)
 print(f"\nTotal vehicles: {len(result['vehicles'])}")
-print("Saved -> _vehicles.json")
+print(f"Saved -> {target}")

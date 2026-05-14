@@ -1,5 +1,22 @@
 # Hosting WoT 0.6.5 Emulator for Remote Players
 
+## Server config files
+
+The emulator reads JSON config from `config/*.example.json`, then `config/*.local.json`, then environment variables. Keep real secrets and machine-specific values in local files, for example `config/server.local.json`:
+
+```json
+{
+  "server": {
+    "public_host": "123.45.67.89"
+  },
+  "database": {
+    "password": "your_mysql_password"
+  }
+}
+```
+
+You can also configure battle timers, matchmaking, enabled maps, spawns, capture bases, movement, shot radius, penetration, and artillery settings through the JSON files in `config/`.
+
 Інструкція для адміна сервера: як підняти емулятор так, щоб люди могли підключатись з інтернету.
 
 ## Що потрібно

@@ -1,0 +1,368 @@
+import copy
+import glob
+import json
+import os
+
+
+DEFAULT_CONFIG = {
+    "server": {
+        "login_port": 20016,
+        "baseapp_port": 20017,
+        "public_host": "26.108.162.225",
+        "private_key_path": "private_key.pem"
+    },
+    "database": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "user": "root",
+        "password": "",
+        "name": "wot_emulator"
+    },
+    "account": {
+        "default_credits": 1000000000,
+        "default_gold": 1000000,
+        "default_free_xp": 1000000,
+        "default_slots": 200,
+        "default_berths": 50
+    },
+    "data": {
+        "vehicles_path": "data/_vehicles.json",
+        "tankmen_path": "data/_tankmen.json",
+        "artefacts_path": "data/_artefacts.json",
+        "max_vehicles_inline": None
+    },
+    "matchmaking": {
+        "min_seconds": 15,
+        "max_seconds": 20,
+        "team_balance_mode": "health_weight",
+        "team_weight_field": "maxHealth"
+    },
+    "battle": {
+        "prebattle_timer_seconds": 10,
+        "battle_timer_seconds": 900,
+        "ready_guard_seconds": 1.0,
+        "tick_hz": 60.0,
+        "verbose_debug": False,
+        "targeting_update_interval": 0.08,
+        "base_capture_radius": 50.0,
+        "base_capture_points_max": 100,
+        "base_capture_points_per_second": 1.0,
+        "base_capture_max_points_per_second": 3.0,
+        "base_capture_client_position_max_age": 5.0
+    },
+    "combat": {
+        "client_shot_damage_effects": True,
+        "vehicle_speed_multiplier": 1.0,
+        "vehicle_rotation_multiplier": 1.5,
+        "vehicle_max_health_overrides": {
+            "Lowe": 1650
+        },
+        "default_forward_speed": 10.0,
+        "default_backward_speed": 4.0,
+        "default_rotation_speed_degrees": 30.0,
+        "default_accel": 1.8,
+        "default_decel": 6.0,
+        "default_rot_accel": 2.0,
+        "default_rot_decel": 3.0,
+        "rotation_speed_factor": 1.8,
+        "rotation_accel_factor_xml": 2.0,
+        "rotation_boost_full_weight_t": 35.0,
+        "rotation_boost_none_weight_t": 55.0,
+        "light_rot_accel_weight_t": 18.0,
+        "light_rot_accel_hp_per_ton": 16.0,
+        "light_rot_accel_bonus": 1.45,
+        "accel_hp_per_ton_factor": 0.18,
+        "accel_min": 0.6,
+        "accel_max": 8.0,
+        "accel_light_top_speed_time": 4.0,
+        "accel_medium_top_speed_time": 4.8,
+        "accel_heavy_top_speed_time": 5.5,
+        "speed_decel_ratio": 3.5,
+        "decel_min": 5.0,
+        "decel_max": 24.0,
+        "coast_decel_ratio": 0.55,
+        "coast_decel_min": 2.2,
+        "coast_decel_max": 4.5,
+        "rot_accel_factor": 2.0,
+        "rot_accel_min": 1.0,
+        "rot_decel_ratio": 1.5,
+        "rot_decel_min": 1.5,
+        "min_turn_factor": 1.0,
+        "heavy_min_turn_factor": 0.7,
+        "remote_gun_pitch_scale": 0.35,
+        "remote_gun_pitch_limit_degrees": 12.0,
+        "shot_trace_distance": 1200.0,
+        "target_marker_occlusion_max_age": 3.0,
+        "client_position_max_age": 0.75,
+        "client_avatar_vehicle_pos_max_delta": 80.0,
+        "client_authoritative_vehicle_control": False,
+        "shot_tank_center_height": 1.3,
+        "shot_tank_half_length": 5.2,
+        "shot_tank_half_width": 2.4,
+        "shot_tank_min_height": 0.15,
+        "shot_tank_max_height": 3.8,
+        "shot_tank_hit_radius_h": 6.5,
+        "shot_tank_hit_radius_v": 4.0,
+        "shot_tank_marker_vert_above": 25.0,
+        "shot_armor_min_cos": 0.12,
+        "shot_armor_autoricochet_degrees": 70.0,
+        "shot_penetration_near_distance": 100.0,
+        "shot_penetration_far_distance": 500.0,
+        "shot_he_nonpen_damage_factor": 0.18,
+        "shot_he_min_splash_damage": 1,
+        "artillery_splash_min_factor": 0.35,
+        "artillery_direct_he_damage_factor": 0.55,
+        "artillery_splash_radius_factor": 2.0,
+        "artillery_splash_caliber_factor": 15.0,
+        "artillery_splash_max_radius": 18.0,
+        "artillery_direct_hit_radius_h": 3.4,
+        "artillery_direct_hit_radius_v": 5.5,
+        "artillery_flight_time_min": 0.45,
+        "artillery_flight_time_max": 4.5,
+        "artillery_visible_tracer_time": 1.6,
+        "artillery_visible_tracer_back_distance": 70.0,
+        "artillery_visible_tracer_height": 80.0,
+        "artillery_visible_tracer_gravity_factor": 0.15,
+        "artillery_visible_tracer_min_vx": 8.0,
+        "direct_projectile_impact_min_delay": 0.08,
+        "direct_projectile_impact_max_delay": 0.35,
+        "remote_shot_sound_delay": 0.25,
+        "target_hit_radius": 8.0,
+        "target_aim_radius": 8.0,
+        "shot_target_overshoot": 10.0,
+        "static_obstacle_move_radius_factor": 0.5,
+        "static_obstacle_move_radius_min": 2.0,
+        "static_obstacle_move_radius_max": 6.0,
+        "static_obstacle_shot_radius_pad": 1.0,
+        "static_obstacle_shooter_gap": 4.0,
+        "static_obstacle_target_gap": 4.0,
+        "static_obstacle_y_below": 1.5,
+        "static_obstacle_y_height": 5.0,
+        "static_obstacle_chunk_margin": 80.0,
+        "static_obstacle_terrain_y_tolerance": 6.0,
+        "tank_collision_radius": 2.5,
+        "tank_slope_limit_degrees": 35.0,
+        "tank_slope_soft_degrees": 30.0,
+        "tank_slope_sample_min_xz": 1.0,
+        "tank_slope_smoothing": 0.9,
+        "battle_terrain_chunk_size": 100.0,
+        "battle_terrain_visible_offset": 2,
+        "battle_terrain_normal_step": 1.5,
+        "battle_engine_accel_factor": 0.18,
+        "battle_brake_force_factor": 0.38,
+        "battle_rolling_resistance_factor": 0.35,
+        "battle_stop_speed": 0.035,
+        "battle_stop_rot_speed": 0.004
+    },
+    "maps": {
+        "fallback_arena_type_id": 1,
+        "enabled_arena_type_ids": [1, 2, 4, 5, 6, 7, 8, 10, 11, 13, 15, 18, 19, 23, 28, 29, 34, 35, 37, 38],
+        "geometry_paths": {
+            "1": "spaces/01_karelia/",
+            "2": "spaces/02_malinovka/",
+            "4": "spaces/04_himmelsdorf/",
+            "5": "spaces/05_prohorovka/",
+            "6": "spaces/06_ensk/",
+            "7": "spaces/07_lakeville/",
+            "8": "spaces/08_ruinberg/",
+            "10": "spaces/10_hills/",
+            "11": "spaces/11_murovanka/",
+            "13": "spaces/13_erlenberg/",
+            "15": "spaces/15_komarin/",
+            "18": "spaces/18_cliff/",
+            "19": "spaces/19_monastery/",
+            "23": "spaces/23_westfeld/",
+            "28": "spaces/28_desert/",
+            "29": "spaces/29_el_hallouf/",
+            "34": "spaces/34_redshire/",
+            "35": "spaces/35_steppes/",
+            "37": "spaces/37_caucasus/",
+            "38": "spaces/38_mannerheim_line/"
+        },
+        "default_spawns": {
+            "1": [-273.0, 38.8, -260.0],
+            "2": [-350.0, 80.0, -350.0],
+            "4": [-330.0, 80.0, -330.0],
+            "5": [-360.0, 80.0, -360.0],
+            "6": [-260.0, 80.0, -260.0],
+            "7": [-350.0, 80.0, -350.0],
+            "8": [-330.0, 80.0, -330.0],
+            "10": [-350.0, 80.0, -350.0],
+            "11": [-360.0, 80.0, -360.0],
+            "13": [-350.0, 80.0, -350.0],
+            "15": [-330.0, 80.0, -330.0],
+            "18": [-350.0, 80.0, -350.0],
+            "19": [-350.0, 80.0, -350.0],
+            "23": [-350.0, 80.0, -350.0],
+            "28": [-360.0, 80.0, -360.0],
+            "29": [-360.0, 80.0, -360.0],
+            "34": [-360.0, 80.0, -360.0],
+            "35": [-360.0, 80.0, -360.0],
+            "37": [-350.0, 80.0, -350.0],
+            "38": [-350.0, 80.0, -350.0]
+        },
+        "team_spawns": {
+            "1": {
+                "1": [
+                    [-273.0, 38.8, -260.0],
+                    [-259.0, 38.6, -273.0],
+                    [-245.0, 38.4, -258.0],
+                    [-270.0, 38.7, -240.0],
+                    [-252.0, 38.5, -236.0],
+                    [-235.0, 38.3, -246.0],
+                    [-260.0, 38.5, -222.0],
+                    [-240.0, 38.3, -222.0],
+                    [-222.0, 38.1, -235.0]
+                ],
+                "2": [
+                    [273.0, 38.8, 260.0],
+                    [259.0, 38.6, 273.0],
+                    [245.0, 38.4, 258.0],
+                    [270.0, 38.7, 240.0],
+                    [252.0, 38.5, 236.0],
+                    [235.0, 38.3, 246.0],
+                    [260.0, 38.5, 222.0],
+                    [240.0, 38.3, 222.0],
+                    [222.0, 38.1, 235.0]
+                ]
+            }
+        },
+        "capture_bases": {
+            "1": {
+                "1": [-405.14, -398.27],
+                "2": [396.27, 402.37]
+            }
+        }
+    }
+}
+
+_CONFIG = None
+_CONFIG_ROOT = None
+
+
+def _root_path(root_path):
+    if root_path is None:
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+    return os.path.abspath(root_path)
+
+
+def _merge_dict(base, override):
+    for key, value in dict(override or {}).items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _merge_dict(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def _read_json(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError(f"Config file must contain a JSON object: {path}")
+    return data
+
+
+def _set_path(config, path, value):
+    current = config
+    parts = path.split(".")
+    for part in parts[:-1]:
+        current = current.setdefault(part, {})
+    current[parts[-1]] = value
+
+
+def _env_int(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _apply_env(config):
+    env_map = (
+        ("WOT_PUBLIC_HOST", "server.public_host", str),
+        ("MYSQL_HOST", "database.host", str),
+        ("MYSQL_PORT", "database.port", _env_int),
+        ("MYSQL_USER", "database.user", str),
+        ("MYSQL_PASSWORD", "database.password", str),
+        ("MYSQL_DB", "database.name", str),
+        ("WOT_BATTLE_TICK_HZ", "battle.tick_hz", _env_float),
+        ("WOT_BATTLE_VERBOSE_DEBUG", "battle.verbose_debug", _env_bool),
+        ("WOT_CLIENT_SHOT_DAMAGE_EFFECTS", "combat.client_shot_damage_effects", _env_bool),
+        ("WOT_PRIVATE_KEY", "server.private_key_path", str),
+        ("WOT_CLIENT_ROOT", "paths.client_root", str)
+    )
+    for env_name, path, caster in env_map:
+        if env_name not in os.environ:
+            continue
+        if caster is str:
+            value = os.environ.get(env_name)
+        else:
+            value = caster(env_name, None)
+        if value is not None:
+            _set_path(config, path, value)
+    return config
+
+
+def load_config(root_path=None, force=False):
+    global _CONFIG, _CONFIG_ROOT
+    root = _root_path(root_path)
+    if _CONFIG is not None and _CONFIG_ROOT == root and not force:
+        return _CONFIG
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config_dir = os.path.join(root, "config")
+    for pattern in ("*.example.json", "*.local.json"):
+        for path in sorted(glob.glob(os.path.join(config_dir, pattern))):
+            _merge_dict(config, _read_json(path))
+    _apply_env(config)
+    _CONFIG = config
+    _CONFIG_ROOT = root
+    return config
+
+
+def get_config(root_path=None):
+    return load_config(root_path)
+
+
+def get_value(config, path, default=None):
+    current = config
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return default
+        current = current[part]
+    return current
+
+
+def resolve_existing_path(root_path, configured_path, legacy_name=None):
+    candidates = []
+    if configured_path:
+        if os.path.isabs(configured_path):
+            candidates.append(os.path.normpath(configured_path))
+        else:
+            candidates.append(os.path.normpath(os.path.join(root_path, configured_path)))
+    if legacy_name:
+        candidates.append(os.path.normpath(os.path.join(root_path, legacy_name)))
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return candidates[0] if candidates else None

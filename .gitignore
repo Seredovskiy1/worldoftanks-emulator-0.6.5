@@ -1,0 +1,7 @@
+config/*.local.json
+*.log
+*.err
+__pycache__/
+*/__pycache__/
+dist/
+WoT_PrivateServer.zip

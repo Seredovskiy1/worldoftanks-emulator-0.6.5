@@ -124,6 +124,8 @@ def parse_groups(root, kind):
 
 NATIONS = ['ussr', 'germany', 'usa']
 NATION_ID = {n: i for i, n in enumerate(NATIONS)}
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+DATA_DIR = os.path.join(ROOT_DIR, 'data')
 BASE = r'C:\Users\qwerty\Desktop\World_of_Tanks\res\scripts\item_defs\tankmen'
 
 
@@ -149,10 +151,11 @@ def main():
               f'normalGroups={len(normal)} premiumGroups={len(premium)} '
               f'firstNames={len(all_first)} lastNames={len(all_last)} '
               f'icons={len(all_icon)}')
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           '_tankmen.json'), 'w', encoding='utf-8') as f:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    target = os.path.join(DATA_DIR, '_tankmen.json')
+    with open(target, 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
-    print('[*] _tankmen.json written')
+    print(f'[*] {target} written')
 
 
 if __name__ == '__main__':

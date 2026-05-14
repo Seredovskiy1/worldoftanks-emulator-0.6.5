@@ -1,0 +1,42 @@
+{
+  "matchmaking": {
+    "min_seconds": 15,
+    "max_seconds": 20,
+    "team_balance_mode": "health_weight",
+    "team_weight_field": "maxHealth"
+  },
+  "battle": {
+    "prebattle_timer_seconds": 10,
+    "battle_timer_seconds": 900,
+    "ready_guard_seconds": 1.0,
+    "tick_hz": 60.0,
+    "verbose_debug": false,
+    "targeting_update_interval": 0.08,
+    "base_capture_radius": 50.0,
+    "base_capture_points_max": 100,
+    "base_capture_points_per_second": 1.0,
+    "base_capture_max_points_per_second": 3.0,
+    "base_capture_client_position_max_age": 5.0
+  },
+  "combat": {
+    "client_shot_damage_effects": true,
+    "vehicle_speed_multiplier": 1.0,
+    "vehicle_rotation_multiplier": 1.5,
+    "vehicle_max_health_overrides": {
+      "Lowe": 1650
+    },
+    "default_forward_speed": 10.0,
+    "default_backward_speed": 4.0,
+    "default_rotation_speed_degrees": 30.0,
+    "default_accel": 1.8,
+    "default_decel": 6.0,
+    "default_rot_accel": 2.0,
+    "default_rot_decel": 3.0,
+    "shot_tank_hit_radius_h": 6.5,
+    "shot_tank_hit_radius_v": 4.0,
+    "target_hit_radius": 8.0,
+    "target_aim_radius": 8.0,
+    "artillery_splash_radius_factor": 2.0,
+    "artillery_splash_max_radius": 18.0
+  }
+}
