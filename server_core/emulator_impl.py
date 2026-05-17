@@ -64,6 +64,7 @@ DEFAULT_GOLD    = int(get_value(CONFIG, 'account.default_gold', 1000000))
 DEFAULT_FREE_XP = int(get_value(CONFIG, 'account.default_free_xp', 1000000))
 DEFAULT_SLOTS   = int(get_value(CONFIG, 'account.default_slots', 200))
 DEFAULT_BERTHS  = int(get_value(CONFIG, 'account.default_berths', 50))
+UNLOCK_ALL_VEHICLES = bool(get_value(CONFIG, 'account.unlock_all_vehicles', False))
 
 NATION_NAMES = ('ussr', 'germany', 'usa', 'china', 'france', 'uk', 'japan')
 active_battle_accounts = {}
@@ -1940,16 +1941,64 @@ def collect_shell_prices(veh_list):
     return shell_prices
 
 
+
 _TANKMEN_CONFIG_CACHE = None
 _ARTEFACTS_CONFIG_CACHE = None
 
 ITEM_TYPE_VEHICLE         = 1
+ITEM_TYPE_CHASSIS         = 2
+ITEM_TYPE_TURRET          = 3
+ITEM_TYPE_GUN             = 4
+ITEM_TYPE_ENGINE          = 5
+ITEM_TYPE_FUEL_TANK       = 6
+ITEM_TYPE_RADIO           = 7
 ITEM_TYPE_TANKMAN         = 8
 ITEM_TYPE_OPTIONAL_DEVICE = 9
 ITEM_TYPE_SHELL           = 10
 ITEM_TYPE_EQUIPMENT       = 11
 
 NATION_NONE_INDEX = 15
+
+_COMPONENT_TYPE_MAP = {
+    'chassis':  ITEM_TYPE_CHASSIS,
+    'engines':  ITEM_TYPE_ENGINE,
+    'fuelTanks': ITEM_TYPE_FUEL_TANK,
+    'radios':   ITEM_TYPE_RADIO,
+    'turrets':  ITEM_TYPE_TURRET,
+    'guns':     ITEM_TYPE_GUN,
+}
+
+_ALL_UNLOCK_DESCRIPTORS_CACHE = None
+
+
+def generate_all_unlock_descriptors():
+    global _ALL_UNLOCK_DESCRIPTORS_CACHE
+    if _ALL_UNLOCK_DESCRIPTORS_CACHE is not None:
+        return _ALL_UNLOCK_DESCRIPTORS_CACHE
+    import json as _json
+    json_path = resolve_existing_path(
+        ROOT_DIR, get_value(CONFIG, 'data.vehicles_path', 'data/_vehicles.json'),
+        '_vehicles.json')
+    if not os.path.exists(json_path):
+        return set()
+    with open(json_path, 'r') as f:
+        data = _json.load(f)
+    unlocks = set()
+    for v in data.get('vehicles', []):
+        nation_id = int(v.get('nationID', 0))
+        vtype_id = int(v.get('vehicleTypeID', 0))
+        unlocks.add((vtype_id << 8) | (nation_id << 4) | ITEM_TYPE_VEHICLE)
+    components = data.get('components', {})
+    for nation_id_str, comp_data in components.items():
+        nation_id = int(nation_id_str)
+        for comp_key, item_type in _COMPONENT_TYPE_MAP.items():
+            for comp_id in comp_data.get(comp_key, []):
+                comp_id = int(comp_id)
+                if comp_id > 0 and comp_id < 65535:
+                    unlocks.add((comp_id << 8) | (nation_id << 4) | item_type)
+    _ALL_UNLOCK_DESCRIPTORS_CACHE = unlocks
+    print(f"[*] generate_all_unlock_descriptors: {len(unlocks)} items")
+    return unlocks
 
 ROLE_COMMANDER = 1
 ROLE_RADIOMAN  = 2
@@ -1997,9 +2046,10 @@ def load_artefacts_config():
 
 
 def reset_data_caches():
-    global _TANKMEN_CONFIG_CACHE, _ARTEFACTS_CONFIG_CACHE, _MOTION_WARNED
+    global _TANKMEN_CONFIG_CACHE, _ARTEFACTS_CONFIG_CACHE, _MOTION_WARNED, _ALL_UNLOCK_DESCRIPTORS_CACHE
     _TANKMEN_CONFIG_CACHE = None
     _ARTEFACTS_CONFIG_CACHE = None
+    _ALL_UNLOCK_DESCRIPTORS_CACHE = None
     _MOTION_WARNED = False
     STATIC_OBSTACLE_CACHE.clear()
     STATIC_OBSTACLE_INDEX_CACHE.clear()
@@ -2941,7 +2991,7 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
             'slots': max(slots_count, int(acc['slots'])),
             'berths': int(acc['berths']),
             'vehTypeXP': {}, 'tankmen': {},
-            'unlocks': set(acc['unlocks']),
+            'unlocks': (set(acc['unlocks']) | generate_all_unlock_descriptors()) if UNLOCK_ALL_VEHICLES else set(acc['unlocks']),
             'eliteVehicles': set(acc['elite_vehicles']),
             'doubleXPVehs': set(acc['double_xp_vehs']),
             'dossier': '', 'clanInfo': None,

@@ -23,7 +23,8 @@ DEFAULT_CONFIG = {
         "default_gold": 1000000,
         "default_free_xp": 1000000,
         "default_slots": 200,
-        "default_berths": 50
+        "default_berths": 50,
+        "unlock_all_vehicles": False
     },
     "data": {
         "vehicles_path": "data/_vehicles.json",

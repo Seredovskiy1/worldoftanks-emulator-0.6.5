@@ -484,7 +484,7 @@ def get_vehicle_max_health(veh_node, turret_node, turret_name):
     return value + turret_value
 
 
-result = {'vehicles': []}
+result = {'vehicles': [], 'components': {}}
 
 for nation in NATIONS:
     nid = NATION_ID[nation]
@@ -499,6 +499,14 @@ for nation in NATIONS:
     gun_map = parse_components_xml(os.path.join(comp_dir, 'guns.xml'))
     shells_map = parse_shells_xml(os.path.join(comp_dir, 'shells.xml'), nid)
 
+    result['components'][str(nid)] = {
+        'chassis': sorted(set(v for v in chassis_map.values() if v > 0)),
+        'engines': sorted(set(v for v in engines_map.values() if v > 0)),
+        'fuelTanks': sorted(set(v for v in fuel_map.values() if v > 0)),
+        'radios': sorted(set(v for v in radio_map.values() if v > 0)),
+        'turrets': sorted(set(v for v in turret_map.values() if v > 0)),
+        'guns': sorted(set(v for v in gun_map.values() if v > 0)),
+    }
     print(f"\n=== {nation} (nationID={nid}) ===")
 
     skipped = 0
