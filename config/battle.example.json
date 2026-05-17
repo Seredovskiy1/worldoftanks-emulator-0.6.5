@@ -40,6 +40,21 @@
     "artillery_splash_max_radius": 18.0,
     "static_obstacle_footprint_shrink": 0.90,
     "static_obstacle_tank_halo": 1.2,
-    "static_obstacle_index_cell": 50.0
+    "static_obstacle_index_cell": 50.0,
+    "spotting_enabled": true,
+    "spotting_auto_reveal_distance": 50.0,
+    "spotting_max_range": 445.0,
+    "spotting_stationary_speed": 0.5,
+    "spotting_shot_camo_penalty_seconds": 5.0,
+    "spotting_bush_radius": 7.5,
+    "spotting_bush_bonus": 0.08,
+    "spotting_bush_max_bonus": 0.25,
+    "spotting_bush_patterns": [
+      "bush",
+      "scrub",
+      "juniper",
+      "shrub",
+      "pampas"
+    ]
   }
 }

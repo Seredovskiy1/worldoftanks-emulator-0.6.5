@@ -59,6 +59,34 @@ class _FakeBattleModule:
 
     def send_remote_vehicle(self, sock, observer, sess):
         self.remote_vehicle_intros.append((observer, sess))
+        account_id = sess.get("account_id")
+        if account_id:
+            observer.setdefault("known_remote_accounts", set()).add(account_id)
+
+    def is_vehicle_visible_to(self, observer, sess):
+        hidden_for = sess.get("force_hidden_for", set())
+        if observer.get("account_id") in hidden_for:
+            return False
+        return not sess.get("force_hidden", False)
+
+    def hide_remote_vehicle(self, sock, observer, sess):
+        account_id = sess.get("account_id")
+        known = observer.setdefault("known_remote_accounts", set())
+        if account_id not in known:
+            return False
+        known.discard(account_id)
+        self.send_avatar_messages(sock, observer.get("addr"), observer,
+                                  b"LEAVE", "", reliable=True)
+        return True
+
+    def update_remote_vehicle_visibility(self, sock, observer, sess):
+        if not self.is_vehicle_visible_to(observer, sess):
+            self.hide_remote_vehicle(sock, observer, sess)
+            return False
+        account_id = sess.get("account_id")
+        if account_id not in observer.setdefault("known_remote_accounts", set()):
+            self.send_remote_vehicle(sock, observer, sess)
+        return True
 
     def get_effective_vehicle_pos(self, sess, fallback=None):
         pos = sess.get("battle_pos")
@@ -203,6 +231,19 @@ def _message_payloads(messages, wanted_id):
     return out
 
 
+def _detailed_position_entity_ids(messages):
+    out = []
+    size = len(emulator.build_vehicle_motion_update_for(
+        1, (0.0, 0.0, 0.0), 0.0))
+    pos = 0
+    while pos + size <= len(messages):
+        if messages[pos] != emulator.CLIENT_DETAILED_POSITION_MSG_ID:
+            break
+        out.append(struct.unpack_from("<I", messages, pos + 1)[0])
+        pos += size
+    return out
+
+
 def _make_loading_session(account_id, match_id=77, ready=False):
     sess = _make_combat_session(account_id, 1 if account_id % 2 else 2,
                                 (0.0, 0.0, float(account_id)))
@@ -257,6 +298,112 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertTrue(vehicles[name]["isATSPG"])
             self.assertFalse(emulator.is_artillery_vehicle(vehicles[name]))
         self.assertFalse(emulator.is_artillery_vehicle(vehicles["T-34"]))
+
+    def test_light_tank_spots_farther_than_heavy_by_fallback_view_range(self):
+        light = _make_combat_session(
+            41, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "lightTank"})
+        heavy = _make_combat_session(
+            42, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank"})
+        target = _make_combat_session(
+            43, 2, (0.0, 0.0, 320.0),
+            vehicle={"vehicleClass": "heavyTank"})
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())):
+            self.assertTrue(emulator.is_vehicle_visible_to(light, target))
+            self.assertFalse(emulator.is_vehicle_visible_to(heavy, target))
+
+    def test_heavy_does_not_spot_distant_camouflaged_target(self):
+        observer = _make_combat_session(
+            44, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank"})
+        target = _make_combat_session(
+            45, 2, (0.0, 0.0, 200.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "invisibilityStill": 0.8,
+                "invisibilityMoving": 0.7,
+            })
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())):
+            self.assertFalse(emulator.is_vehicle_visible_to(observer, target))
+
+    def test_auto_reveal_distance_always_works(self):
+        observer = _make_combat_session(
+            46, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank"})
+        target = _make_combat_session(
+            47, 2, (0.0, 0.0, 49.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "invisibilityStill": 0.95,
+                "invisibilityMoving": 0.95,
+            })
+
+        self.assertTrue(emulator.is_vehicle_visible_to(observer, target))
+
+    def test_moving_target_is_easier_to_spot_than_still_target(self):
+        observer = _make_combat_session(
+            48, 1, (0.0, 0.0, 0.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "circularVisionRadius": 360.0,
+            })
+        target = _make_combat_session(
+            49, 2, (0.0, 0.0, 250.0),
+            vehicle={
+                "vehicleClass": "mediumTank",
+                "invisibilityMoving": 0.1,
+                "invisibilityStill": 0.5,
+            })
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())):
+            target["battle_speed"] = 0.0
+            self.assertFalse(emulator.is_vehicle_visible_to(observer, target))
+            target["battle_speed"] = 8.0
+            self.assertTrue(emulator.is_vehicle_visible_to(observer, target))
+
+    def test_bush_between_observer_and_target_reduces_spotting(self):
+        observer = _make_combat_session(
+            50, 1, (0.0, 0.0, 0.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "circularVisionRadius": 360.0,
+            })
+        target = _make_combat_session(
+            51, 2, (0.0, 0.0, 320.0),
+            vehicle={
+                "vehicleClass": "mediumTank",
+                "invisibilityMoving": 0.1,
+                "invisibilityStill": 0.1,
+            })
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())):
+            self.assertTrue(emulator.is_vehicle_visible_to(observer, target))
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter((
+                                   (0.0, 160.0, 8.0, b"speedtree/bush.spt"),
+                               ))):
+            self.assertFalse(emulator.is_vehicle_visible_to(observer, target))
+
+    def test_allies_are_always_visible(self):
+        observer = _make_combat_session(
+            52, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank"})
+        target = _make_combat_session(
+            53, 1, (0.0, 0.0, 1200.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "invisibilityMoving": 0.95,
+                "invisibilityStill": 0.95,
+            })
+
+        self.assertTrue(emulator.is_vehicle_visible_to(observer, target))
 
     def test_channel_reliable_and_unreliable_sequences_are_separate(self):
         sess = {"in_seq_at": 0}
@@ -519,6 +666,68 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(fake.avatar_sends[0]["msgs"][0],
                          emulator.CLIENT_DETAILED_POSITION_MSG_ID)
         self.assertIsNotNone(sess.get("battle_last_filter_reset_time"))
+
+    def test_hidden_enemy_gets_no_intro_or_motion_packets(self):
+        fake = _FakeBattleModule()
+        observer = _make_session(account_id=3, period_active=True)
+        source = _make_session(account_id=4, period_active=True)
+        source["force_hidden_for"] = {observer["account_id"]}
+        fake.active_battle_accounts[3] = observer
+        fake.active_battle_accounts[4] = source
+        runtime = EventLoopRuntime(fake)
+
+        runtime._run_battle_tick_once(sock=object())
+
+        self.assertNotIn((observer, source), fake.remote_vehicle_intros)
+        remote_id = fake.get_remote_vehicle_id(source)
+        ids_to_observer = []
+        for send in fake.avatar_sends:
+            if send["addr"] == observer["addr"]:
+                ids_to_observer.extend(_detailed_position_entity_ids(send["msgs"]))
+        self.assertNotIn(remote_id, ids_to_observer)
+
+    def test_visible_enemy_gets_intro_once_and_motion_packets_after(self):
+        fake = _FakeBattleModule()
+        observer = _make_session(account_id=5, period_active=True)
+        source = _make_session(account_id=6, period_active=True)
+        fake.active_battle_accounts[5] = observer
+        fake.active_battle_accounts[6] = source
+        runtime = EventLoopRuntime(fake)
+
+        runtime._run_battle_tick_once(sock=object())
+        runtime._run_battle_tick_once(sock=object())
+
+        self.assertEqual(fake.remote_vehicle_intros.count((observer, source)), 1)
+        remote_id = fake.get_remote_vehicle_id(source)
+        ids_to_observer = []
+        for send in fake.avatar_sends:
+            if send["addr"] == observer["addr"]:
+                ids_to_observer.extend(_detailed_position_entity_ids(send["msgs"]))
+        self.assertGreaterEqual(ids_to_observer.count(remote_id), 2)
+
+    def test_losing_visibility_sends_leave_aoi_and_clears_known_state(self):
+        fake = _FakeBattleModule()
+        observer = _make_session(account_id=7, period_active=True)
+        source = _make_session(account_id=8, period_active=True)
+        observer["known_remote_accounts"].add(source["account_id"])
+        source["force_hidden_for"] = {observer["account_id"]}
+        fake.active_battle_accounts[7] = observer
+        fake.active_battle_accounts[8] = source
+        runtime = EventLoopRuntime(fake)
+
+        runtime._run_battle_tick_once(sock=object())
+
+        self.assertNotIn(source["account_id"], observer["known_remote_accounts"])
+        leave_sends = [send for send in fake.avatar_sends
+                       if send["addr"] == observer["addr"] and
+                       send["msgs"] == b"LEAVE"]
+        self.assertEqual(len(leave_sends), 1)
+        remote_id = fake.get_remote_vehicle_id(source)
+        ids_to_observer = []
+        for send in fake.avatar_sends:
+            if send["addr"] == observer["addr"]:
+                ids_to_observer.extend(_detailed_position_entity_ids(send["msgs"]))
+        self.assertNotIn(remote_id, ids_to_observer)
 
     def test_first_active_tick_records_filter_reset_baseline_without_emitting(self):
         fake = _FakeBattleModule()
@@ -1537,6 +1746,94 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(len(sent), before_callback + 1)
         self.assertEqual(_message_ids(sent[-1][1]),
                          [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID])
+
+    def test_firing_can_reduce_camo_and_reveal_shooter(self):
+        source = _make_combat_session(
+            187, 2, (0.0, 0.0, 300.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "invisibilityMoving": 0.9,
+                "invisibilityStill": 0.9,
+                "gunInvisibilityFactorAtShot": 0.1,
+            })
+        observer = _make_combat_session(
+            188, 1, (0.0, 0.0, 0.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "circularVisionRadius": 360.0,
+            })
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+        scheduled = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return None
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())):
+            self.assertFalse(emulator.is_vehicle_visible_to(observer, source))
+            with mock.patch.object(emulator, "build_remote_vehicle_messages",
+                                   return_value=b"INTRO"), \
+                    mock.patch.object(emulator, "send_avatar_messages",
+                                      side_effect=capture_send), \
+                    mock.patch.object(emulator, "runtime_call_later",
+                                      side_effect=capture_later):
+                emulator.broadcast_remote_vehicle_shot(
+                    object(), source, 321.0, (0.0, 2.0, 300.0),
+                    (0.0, 0.0, -100.0), 9.81, 0)
+
+        self.assertEqual(len(sent), 1)
+        self.assertIs(sent[0][0], observer)
+        self.assertTrue(sent[0][1].startswith(b"INTRO"))
+        self.assertIn(source["account_id"], observer["known_remote_accounts"])
+        self.assertEqual(len(scheduled), 1)
+
+    def test_hidden_remote_shot_does_not_force_intro(self):
+        source = _make_combat_session(
+            189, 2, (0.0, 0.0, 300.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "invisibilityMoving": 0.95,
+                "invisibilityStill": 0.95,
+                "gunInvisibilityFactorAtShot": 1.0,
+            })
+        observer = _make_combat_session(
+            190, 1, (0.0, 0.0, 0.0),
+            vehicle={
+                "vehicleClass": "heavyTank",
+                "circularVisionRadius": 300.0,
+            })
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())), \
+                mock.patch.object(emulator, "build_remote_vehicle_messages",
+                                  return_value=b"INTRO") as build_intro, \
+                mock.patch.object(emulator, "send_avatar_messages",
+                                  side_effect=capture_send):
+            emulator.broadcast_remote_vehicle_shot(
+                object(), source, 654.0, (0.0, 2.0, 300.0),
+                (0.0, 0.0, -100.0), 9.81, 0)
+
+        self.assertEqual(len(sent), 1)
+        self.assertIs(sent[0][0], observer)
+        self.assertFalse(sent[0][1].startswith(b"INTRO"))
+        self.assertEqual(_message_ids(sent[0][1]),
+                         [emulator.AVATAR_SHOW_TRACER_MSG_ID])
+        self.assertNotIn(source["account_id"], observer["known_remote_accounts"])
+        build_intro.assert_not_called()
 
     def test_direct_shot_impact_is_scheduled_with_stop_and_explode(self):
         shell = _make_shell(compact=9104, penetration=200.0, damage=100.0,

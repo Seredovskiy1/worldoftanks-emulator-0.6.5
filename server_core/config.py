@@ -94,6 +94,35 @@ DEFAULT_CONFIG = {
         "remote_gun_pitch_limit_degrees": 12.0,
         "shot_trace_distance": 1200.0,
         "target_marker_occlusion_max_age": 3.0,
+        "spotting_enabled": True,
+        "spotting_auto_reveal_distance": 50.0,
+        "spotting_max_range": 445.0,
+        "spotting_stationary_speed": 0.5,
+        "spotting_shot_camo_penalty_seconds": 5.0,
+        "spotting_view_range_fallbacks": {
+            "lightTank": 360.0,
+            "mediumTank": 330.0,
+            "AT-SPG": 330.0,
+            "heavyTank": 300.0,
+            "SPG": 300.0
+        },
+        "spotting_camo_fallbacks": {
+            "lightTank": [0.18, 0.22],
+            "mediumTank": [0.12, 0.17],
+            "AT-SPG": [0.10, 0.18],
+            "heavyTank": [0.05, 0.10],
+            "SPG": [0.04, 0.08]
+        },
+        "spotting_bush_radius": 7.5,
+        "spotting_bush_bonus": 0.08,
+        "spotting_bush_max_bonus": 0.25,
+        "spotting_bush_patterns": [
+            "bush",
+            "scrub",
+            "juniper",
+            "shrub",
+            "pampas"
+        ],
         "client_position_max_age": 0.75,
         "client_avatar_vehicle_pos_max_delta": 80.0,
         "client_authoritative_vehicle_control": False,

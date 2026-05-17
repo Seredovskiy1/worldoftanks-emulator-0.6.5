@@ -447,6 +447,26 @@ def get_vehicle_speed_limits(veh_node):
     return [forward, backward]
 
 
+def vehicle_view_range_fallback(vehicle_class):
+    return {
+        'lightTank': 360.0,
+        'mediumTank': 330.0,
+        'AT-SPG': 330.0,
+        'heavyTank': 300.0,
+        'SPG': 300.0,
+    }.get(vehicle_class, 320.0)
+
+
+def vehicle_invisibility_fallback(vehicle_class):
+    return {
+        'lightTank': (0.18, 0.22),
+        'mediumTank': (0.12, 0.17),
+        'AT-SPG': (0.10, 0.18),
+        'heavyTank': (0.05, 0.10),
+        'SPG': (0.04, 0.08),
+    }.get(vehicle_class, (0.10, 0.15))
+
+
 def make_default_ammo(shots, max_ammo):
     ammo = []
     current = 0
@@ -643,6 +663,19 @@ for nation in NATIONS:
         cd = make_compact_descr(nid, vtype_id, chassis_id, engine_id,
                                 fuel_id, radio_id, turret_id, gun_id)
         vehicle_class = vehicle_class_from_tags(vehicle_tags)
+        fallback_moving, fallback_still = vehicle_invisibility_fallback(vehicle_class)
+        invisibility_node = find(veh, 'invisibility')
+        circular_vision_radius = get_float(
+            find(turret_veh_node, 'circularVisionRadius'),
+            get_float(find(turret_node, 'circularVisionRadius'),
+                      vehicle_view_range_fallback(vehicle_class)))
+        invisibility_moving = get_float(
+            find(invisibility_node, 'moving'), fallback_moving)
+        invisibility_still = get_float(
+            find(invisibility_node, 'still'), fallback_still)
+        gun_invisibility_factor_at_shot = get_float(
+            find(gun_veh_node, 'invisibilityFactorAtShot'),
+            get_float(find(gun_shared_node, 'invisibilityFactorAtShot'), 0.0))
         print(f"  [{vtype_id:3d}] {veh_name:25s} ch={chassis_id:3d} en={engine_id:3d} "
               f"fl={fuel_id:3d} rd={radio_id:3d} tr={turret_id:3d} gn={gun_id:3d} crew={crew_size}")
         result['vehicles'].append({
@@ -662,6 +695,10 @@ for nation in NATIONS:
             'turretRotationSpeed': turret_rotation_speed,
             'gunRotationSpeed': gun_rotation_speed,
             'reloadTime': reload_time,
+            'circularVisionRadius': circular_vision_radius,
+            'invisibilityMoving': invisibility_moving,
+            'invisibilityStill': invisibility_still,
+            'gunInvisibilityFactorAtShot': gun_invisibility_factor_at_shot,
             'enginePower': engine_power,
             'totalWeightKg': total_weight_kg,
             'hpPerTon': hp_per_ton,

@@ -186,8 +186,17 @@ class EventLoopRuntime:
                     continue
                 if observer.get("battle_match_id") != sess.get("battle_match_id"):
                     continue
-                if source_account_id not in observer.setdefault("known_remote_accounts", set()):
+                known = observer.setdefault("known_remote_accounts", set())
+                update_visibility = getattr(mod, "update_remote_vehicle_visibility", None)
+                if update_visibility is not None:
+                    if not update_visibility(sock, observer, sess):
+                        continue
+                    if source_account_id not in known:
+                        continue
+                elif source_account_id not in known:
                     mod.send_remote_vehicle(sock, observer, sess)
+                    if source_account_id not in known:
+                        continue
                 payload = None
                 for entry in remote_payloads:
                     if entry[0] is observer:
