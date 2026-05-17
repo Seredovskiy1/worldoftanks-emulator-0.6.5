@@ -753,7 +753,7 @@ class RuntimeCoreTests(unittest.TestCase):
         original_shrink = emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK
         try:
             emulator.STATIC_OBSTACLE_CACHE.clear()
-            emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK = 0.95
+            emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK = 0.90
             with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
                     mock.patch.object(emulator, "read_model_obstacle_bounds",
                                       return_value=(-4.0, -1.0, -4.0, 4.0, 1.0, 4.0)), \
@@ -762,9 +762,9 @@ class RuntimeCoreTests(unittest.TestCase):
                     emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
             emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = obstacles
             blocked = emulator.find_blocking_static_obstacle(
-                emulator.ARENA_TYPE_KARELIA, 3.7, 0.0, tank_radius=0.1)
+                emulator.ARENA_TYPE_KARELIA, 3.5, 0.0, tank_radius=0.1)
             clear = emulator.find_blocking_static_obstacle(
-                emulator.ARENA_TYPE_KARELIA, 4.0, 0.0, tank_radius=0.1)
+                emulator.ARENA_TYPE_KARELIA, 3.8, 0.0, tank_radius=0.1)
         finally:
             emulator.STATIC_OBSTACLE_CACHE.clear()
             emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
@@ -776,10 +776,10 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIsNotNone(footprint)
         xs = [x for x, _ in footprint]
         zs = [z for _, z in footprint]
-        self.assertAlmostEqual(max(xs), 3.8, places=4)
-        self.assertAlmostEqual(min(xs), -3.8, places=4)
-        self.assertAlmostEqual(max(zs), 3.8, places=4)
-        self.assertAlmostEqual(min(zs), -3.8, places=4)
+        self.assertAlmostEqual(max(xs), 3.6, places=4)
+        self.assertAlmostEqual(min(xs), -3.6, places=4)
+        self.assertAlmostEqual(max(zs), 3.6, places=4)
+        self.assertAlmostEqual(min(zs), -3.6, places=4)
         self.assertIsNotNone(blocked)
         self.assertIsNone(clear)
 

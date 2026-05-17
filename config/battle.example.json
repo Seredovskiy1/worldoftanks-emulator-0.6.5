@@ -38,7 +38,7 @@
     "target_aim_radius": 8.0,
     "artillery_splash_radius_factor": 2.0,
     "artillery_splash_max_radius": 18.0,
-    "static_obstacle_footprint_shrink": 0.95,
+    "static_obstacle_footprint_shrink": 0.90,
     "static_obstacle_tank_halo": 1.2,
     "static_obstacle_index_cell": 50.0
   }

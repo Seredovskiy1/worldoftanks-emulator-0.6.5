@@ -3559,7 +3559,7 @@ STATIC_OBSTACLE_CHUNK_MARGIN = float(get_value(
 STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE = float(get_value(
     CONFIG, 'combat.static_obstacle_terrain_y_tolerance', 6.0))
 STATIC_OBSTACLE_FOOTPRINT_SHRINK = max(0.05, min(1.0, float(get_value(
-    CONFIG, 'combat.static_obstacle_footprint_shrink', 0.95))))
+    CONFIG, 'combat.static_obstacle_footprint_shrink', 0.90))))
 STATIC_OBSTACLE_TANK_HALO = max(0.0, float(get_value(
     CONFIG, 'combat.static_obstacle_tank_halo', 1.2)))
 STATIC_OBSTACLE_INDEX_CELL = max(8.0, float(get_value(
@@ -3769,7 +3769,7 @@ def _load_map_settings():
 ARENA_TYPE_FALLBACK, ENABLED_ARENA_TYPE_IDS = _load_map_settings()
 
 STATIC_OBSTACLE_MODEL_RE = re.compile(
-    rb'content/Environment/[^\x00]{0,180}(?:[Ss]tones?|[Rr]ocks?)[^\x00]{0,180}\.modelx?')
+    rb'content/(?:Environment|Buildings|BuildingsRare|MillitaryInstallations)/[^\x00]{0,200}\.modelx?')
 STATIC_OBSTACLE_CACHE = {}
 STATIC_OBSTACLE_INDEX_CACHE = {}
 STATIC_MODEL_RADIUS_CACHE = {}
@@ -6255,6 +6255,12 @@ def find_client_res_file(resource_path: bytes):
 
 def stone_obstacle_radius_fallback(model_path: bytes) -> float:
     name = model_path.lower()
+    if b'/buildings/' in name or b'/buildingsrare/' in name:
+        return 8.0
+    if b'/millitaryinstallations/' in name:
+        if b'pillbox' in name or b'bunker' in name or b'casemate' in name:
+            return 6.0
+        return 5.0
     if b'stones03' in name or b'stones04' in name:
         return 10.0
     if b'stones01' in name or b'stones02' in name or b'stones05' in name:
@@ -6645,13 +6651,31 @@ def segment_hits_footprint(prev_x: float, prev_z: float, new_x: float,
     return False
 
 
+_STATIC_OBSTACLE_PREFIXES = (
+    b'content/buildings/',
+    b'content/buildingsrare/',
+    b'content/millitaryinstallations/',
+)
+
+_STATIC_OBSTACLE_ENV_KEYWORDS = (
+    b'stone', b'rock', b'memorial', b'snagheap',
+)
+
+
 def is_static_obstacle_model(model_path: bytes) -> bool:
     name = (model_path or b'').lower()
-    return (
-        name.startswith(b'content/environment/') and
-        (name.endswith(b'.model') or name.endswith(b'.modelx')) and
-        (b'stone' in name or b'rock' in name)
-    )
+    if not (name.endswith(b'.model') or name.endswith(b'.modelx')):
+        return False
+    if b'/lod1/' in name or b'/lod2/' in name:
+        return False
+    for prefix in _STATIC_OBSTACLE_PREFIXES:
+        if name.startswith(prefix):
+            return True
+    if name.startswith(b'content/environment/'):
+        for keyword in _STATIC_OBSTACLE_ENV_KEYWORDS:
+            if keyword in name:
+                return True
+    return False
 
 
 def static_obstacle_exclusion_zones(arena_type_id: int):
