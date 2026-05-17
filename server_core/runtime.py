@@ -231,6 +231,8 @@ class EventLoopRuntime:
         mod = self.module
         interval = float(getattr(mod, "FORCED_POSITION_BROADCAST_INTERVAL",
                                  FORCED_POSITION_BROADCAST_INTERVAL))
+        if interval <= 0.0:
+            return
         space_id = int(getattr(mod, "SPACE_ID", 1))
         own_id = int(getattr(mod, "PLAYER_VEHICLE_ID", 200))
         spawn_default = mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA]
@@ -345,6 +347,9 @@ class EventLoopRuntime:
         if mod.PUBLIC_HOST in ("127.0.0.1", "localhost"):
             print("[!] PUBLIC_HOST=127.0.0.1 - only local clients can connect.")
             print("[!] For remote players, set env: WOT_PUBLIC_HOST=<your_public_ip_or_domain>")
+        prewarm = getattr(mod, "prewarm_static_obstacles_for_enabled_maps", None)
+        if prewarm is not None:
+            prewarm()
         print("[*] Запускай гру і тисни Connect!\n")
         self.running = True
         while self.running:

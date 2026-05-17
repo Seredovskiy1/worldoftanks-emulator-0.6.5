@@ -7,3 +7,5 @@ Review the bigworld folder for detailed information.
 Decompile the game .pyc files to better understand the codebase.
 
 do not write comments on code
+
+do not create files in game folder World_of_Tanks

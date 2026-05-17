@@ -1,4 +1,4 @@
-﻿import socket
+import socket
 import struct
 import select
 import os
@@ -2002,7 +2002,9 @@ def reset_data_caches():
     _ARTEFACTS_CONFIG_CACHE = None
     _MOTION_WARNED = False
     STATIC_OBSTACLE_CACHE.clear()
+    STATIC_OBSTACLE_INDEX_CACHE.clear()
     STATIC_MODEL_RADIUS_CACHE.clear()
+    STATIC_MODEL_BOUNDS_CACHE.clear()
     BATTLE_TERRAIN_BLOCK_CACHE.clear()
     BATTLE_TERRAIN_WARNED.clear()
 
@@ -3462,6 +3464,10 @@ CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = float(get_value(
     CONFIG, 'combat.client_avatar_vehicle_pos_max_delta', 80.0))
 CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = bool(get_value(
     CONFIG, 'combat.client_authoritative_vehicle_control', False))
+FORCED_POSITION_BROADCAST_INTERVAL = float(get_value(
+    CONFIG, 'combat.forced_position_broadcast_interval', 0.0))
+FORCED_POSITION_ON_FIRST_MOTION = bool(get_value(
+    CONFIG, 'combat.forced_position_on_first_motion', False))
 SHOT_TANK_CENTER_HEIGHT = float(get_value(
     CONFIG, 'combat.shot_tank_center_height', 1.3))
 SHOT_TANK_HALF_LENGTH = float(get_value(
@@ -3552,6 +3558,12 @@ STATIC_OBSTACLE_CHUNK_MARGIN = float(get_value(
     CONFIG, 'combat.static_obstacle_chunk_margin', 80.0))
 STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE = float(get_value(
     CONFIG, 'combat.static_obstacle_terrain_y_tolerance', 6.0))
+STATIC_OBSTACLE_FOOTPRINT_SHRINK = max(0.05, min(1.0, float(get_value(
+    CONFIG, 'combat.static_obstacle_footprint_shrink', 0.95))))
+STATIC_OBSTACLE_TANK_HALO = max(0.0, float(get_value(
+    CONFIG, 'combat.static_obstacle_tank_halo', 1.2)))
+STATIC_OBSTACLE_INDEX_CELL = max(8.0, float(get_value(
+    CONFIG, 'combat.static_obstacle_index_cell', 50.0)))
 TANK_COLLISION_RADIUS = float(get_value(
     CONFIG, 'combat.tank_collision_radius', 2.5))
 TANK_SLOPE_LIMIT_TAN = math.tan(math.radians(float(get_value(
@@ -3759,7 +3771,9 @@ ARENA_TYPE_FALLBACK, ENABLED_ARENA_TYPE_IDS = _load_map_settings()
 STATIC_OBSTACLE_MODEL_RE = re.compile(
     rb'content/Environment/[^\x00]{0,180}(?:[Ss]tones?|[Rr]ocks?)[^\x00]{0,180}\.modelx?')
 STATIC_OBSTACLE_CACHE = {}
+STATIC_OBSTACLE_INDEX_CACHE = {}
 STATIC_MODEL_RADIUS_CACHE = {}
+STATIC_MODEL_BOUNDS_CACHE = {}
 
 
 def normalize_arena_type_id(arena_type_id) -> int:
@@ -5571,12 +5585,13 @@ def start_matchmaking_timer(sock):
             sess = queued.get('sess')
             if sess:
                 sess['battle_capture_state'] = capture_state
-        if arena_type_id not in STATIC_OBSTACLE_CACHE:
-            prewarm_start = time.time()
-            load_static_obstacles_for_arena(arena_type_id)
-            prewarm_ms = (time.time() - prewarm_start) * 1000.0
-            print(f"    [battle] prewarmed static obstacles for "
-                  f"arenaType={arena_type_id} in {prewarm_ms:.0f}ms")
+        if arena_type_id in STATIC_OBSTACLE_CACHE:
+            print(f"    [battle] static obstacles cache warm "
+                  f"arenaType={arena_type_id} "
+                  f"count={len(STATIC_OBSTACLE_CACHE[arena_type_id])}")
+        else:
+            print(f"    [!] static obstacles cache cold "
+                  f"arenaType={arena_type_id}; startup prewarm did not run")
         print(f"    [battle] capture bases={capture_state.get('bases')}")
         team_counts = {1: 0, 2: 0}
         base_assignment = {}
@@ -6238,36 +6253,6 @@ def find_client_res_file(resource_path: bytes):
     return None
 
 
-def read_model_obstacle_radius(model_path: bytes):
-    cache_key = model_path.lower()
-    if cache_key in STATIC_MODEL_RADIUS_CACHE:
-        return STATIC_MODEL_RADIUS_CACHE[cache_key]
-    radius = None
-    path = find_client_res_file(model_path)
-    if path:
-        try:
-            with open(path, 'rb') as fh:
-                data = fh.read()
-            for offset in range(0, max(0, len(data) - 24)):
-                values = struct.unpack_from('<6f', data, offset)
-                if not all(math.isfinite(v) for v in values):
-                    continue
-                min_x, min_y, min_z, max_x, max_y, max_z = values
-                if (-40.0 < min_x < 0.0 and -20.0 < min_y < 10.0 and
-                        -40.0 < min_z < 0.0 and 0.0 < max_x < 40.0 and
-                        0.0 < max_y < 20.0 and 0.0 < max_z < 40.0):
-                    radius = math.sqrt(
-                        max(abs(min_x), abs(max_x)) ** 2 +
-                        max(abs(min_z), abs(max_z)) ** 2)
-                    break
-        except OSError:
-            radius = None
-    if radius is None:
-        radius = stone_obstacle_radius_fallback(model_path)
-    STATIC_MODEL_RADIUS_CACHE[cache_key] = radius
-    return radius
-
-
 def stone_obstacle_radius_fallback(model_path: bytes) -> float:
     name = model_path.lower()
     if b'stones03' in name or b'stones04' in name:
@@ -6277,6 +6262,185 @@ def stone_obstacle_radius_fallback(model_path: bytes) -> float:
     if b'stones5' in name:
         return 4.0
     return 3.2
+
+
+def fallback_model_obstacle_bounds(model_path: bytes):
+    radius = stone_obstacle_radius_fallback(model_path)
+    return (-radius, -radius * 0.5, -radius, radius, radius, radius)
+
+
+_PACKED_SECTION_MAGIC = 0x62a14e45
+_PACKED_SECTION_DATA_POS_MASK = 0x0FFFFFFF
+_PACKED_SECTION_TYPE_SHIFT = 28
+_PACKED_SECTION_TYPE_SECTION = 0
+_PACKED_SECTION_TYPE_FLOAT = 3
+
+
+def _read_packed_section_strings(data: bytes):
+    if len(data) < 5:
+        return None, 0
+    try:
+        magic, = struct.unpack_from('<I', data, 0)
+    except struct.error:
+        return None, 0
+    if magic != _PACKED_SECTION_MAGIC:
+        return None, 0
+    offset = 5
+    strings = []
+    while True:
+        end = data.find(b'\x00', offset)
+        if end < 0:
+            return None, 0
+        name = data[offset:end]
+        offset = end + 1
+        if not name:
+            return strings, offset
+        strings.append(name)
+
+
+def _walk_packed_section_children(data: bytes, sec_off: int, strings):
+    if sec_off + 2 > len(data):
+        return None
+    try:
+        num_children = struct.unpack_from('<h', data, sec_off)[0]
+    except struct.error:
+        return None
+    if num_children < 0:
+        return None
+    rec_off = sec_off + 2
+    final_rec = rec_off + num_children * 6
+    if final_rec + 4 > len(data):
+        return None
+    records = []
+    for i in range(num_children):
+        try:
+            dp_raw, kp = struct.unpack_from('<iH', data, rec_off + i * 6)
+        except struct.error:
+            return None
+        records.append((dp_raw, kp))
+    try:
+        final_dp_raw = struct.unpack_from('<i', data, final_rec)[0]
+    except struct.error:
+        return None
+    own_dp_raw = records[0][0] if num_children > 0 else final_dp_raw
+    own_endpos = own_dp_raw & _PACKED_SECTION_DATA_POS_MASK
+    block_data_start = final_rec + 4
+    prev_end = own_endpos
+    children = []
+    for i in range(num_children):
+        ep_raw = records[i + 1][0] if i + 1 < num_children else final_dp_raw
+        endpos = ep_raw & _PACKED_SECTION_DATA_POS_MASK
+        ctype = (ep_raw >> _PACKED_SECTION_TYPE_SHIFT) & 0xF
+        keypos = records[i][1]
+        name = strings[keypos] if 0 <= keypos < len(strings) else b''
+        children.append({
+            'name': name,
+            'type': ctype,
+            'data_off': block_data_start + prev_end,
+            'data_size': max(0, endpos - prev_end),
+        })
+        prev_end = endpos
+    return children
+
+
+def _read_packed_section_min_max_floats(data: bytes, section):
+    children = _walk_packed_section_children(data, section['data_off'], section['_strings'])
+    if children is None:
+        return None
+    min_vec = max_vec = None
+    for child in children:
+        if (child['type'] != _PACKED_SECTION_TYPE_FLOAT or
+                child['data_size'] < 12):
+            continue
+        try:
+            floats = struct.unpack_from('<3f', data, child['data_off'])
+        except struct.error:
+            continue
+        if not all(math.isfinite(v) for v in floats):
+            continue
+        if child['name'] == b'min':
+            min_vec = floats
+        elif child['name'] == b'max':
+            max_vec = floats
+    if min_vec is None or max_vec is None:
+        return None
+    return (min_vec[0], min_vec[1], min_vec[2],
+            max_vec[0], max_vec[1], max_vec[2])
+
+
+def _packed_section_find_bounds(data: bytes):
+    strings, root_off = _read_packed_section_strings(data)
+    if strings is None or root_off <= 0:
+        return None
+    targets = {b'visibilityBox', b'boundingBox'}
+
+    def visit(sec_off):
+        children = _walk_packed_section_children(data, sec_off, strings)
+        if children is None:
+            return None
+        for child in children:
+            if (child['type'] == _PACKED_SECTION_TYPE_SECTION and
+                    child['name'] in targets):
+                bounds = _read_packed_section_min_max_floats(
+                    data, dict(child, _strings=strings))
+                if bounds is not None:
+                    return bounds
+        for child in children:
+            if (child['type'] == _PACKED_SECTION_TYPE_SECTION and
+                    child['data_size'] >= 2):
+                bounds = visit(child['data_off'])
+                if bounds is not None:
+                    return bounds
+        return None
+
+    return visit(root_off)
+
+
+def read_model_obstacle_bounds(model_path: bytes):
+    cache_key = model_path.lower()
+    if cache_key in STATIC_MODEL_BOUNDS_CACHE:
+        return STATIC_MODEL_BOUNDS_CACHE[cache_key]
+    bounds = None
+    path = find_client_res_file(model_path)
+    if path:
+        try:
+            with open(path, 'rb') as fh:
+                data = fh.read()
+        except OSError:
+            data = None
+        if data:
+            bounds = _packed_section_find_bounds(data)
+            if bounds is None:
+                for offset in range(0, max(0, len(data) - 24 + 1)):
+                    values = struct.unpack_from('<6f', data, offset)
+                    if not all(math.isfinite(v) for v in values):
+                        continue
+                    min_x, min_y, min_z, max_x, max_y, max_z = values
+                    if (-40.0 < min_x < 0.0 and -20.0 < min_y < 10.0 and
+                            -40.0 < min_z < 0.0 and 0.0 < max_x < 40.0 and
+                            0.0 < max_y < 20.0 and 0.0 < max_z < 40.0):
+                        bounds = values
+                        break
+    if bounds is None:
+        bounds = fallback_model_obstacle_bounds(model_path)
+    STATIC_MODEL_BOUNDS_CACHE[cache_key] = bounds
+    return bounds
+
+
+def model_obstacle_bounds_radius(bounds) -> float:
+    min_x, _min_y, min_z, max_x, _max_y, max_z = bounds
+    return math.sqrt(
+        max(abs(min_x), abs(max_x)) ** 2 +
+        max(abs(min_z), abs(max_z)) ** 2)
+
+
+def read_model_obstacle_radius(model_path: bytes):
+    cache_key = model_path.lower()
+    if cache_key in STATIC_MODEL_RADIUS_CACHE:
+        return STATIC_MODEL_RADIUS_CACHE[cache_key]
+    radius = model_obstacle_bounds_radius(read_model_obstacle_bounds(model_path))
+    STATIC_MODEL_RADIUS_CACHE[cache_key] = radius
+    return radius
 
 
 def stone_obstacle_radius(model_path: bytes) -> float:
@@ -6300,6 +6464,187 @@ def get_obstacle_shot_radius(obstacle) -> float:
     return float(obstacle[3])
 
 
+def get_obstacle_move_footprint(obstacle):
+    if len(obstacle) >= 7:
+        return obstacle[6]
+    return None
+
+
+def transform_model_point(transform, point):
+    px, py, pz = point
+    return (
+        px * transform[0] + py * transform[3] + pz * transform[6] + transform[9],
+        px * transform[1] + py * transform[4] + pz * transform[7] + transform[10],
+        px * transform[2] + py * transform[5] + pz * transform[8] + transform[11],
+    )
+
+
+def convex_hull_xz(points):
+    pts = sorted(set((round(float(x), 6), round(float(z), 6)) for x, z in points))
+    if len(pts) <= 2:
+        return tuple(pts)
+
+    def cross(origin, a, b):
+        return ((a[0] - origin[0]) * (b[1] - origin[1]) -
+                (a[1] - origin[1]) * (b[0] - origin[0]))
+
+    lower = []
+    for point in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0.0:
+            lower.pop()
+        lower.append(point)
+    upper = []
+    for point in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0.0:
+            upper.pop()
+        upper.append(point)
+    return tuple(lower[:-1] + upper[:-1])
+
+
+def build_model_footprint(chunk_x: int, chunk_z: int, transform, bounds):
+    min_x, min_y, min_z, max_x, max_y, max_z = bounds
+    origin_x = chunk_x * BATTLE_TERRAIN_CHUNK_SIZE
+    origin_z = chunk_z * BATTLE_TERRAIN_CHUNK_SIZE
+    points = []
+    for px in (min_x, max_x):
+        for py in (min_y, max_y):
+            for pz in (min_z, max_z):
+                tx, _ty, tz = transform_model_point(transform, (px, py, pz))
+                points.append((origin_x + tx, origin_z + tz))
+    return convex_hull_xz(points)
+
+
+def scaled_footprint(points, center_x: float, center_z: float, factor: float):
+    factor = max(0.0, float(factor))
+    return tuple(
+        (center_x + (float(x) - center_x) * factor,
+         center_z + (float(z) - center_z) * factor)
+        for x, z in points)
+
+
+def transformed_bounds_radius(center_x: float, center_z: float, footprint) -> float:
+    radius = 0.0
+    for x, z in footprint or ():
+        dx = float(x) - center_x
+        dz = float(z) - center_z
+        radius = max(radius, math.sqrt(dx * dx + dz * dz))
+    return radius
+
+
+def point_in_polygon_xz(x: float, z: float, polygon) -> bool:
+    inside = False
+    count = len(polygon or ())
+    if count < 3:
+        return False
+    j = count - 1
+    for i in range(count):
+        xi, zi = polygon[i]
+        xj, zj = polygon[j]
+        if ((zi > z) != (zj > z) and
+                x < (xj - xi) * (z - zi) / ((zj - zi) or 0.000001) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def point_segment_distance_sq_xz(px: float, pz: float, ax: float, az: float,
+                                 bx: float, bz: float) -> float:
+    dx = bx - ax
+    dz = bz - az
+    length_sq = dx * dx + dz * dz
+    if length_sq <= 0.000001:
+        ox = px - ax
+        oz = pz - az
+        return ox * ox + oz * oz
+    t = ((px - ax) * dx + (pz - az) * dz) / length_sq
+    t = max(0.0, min(1.0, t))
+    cx = ax + dx * t
+    cz = az + dz * t
+    ox = px - cx
+    oz = pz - cz
+    return ox * ox + oz * oz
+
+
+def point_hits_footprint(x: float, z: float, footprint, tank_radius: float) -> bool:
+    if not footprint:
+        return False
+    if point_in_polygon_xz(x, z, footprint):
+        return True
+    radius_sq = max(0.0, float(tank_radius)) ** 2
+    count = len(footprint)
+    for i in range(count):
+        ax, az = footprint[i]
+        bx, bz = footprint[(i + 1) % count]
+        if point_segment_distance_sq_xz(x, z, ax, az, bx, bz) <= radius_sq:
+            return True
+    return False
+
+
+def segment_orientation_xz(ax: float, az: float, bx: float, bz: float,
+                           cx: float, cz: float) -> float:
+    return (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
+
+
+def point_on_segment_xz(px: float, pz: float, ax: float, az: float,
+                        bx: float, bz: float) -> bool:
+    return (min(ax, bx) - 0.000001 <= px <= max(ax, bx) + 0.000001 and
+            min(az, bz) - 0.000001 <= pz <= max(az, bz) + 0.000001 and
+            abs(segment_orientation_xz(ax, az, bx, bz, px, pz)) <= 0.000001)
+
+
+def segments_intersect_xz(ax: float, az: float, bx: float, bz: float,
+                          cx: float, cz: float, dx: float, dz: float) -> bool:
+    o1 = segment_orientation_xz(ax, az, bx, bz, cx, cz)
+    o2 = segment_orientation_xz(ax, az, bx, bz, dx, dz)
+    o3 = segment_orientation_xz(cx, cz, dx, dz, ax, az)
+    o4 = segment_orientation_xz(cx, cz, dx, dz, bx, bz)
+    if ((o1 > 0.0 and o2 < 0.0) or (o1 < 0.0 and o2 > 0.0)) and \
+            ((o3 > 0.0 and o4 < 0.0) or (o3 < 0.0 and o4 > 0.0)):
+        return True
+    if abs(o1) <= 0.000001 and point_on_segment_xz(cx, cz, ax, az, bx, bz):
+        return True
+    if abs(o2) <= 0.000001 and point_on_segment_xz(dx, dz, ax, az, bx, bz):
+        return True
+    if abs(o3) <= 0.000001 and point_on_segment_xz(ax, az, cx, cz, dx, dz):
+        return True
+    if abs(o4) <= 0.000001 and point_on_segment_xz(bx, bz, cx, cz, dx, dz):
+        return True
+    return False
+
+
+def segment_segment_distance_sq_xz(ax: float, az: float, bx: float, bz: float,
+                                   cx: float, cz: float, dx: float, dz: float) -> float:
+    if segments_intersect_xz(ax, az, bx, bz, cx, cz, dx, dz):
+        return 0.0
+    return min(
+        point_segment_distance_sq_xz(ax, az, cx, cz, dx, dz),
+        point_segment_distance_sq_xz(bx, bz, cx, cz, dx, dz),
+        point_segment_distance_sq_xz(cx, cz, ax, az, bx, bz),
+        point_segment_distance_sq_xz(dx, dz, ax, az, bx, bz),
+    )
+
+
+def segment_hits_footprint(prev_x: float, prev_z: float, new_x: float,
+                           new_z: float, footprint, tank_radius: float) -> bool:
+    if not footprint:
+        return False
+    if point_hits_footprint(prev_x, prev_z, footprint, tank_radius):
+        return True
+    if point_hits_footprint(new_x, new_z, footprint, tank_radius):
+        return True
+    radius_sq = max(0.0, float(tank_radius)) ** 2
+    count = len(footprint)
+    for i in range(count):
+        ax, az = footprint[i]
+        bx, bz = footprint[(i + 1) % count]
+        if segments_intersect_xz(prev_x, prev_z, new_x, new_z, ax, az, bx, bz):
+            return True
+        if segment_segment_distance_sq_xz(
+                prev_x, prev_z, new_x, new_z, ax, az, bx, bz) <= radius_sq:
+            return True
+    return False
+
+
 def is_static_obstacle_model(model_path: bytes) -> bool:
     name = (model_path or b'').lower()
     return (
@@ -6307,6 +6652,42 @@ def is_static_obstacle_model(model_path: bytes) -> bool:
         (name.endswith(b'.model') or name.endswith(b'.modelx')) and
         (b'stone' in name or b'rock' in name)
     )
+
+
+def static_obstacle_exclusion_zones(arena_type_id: int):
+    zones = get_value(CONFIG, 'maps.static_obstacle_exclusions', {})
+    if isinstance(zones, dict):
+        zones = zones.get(str(int(arena_type_id))) or zones.get(int(arena_type_id)) or []
+    if not isinstance(zones, list):
+        return []
+    return zones
+
+
+def is_static_obstacle_excluded(arena_type_id: int, x: float, z: float,
+                                model_path: bytes) -> bool:
+    model_text = (model_path or b'').decode('ascii', 'ignore').lower()
+    for zone in static_obstacle_exclusion_zones(arena_type_id):
+        if not isinstance(zone, dict):
+            continue
+        center = zone.get('center')
+        if not isinstance(center, list) or len(center) < 2:
+            continue
+        try:
+            cx = float(center[0])
+            cz = float(center[1])
+            radius = float(zone.get('radius', 0.0))
+        except (TypeError, ValueError):
+            continue
+        if radius <= 0.0:
+            continue
+        model_filter = str(zone.get('model', '') or '').lower()
+        if model_filter and model_filter not in model_text:
+            continue
+        dx = float(x) - cx
+        dz = float(z) - cz
+        if dx * dx + dz * dz <= radius * radius:
+            return True
+    return False
 
 
 def read_chunk_model_transform(data: bytes, offset: int):
@@ -6364,16 +6745,27 @@ def validate_static_obstacle_instance(arena_type_id: int, chunk_x: int,
         return None
     x = chunk_x * BATTLE_TERRAIN_CHUNK_SIZE + local_x
     z = chunk_z * BATTLE_TERRAIN_CHUNK_SIZE + local_z
+    if is_static_obstacle_excluded(arena_type_id, x, z, model_path):
+        if ignored is not None:
+            ignored['excluded'] = int(ignored.get('excluded', 0)) + 1
+        return None
     terrain_y = terrain_height_only(arena_type_id, x, z, local_y)
     if abs(local_y - terrain_y) > STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE:
         if ignored is not None:
             ignored['terrain_y'] = int(ignored.get('terrain_y', 0)) + 1
         return None
-    visual_radius = (
-        stone_obstacle_radius(model_path) +
-        STATIC_OBSTACLE_SHOT_RADIUS_PAD)
+    bounds = read_model_obstacle_bounds(model_path)
+    footprint = build_model_footprint(chunk_x, chunk_z, transform, bounds)
+    transformed_radius = transformed_bounds_radius(x, z, footprint)
+    if transformed_radius <= 0.0:
+        transformed_radius = stone_obstacle_radius(model_path)
+    visual_radius = transformed_radius + STATIC_OBSTACLE_SHOT_RADIUS_PAD
     move_radius = movement_obstacle_radius(visual_radius)
-    return (x, local_y, z, move_radius, visual_radius, model_path)
+    if (footprint and len(footprint) >= 3 and
+            STATIC_OBSTACLE_FOOTPRINT_SHRINK < 1.0):
+        footprint = scaled_footprint(
+            footprint, x, z, STATIC_OBSTACLE_FOOTPRINT_SHRINK)
+    return (x, local_y, z, move_radius, visual_radius, model_path, footprint)
 
 
 def build_static_obstacles_from_chunk_data(arena_type_id: int, chunk_x: int,
@@ -6438,25 +6830,186 @@ def load_static_obstacles_for_arena(arena_type_id: int):
                 seen.add(key)
                 obstacles.append(obstacle)
     STATIC_OBSTACLE_CACHE[arena_type_id] = obstacles
+    STATIC_OBSTACLE_INDEX_CACHE.pop(arena_type_id, None)
     if obstacles or ignored:
         ignored_text = ','.join(f"{k}={v}" for k, v in sorted(ignored.items())) or 'none'
         print(f"    [battle] loaded {len(obstacles)} static obstacle(s) for arenaType={arena_type_id} ignored={ignored_text}")
     return obstacles
 
 
-def find_blocking_static_obstacle(arena_type_id: int, x: float, z: float,
-                                  tank_radius: float = TANK_COLLISION_RADIUS):
+def obstacle_xz_bbox(obstacle):
+    ox = float(obstacle[0])
+    oz = float(obstacle[2])
+    footprint = get_obstacle_move_footprint(obstacle)
+    if footprint:
+        xs = [float(px) for px, _pz in footprint]
+        zs = [float(pz) for _px, pz in footprint]
+        return min(xs), min(zs), max(xs), max(zs)
+    r = float(get_obstacle_move_radius(obstacle))
+    return ox - r, oz - r, ox + r, oz + r
+
+
+def build_static_obstacle_index(arena_type_id: int, obstacles):
+    cell = STATIC_OBSTACLE_INDEX_CELL
+    inv = 1.0 / cell
+    grid = {}
+    for obstacle in obstacles:
+        min_x, min_z, max_x, max_z = obstacle_xz_bbox(obstacle)
+        cx0 = int(math.floor(min_x * inv))
+        cz0 = int(math.floor(min_z * inv))
+        cx1 = int(math.floor(max_x * inv))
+        cz1 = int(math.floor(max_z * inv))
+        for cx in range(cx0, cx1 + 1):
+            for cz in range(cz0, cz1 + 1):
+                grid.setdefault((cx, cz), []).append(obstacle)
+    entry = (cell, grid, obstacles)
+    STATIC_OBSTACLE_INDEX_CACHE[arena_type_id] = entry
+    return entry
+
+
+def get_static_obstacle_index(arena_type_id: int):
+    obstacles = STATIC_OBSTACLE_CACHE.get(arena_type_id)
+    if obstacles is None:
+        return None
+    cached = STATIC_OBSTACLE_INDEX_CACHE.get(arena_type_id)
+    if cached is not None and cached[2] is obstacles:
+        return cached
+    return build_static_obstacle_index(arena_type_id, obstacles)
+
+
+def iter_obstacles_near_point(arena_type_id: int, x: float, z: float,
+                              halo: float = 0.0):
     obstacles = load_static_obstacles_for_arena(arena_type_id)
     if not obstacles:
-        return None
-    for obstacle in obstacles:
+        return
+    index = get_static_obstacle_index(arena_type_id)
+    if index is None:
+        for obstacle in obstacles:
+            yield obstacle
+        return
+    cell, grid, _ref = index
+    inv = 1.0 / cell
+    pad = max(0.0, float(halo))
+    cx0 = int(math.floor((x - pad) * inv))
+    cz0 = int(math.floor((z - pad) * inv))
+    cx1 = int(math.floor((x + pad) * inv))
+    cz1 = int(math.floor((z + pad) * inv))
+    seen = set()
+    for cx in range(cx0, cx1 + 1):
+        for cz in range(cz0, cz1 + 1):
+            bucket = grid.get((cx, cz))
+            if not bucket:
+                continue
+            for obstacle in bucket:
+                key = id(obstacle)
+                if key in seen:
+                    continue
+                seen.add(key)
+                yield obstacle
+
+
+def iter_obstacles_near_segment(arena_type_id: int,
+                                ax: float, az: float,
+                                bx: float, bz: float,
+                                halo: float = 0.0):
+    obstacles = load_static_obstacles_for_arena(arena_type_id)
+    if not obstacles:
+        return
+    index = get_static_obstacle_index(arena_type_id)
+    if index is None:
+        for obstacle in obstacles:
+            yield obstacle
+        return
+    cell, grid, _ref = index
+    inv = 1.0 / cell
+    pad = max(0.0, float(halo))
+    min_x = min(ax, bx) - pad
+    max_x = max(ax, bx) + pad
+    min_z = min(az, bz) - pad
+    max_z = max(az, bz) + pad
+    cx0 = int(math.floor(min_x * inv))
+    cz0 = int(math.floor(min_z * inv))
+    cx1 = int(math.floor(max_x * inv))
+    cz1 = int(math.floor(max_z * inv))
+    seen = set()
+    for cx in range(cx0, cx1 + 1):
+        for cz in range(cz0, cz1 + 1):
+            bucket = grid.get((cx, cz))
+            if not bucket:
+                continue
+            for obstacle in bucket:
+                key = id(obstacle)
+                if key in seen:
+                    continue
+                seen.add(key)
+                yield obstacle
+
+
+def prewarm_static_obstacles_for_enabled_maps():
+    started = time.time()
+    warmed = {}
+    for arena_type_id in sorted(ENABLED_ARENA_TYPE_IDS):
+        arena_started = time.time()
+        if arena_type_id in STATIC_OBSTACLE_CACHE:
+            obstacles = STATIC_OBSTACLE_CACHE[arena_type_id]
+            arena_ms = (time.time() - arena_started) * 1000.0
+            print(f"    [startup] static obstacles already warm "
+                  f"arenaType={arena_type_id} count={len(obstacles)} "
+                  f"in {arena_ms:.0f}ms")
+        else:
+            obstacles = load_static_obstacles_for_arena(arena_type_id)
+            arena_ms = (time.time() - arena_started) * 1000.0
+            print(f"    [startup] prewarmed static obstacles "
+                  f"arenaType={arena_type_id} count={len(obstacles)} "
+                  f"in {arena_ms:.0f}ms")
+        warmed[arena_type_id] = len(obstacles)
+    total_ms = (time.time() - started) * 1000.0
+    print(f"    [startup] static obstacle prewarm total "
+          f"maps={len(warmed)} in {total_ms:.0f}ms")
+    return warmed
+
+
+def find_blocking_static_obstacle(arena_type_id: int, x: float, z: float,
+                                  tank_radius: float = STATIC_OBSTACLE_TANK_HALO):
+    for obstacle in iter_obstacles_near_point(
+            arena_type_id, x, z, halo=tank_radius):
         ox, oy, oz = obstacle[0], obstacle[1], obstacle[2]
+        footprint = get_obstacle_move_footprint(obstacle)
         block_radius = get_obstacle_move_radius(obstacle) + tank_radius
         if block_radius <= 0.0:
             continue
+        if footprint:
+            if point_hits_footprint(x, z, footprint, tank_radius):
+                return (ox, oy, oz, get_obstacle_move_radius(obstacle),
+                        get_obstacle_shot_radius(obstacle), block_radius)
+            continue
         dx = x - ox
         dz = z - oz
-        if dx * dx + dz * dz < block_radius * block_radius:
+        if dx * dx + dz * dz <= block_radius * block_radius:
+            return (ox, oy, oz, get_obstacle_move_radius(obstacle),
+                    get_obstacle_shot_radius(obstacle), block_radius)
+    return None
+
+
+def find_blocking_static_obstacle_on_path(arena_type_id: int,
+                                          prev_x: float, prev_z: float,
+                                          new_x: float, new_z: float,
+                                          tank_radius: float = STATIC_OBSTACLE_TANK_HALO):
+    for obstacle in iter_obstacles_near_segment(
+            arena_type_id, prev_x, prev_z, new_x, new_z, halo=tank_radius):
+        ox, oy, oz = obstacle[0], obstacle[1], obstacle[2]
+        footprint = get_obstacle_move_footprint(obstacle)
+        block_radius = get_obstacle_move_radius(obstacle) + tank_radius
+        if block_radius <= 0.0:
+            continue
+        if footprint:
+            if segment_hits_footprint(prev_x, prev_z, new_x, new_z,
+                                      footprint, tank_radius):
+                return (ox, oy, oz, get_obstacle_move_radius(obstacle),
+                        get_obstacle_shot_radius(obstacle), block_radius)
+            continue
+        if point_segment_distance_sq_xz(
+                ox, oz, prev_x, prev_z, new_x, new_z) <= block_radius * block_radius:
             return (ox, oy, oz, get_obstacle_move_radius(obstacle),
                     get_obstacle_shot_radius(obstacle), block_radius)
     return None
@@ -6465,17 +7018,18 @@ def find_blocking_static_obstacle(arena_type_id: int, x: float, z: float,
 def resolve_motion_against_obstacles(arena_type_id: int,
                                      prev_x: float, prev_z: float,
                                      new_x: float, new_z: float,
-                                     tank_radius: float = TANK_COLLISION_RADIUS):
-    obstacle = find_blocking_static_obstacle(arena_type_id, new_x, new_z, tank_radius)
+                                     tank_radius: float = STATIC_OBSTACLE_TANK_HALO):
+    obstacle = find_blocking_static_obstacle_on_path(
+        arena_type_id, prev_x, prev_z, new_x, new_z, tank_radius)
     if obstacle is None:
         return new_x, new_z, False
     if BATTLE_VERBOSE_DEBUG:
         print(f"    [motion] static obstacle block pos=({new_x:.1f},{new_z:.1f}) obstacle=({obstacle[0]:.1f},{obstacle[1]:.1f},{obstacle[2]:.1f}) moveR={obstacle[3]:.1f} blockR={obstacle[5]:.1f}")
-    if (find_blocking_static_obstacle(arena_type_id, new_x, prev_z, tank_radius) is None
-            and (new_x != prev_x or new_z == prev_z)):
+    if (new_x != prev_x and find_blocking_static_obstacle_on_path(
+            arena_type_id, prev_x, prev_z, new_x, prev_z, tank_radius) is None):
         return new_x, prev_z, True
-    if (find_blocking_static_obstacle(arena_type_id, prev_x, new_z, tank_radius) is None
-            and (new_z != prev_z or new_x == prev_x)):
+    if (new_z != prev_z and find_blocking_static_obstacle_on_path(
+            arena_type_id, prev_x, prev_z, prev_x, new_z, tank_radius) is None):
         return prev_x, new_z, True
     return prev_x, prev_z, True
 
@@ -6491,7 +7045,10 @@ def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
     end_y = shot_pos[1] + shot_vec[1] * hit_distance
     end_z = shot_pos[2] + shot_vec[2] * hit_distance
     best = None
-    for obstacle in load_static_obstacles_for_arena(arena_type_id):
+    ray_halo = max(STATIC_OBSTACLE_SHOOTER_GAP, STATIC_OBSTACLE_TARGET_GAP)
+    for obstacle in iter_obstacles_near_segment(
+            arena_type_id, shot_pos[0], shot_pos[2], end_x, end_z,
+            halo=ray_halo):
         x, y, z = obstacle[0], obstacle[1], obstacle[2]
         radius = get_obstacle_shot_radius(obstacle)
         dx_s = x - shot_pos[0]
@@ -7773,7 +8330,8 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
                   f"[{mode}, tank={(vehicle or {}).get('name', 'unknown')}, "
                   f"target=({move:.2f}m/s {move * 3.6:.1f}km/h,"
                   f"{turn:.2f}), current={current_speed * 3.6:.1f}km/h]")
-        if (sess.get('server_vehicle_authoritative', True) and
+        if (FORCED_POSITION_ON_FIRST_MOTION and
+                sess.get('server_vehicle_authoritative', True) and
                 sess.get('battle_period_active') and
                 prev_flags == 0 and flags != 0 and
                 not sess.get('battle_forced_position_sent_for_motion')):

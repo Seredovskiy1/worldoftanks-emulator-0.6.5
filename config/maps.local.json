@@ -2,9 +2,14 @@
   "maps": {
     "fallback_arena_type_id": 1,
     "enabled_arena_type_ids": [1],
-    "arena_enabled": {
-      "1": true,
-      "2": false
+    "static_obstacle_exclusions": {
+      "1": [
+        {
+          "center": [-288.22, -175.19],
+          "radius": 2.0,
+          "model": "env044_Caucasus_Stones02.model"
+        }
+      ]
     },
     "default_spawns": {
       "1": [-405.14, 53.26, -398.27],

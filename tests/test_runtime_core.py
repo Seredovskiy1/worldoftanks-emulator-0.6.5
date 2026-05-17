@@ -142,11 +142,14 @@ def _make_shell(kind="ARMOR_PIERCING", penetration=200.0, damage=100.0,
 
 
 def _mock_stone_chunk(model_path=b"content/Environment/Rocks/testStone.model",
-                      local=(12.0, 3.0, 34.0)):
-    matrix = (
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
+                      local=(12.0, 3.0, 34.0), axes=None):
+    if axes is None:
+        axes = (
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0,
+        )
+    matrix = tuple(float(v) for v in axes) + (
         float(local[0]), float(local[1]), float(local[2]),
     )
     return b"model\x00resource\x00" + model_path + struct.pack("<12f", *matrix)
@@ -603,12 +606,36 @@ class RuntimeCoreTests(unittest.TestCase):
                         if s["msgs"][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])]
         self.assertEqual(forced_sends, [])
 
+    def test_first_motion_does_not_emit_forced_position_by_default(self):
+        sess = _make_combat_session(31, 1, emulator.ARENA_SPAWN_POS[emulator.ARENA_TYPE_KARELIA])
+        sess["battle_period_active"] = True
+        sess["server_vehicle_authoritative"] = True
+        sess["battle_forced_position_sent_for_motion"] = False
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
+            sent.append((bytes(msgs), label, reliable))
+            return True
+
+        payload = b"\x00\x00\x00\x00\x01"
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               side_effect=capture_send):
+            handled = emulator.handle_avatar_base_method(
+                object(), sess["addr"], sess, 0xc3, payload)
+
+        self.assertTrue(handled)
+        self.assertEqual(sess["battle_motion_flags"], 1)
+        forced = [entry for entry in sent
+                  if entry[0][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])]
+        self.assertEqual(forced, [])
+
     def test_static_obstacle_chunk_transform_creates_world_obstacle(self):
         ignored = {}
         data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
 
         with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
-                mock.patch.object(emulator, "stone_obstacle_radius", return_value=4.0), \
+                mock.patch.object(emulator, "read_model_obstacle_bounds",
+                                  return_value=(-4.0, -1.0, 0.0, 4.0, 1.0, 0.0)), \
                 mock.patch.object(emulator, "terrain_height_only", return_value=3.1):
             obstacles = emulator.build_static_obstacles_from_chunk_data(
                 emulator.ARENA_TYPE_KARELIA, 2, -1, data, ignored)
@@ -620,6 +647,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(obstacle[2], -66.0)
         self.assertAlmostEqual(obstacle[3], 2.5)
         self.assertAlmostEqual(obstacle[4], 5.0)
+        self.assertEqual(len(obstacle), 7)
         self.assertEqual(ignored, {})
 
     def test_static_obstacle_text_match_without_transform_is_ignored(self):
@@ -645,6 +673,34 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(obstacles, [])
         self.assertEqual(ignored.get("terrain_y"), 1)
 
+    def test_static_obstacle_config_exclusion_is_ignored(self):
+        ignored = {}
+        data = _mock_stone_chunk(
+            model_path=b"content/Environment/Rocks/testStone.model",
+            local=(12.0, 3.0, 34.0))
+        original = emulator.CONFIG.get("maps", {}).get("static_obstacle_exclusions")
+        try:
+            emulator.CONFIG.setdefault("maps", {})["static_obstacle_exclusions"] = {
+                "1": [
+                    {
+                        "center": [12.0, 34.0],
+                        "radius": 2.0,
+                        "model": "teststone.model",
+                    }
+                ]
+            }
+            with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"):
+                obstacles = emulator.build_static_obstacles_from_chunk_data(
+                    emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
+        finally:
+            if original is None:
+                emulator.CONFIG.setdefault("maps", {}).pop("static_obstacle_exclusions", None)
+            else:
+                emulator.CONFIG.setdefault("maps", {})["static_obstacle_exclusions"] = original
+
+        self.assertEqual(obstacles, [])
+        self.assertEqual(ignored.get("excluded"), 1)
+
     def test_static_obstacle_blocks_motion_only_at_valid_position(self):
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
         try:
@@ -669,6 +725,159 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(was_blocked)
         self.assertEqual((new_x, new_z), (10.5, 0.0))
 
+    def test_static_obstacle_scaled_down_uses_footprint(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (0.0, 0.0, 0.0, 5.0, 10.0,
+                 b"content/Environment/Rocks/testStone.model",
+                 ((-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0)))
+            ]
+
+            clear = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 6.0, 0.0, tank_radius=0.5)
+            blocked = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 2.2, 0.0, tank_radius=0.5)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIsNone(clear)
+        self.assertIsNotNone(blocked)
+
+    def test_static_obstacle_generated_footprint_is_shrunk_to_visible_silhouette(self):
+        ignored = {}
+        data = _mock_stone_chunk(local=(0.0, 3.0, 0.0))
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        original_shrink = emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK = 0.95
+            with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
+                    mock.patch.object(emulator, "read_model_obstacle_bounds",
+                                      return_value=(-4.0, -1.0, -4.0, 4.0, 1.0, 4.0)), \
+                    mock.patch.object(emulator, "terrain_height_only", return_value=3.0):
+                obstacles = emulator.build_static_obstacles_from_chunk_data(
+                    emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = obstacles
+            blocked = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 3.7, 0.0, tank_radius=0.1)
+            clear = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 4.0, 0.0, tank_radius=0.1)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+            emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK = original_shrink
+
+        self.assertEqual(ignored, {})
+        self.assertEqual(len(obstacles), 1)
+        footprint = obstacles[0][6]
+        self.assertIsNotNone(footprint)
+        xs = [x for x, _ in footprint]
+        zs = [z for _, z in footprint]
+        self.assertAlmostEqual(max(xs), 3.8, places=4)
+        self.assertAlmostEqual(min(xs), -3.8, places=4)
+        self.assertAlmostEqual(max(zs), 3.8, places=4)
+        self.assertAlmostEqual(min(zs), -3.8, places=4)
+        self.assertIsNotNone(blocked)
+        self.assertIsNone(clear)
+
+    def test_static_obstacle_scaled_up_uses_footprint(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (0.0, 0.0, 0.0, 2.0, 4.0,
+                 b"content/Environment/Rocks/testStone.model",
+                 ((-8.0, -1.0), (8.0, -1.0), (8.0, 1.0), (-8.0, 1.0)))
+            ]
+
+            blocked = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 6.5, 0.0, tank_radius=0.5)
+            clear = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 9.0, 0.0, tank_radius=0.5)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIsNotNone(blocked)
+        self.assertIsNone(clear)
+
+    def test_static_obstacle_swept_path_blocks_tunneling(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (0.0, 0.0, 0.0, 2.0, 4.0,
+                 b"content/Environment/Rocks/testStone.model",
+                 ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)))
+            ]
+
+            blocked = emulator.find_blocking_static_obstacle_on_path(
+                emulator.ARENA_TYPE_KARELIA, -5.0, 0.0, 5.0, 0.0,
+                tank_radius=0.1)
+            new_x, new_z, was_blocked = emulator.resolve_motion_against_obstacles(
+                emulator.ARENA_TYPE_KARELIA, -5.0, 0.0, 5.0, 0.0,
+                tank_radius=0.1)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIsNotNone(blocked)
+        self.assertTrue(was_blocked)
+        self.assertEqual((new_x, new_z), (-5.0, 0.0))
+
+    def test_static_obstacle_swept_path_allows_axis_slide(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (0.0, 0.0, 0.0, 2.0, 4.0,
+                 b"content/Environment/Rocks/testStone.model",
+                 ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)))
+            ]
+
+            new_x, new_z, was_blocked = emulator.resolve_motion_against_obstacles(
+                emulator.ARENA_TYPE_KARELIA, -5.0, 5.0, 0.0, 0.0,
+                tank_radius=0.1)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertTrue(was_blocked)
+        self.assertEqual((new_x, new_z), (0.0, 5.0))
+
+    def test_static_obstacle_rotated_asymmetric_footprint_is_shifted(self):
+        data = _mock_stone_chunk(
+            local=(10.0, 3.0, 20.0),
+            axes=(
+                0.0, 0.0, 1.0,
+                0.0, 1.0, 0.0,
+                -1.0, 0.0, 0.0,
+            ))
+        bounds = (2.0, -1.0, -1.0, 6.0, 1.0, 1.0)
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
+                    mock.patch.object(emulator, "read_model_obstacle_bounds", return_value=bounds), \
+                    mock.patch.object(emulator, "terrain_height_only", return_value=3.0):
+                obstacles = emulator.build_static_obstacles_from_chunk_data(
+                    emulator.ARENA_TYPE_KARELIA, 0, 0, data, {})
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = obstacles
+            shifted = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 10.0, 22.5, tank_radius=0.1)
+            raw_center = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 10.0, 20.0, tank_radius=0.1)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertEqual(len(obstacles), 1)
+        self.assertIsNotNone(shifted)
+        self.assertIsNone(raw_center)
+
     def test_static_obstacle_blocks_shot_only_when_validated(self):
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
         source = _make_combat_session(81, 1, (0.0, 0.0, 0.0))
@@ -692,6 +901,102 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIsNotNone(hit)
         self.assertIsNone(miss)
 
+    def test_static_obstacle_index_skips_far_obstacles(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        original_index = dict(emulator.STATIC_OBSTACLE_INDEX_CACHE)
+        far_obstacle = (
+            500.0, 0.0, 500.0, 2.0, 4.0,
+            b"content/Environment/Rocks/far.model",
+            ((499.0, 499.0), (501.0, 499.0), (501.0, 501.0), (499.0, 501.0)),
+        )
+        near_obstacle = (
+            10.0, 0.0, 10.0, 2.0, 4.0,
+            b"content/Environment/Rocks/near.model",
+            ((9.0, 9.0), (11.0, 9.0), (11.0, 11.0), (9.0, 11.0)),
+        )
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                far_obstacle, near_obstacle,
+            ]
+            near_results = list(emulator.iter_obstacles_near_point(
+                emulator.ARENA_TYPE_KARELIA, 10.0, 10.0, halo=2.0))
+            far_results = list(emulator.iter_obstacles_near_point(
+                emulator.ARENA_TYPE_KARELIA, 500.0, 500.0, halo=2.0))
+            empty_results = list(emulator.iter_obstacles_near_point(
+                emulator.ARENA_TYPE_KARELIA, 250.0, 250.0, halo=2.0))
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.update(original_index)
+
+        self.assertEqual(len(near_results), 1)
+        self.assertIs(near_results[0], near_obstacle)
+        self.assertEqual(len(far_results), 1)
+        self.assertIs(far_results[0], far_obstacle)
+        self.assertEqual(empty_results, [])
+
+    def test_static_obstacle_default_halo_uses_configured_value(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        original_index = dict(emulator.STATIC_OBSTACLE_INDEX_CACHE)
+        obstacle = (
+            0.0, 0.0, 0.0, 1.0, 2.0,
+            b"content/Environment/Rocks/small.model",
+            ((-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)),
+        )
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [obstacle]
+            clear = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 2.0, 0.0)
+            blocked = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 1.5, 0.0)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.update(original_index)
+
+        self.assertIsNone(clear)
+        self.assertIsNotNone(blocked)
+
+    def test_packed_section_bounds_parser_reads_min_max(self):
+        polygon_bounds = (-3.5, -1.0, -4.25, 3.5, 2.5, 4.25)
+        min_vec = polygon_bounds[:3]
+        max_vec = polygon_bounds[3:]
+        header = b'\x45\x4e\xa1\x62\x00'
+        strings = b'boundingBox\x00min\x00max\x00\x00'
+        type_section = emulator._PACKED_SECTION_TYPE_SECTION
+        type_float = emulator._PACKED_SECTION_TYPE_FLOAT
+        shift = emulator._PACKED_SECTION_TYPE_SHIFT
+
+        bb_children = struct.pack(
+            '<iHiHi',
+            (type_section << shift) | 0,
+            1,
+            (type_float << shift) | 12,
+            2,
+            (type_float << shift) | 24,
+        )
+        bb_section = (struct.pack('<h', 2) + bb_children +
+                      struct.pack('<3f', *min_vec) +
+                      struct.pack('<3f', *max_vec))
+        root_children = struct.pack(
+            '<iHi',
+            (type_section << shift) | 0,
+            0,
+            (type_section << shift) | len(bb_section),
+        )
+        root_section = struct.pack('<h', 1) + root_children + bb_section
+        data = header + strings + root_section
+        bounds = emulator._packed_section_find_bounds(data)
+        self.assertIsNotNone(bounds)
+        for actual, expected in zip(bounds, polygon_bounds):
+            self.assertAlmostEqual(actual, expected, places=4)
+
     def test_static_obstacles_load_for_non_karelia_arena(self):
         data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
@@ -705,7 +1010,8 @@ class RuntimeCoreTests(unittest.TestCase):
                     mock.patch.object(emulator.os, "listdir", return_value=["00010002o.chunk"]), \
                     mock.patch("builtins.open", side_effect=fake_open), \
                     mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
-                    mock.patch.object(emulator, "stone_obstacle_radius", return_value=4.0), \
+                    mock.patch.object(emulator, "read_model_obstacle_bounds",
+                                      return_value=(-4.0, -1.0, 0.0, 4.0, 1.0, 0.0)), \
                     mock.patch.object(emulator, "terrain_height_only", return_value=3.0):
                 obstacles = emulator.load_static_obstacles_for_arena(2)
         finally:
@@ -741,6 +1047,116 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
 
         self.assertIs(result, sentinel_obstacles)
+
+    def test_startup_prewarm_loads_enabled_static_obstacles(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        original_enabled = emulator.ENABLED_ARENA_TYPE_IDS
+        calls = []
+
+        def fake_load(arena_type_id):
+            calls.append(arena_type_id)
+            return [(float(arena_type_id), 0.0, 0.0, 1.0, 1.0, b"stone.model")]
+
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.ENABLED_ARENA_TYPE_IDS = (1, 2)
+            with mock.patch.object(emulator, "load_static_obstacles_for_arena",
+                                   side_effect=fake_load):
+                warmed = emulator.prewarm_static_obstacles_for_enabled_maps()
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+            emulator.ENABLED_ARENA_TYPE_IDS = original_enabled
+
+        self.assertEqual(calls, [1, 2])
+        self.assertEqual(warmed, {1: 1, 2: 1})
+
+    def test_startup_prewarm_skips_warm_static_obstacles(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        original_enabled = emulator.ENABLED_ARENA_TYPE_IDS
+        sentinel = [(1.0, 0.0, 0.0, 1.0, 1.0, b"stone.model")]
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = sentinel
+            emulator.ENABLED_ARENA_TYPE_IDS = (emulator.ARENA_TYPE_KARELIA,)
+            with mock.patch.object(emulator, "load_static_obstacles_for_arena",
+                                   side_effect=AssertionError("must stay warm")):
+                warmed = emulator.prewarm_static_obstacles_for_enabled_maps()
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+            emulator.ENABLED_ARENA_TYPE_IDS = original_enabled
+
+        self.assertEqual(warmed, {emulator.ARENA_TYPE_KARELIA: 1})
+
+    def test_matchmaker_launch_does_not_cold_load_static_obstacles(self):
+        original_queue = list(emulator.matchmaking_queue)
+        original_timer = emulator.matchmaking_timer
+        original_next = emulator.next_battle_id
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        sess = _make_combat_session(301, 1, (0.0, 0.0, 0.0))
+        sess["queued_for_battle"] = True
+        sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
+        scheduled = []
+        try:
+            emulator.matchmaking_queue[:] = [{"addr": sess["addr"], "sess": sess}]
+            emulator.matchmaking_timer = None
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator, "runtime_call_later",
+                                      side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                    mock.patch.object(emulator, "load_static_obstacles_for_arena",
+                                      side_effect=AssertionError("must not cold load")), \
+                    mock.patch.object(emulator, "send_account_event", return_value=None), \
+                    mock.patch.object(emulator, "send_avatar_player", return_value=None):
+                emulator.start_matchmaking_timer(object())
+                self.assertEqual(len(scheduled), 1)
+                scheduled[0][1]()
+        finally:
+            emulator.matchmaking_queue[:] = original_queue
+            emulator.matchmaking_timer = original_timer
+            emulator.next_battle_id = original_next
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertFalse(sess.get("queued_for_battle"))
+        self.assertIn("battle_capture_state", sess)
+
+    def test_matchmaker_launch_uses_warm_static_obstacle_cache(self):
+        original_queue = list(emulator.matchmaking_queue)
+        original_timer = emulator.matchmaking_timer
+        original_next = emulator.next_battle_id
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        sess = _make_combat_session(302, 1, (0.0, 0.0, 0.0))
+        sess["queued_for_battle"] = True
+        sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
+        scheduled = []
+        try:
+            emulator.matchmaking_queue[:] = [{"addr": sess["addr"], "sess": sess}]
+            emulator.matchmaking_timer = None
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (1.0, 0.0, 0.0, 1.0, 1.0, b"stone.model")
+            ]
+            with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator, "runtime_call_later",
+                                      side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                    mock.patch.object(emulator, "load_static_obstacles_for_arena",
+                                      side_effect=AssertionError("must use warm cache")), \
+                    mock.patch.object(emulator, "send_account_event", return_value=None), \
+                    mock.patch.object(emulator, "send_avatar_player", return_value=None):
+                emulator.start_matchmaking_timer(object())
+                self.assertEqual(len(scheduled), 1)
+                scheduled[0][1]()
+        finally:
+            emulator.matchmaking_queue[:] = original_queue
+            emulator.matchmaking_timer = original_timer
+            emulator.next_battle_id = original_next
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertFalse(sess.get("queued_for_battle"))
+        self.assertIn("battle_capture_state", sess)
 
     def test_artillery_direct_hit_uses_marker_target(self):
         artillery = _make_combat_vehicle()
