@@ -1,5 +1,6 @@
 import io
 import math
+import pickle
 import struct
 import threading
 import time
@@ -246,6 +247,24 @@ def _message_payloads(messages, wanted_id):
             out.append(payload)
         pos += 3 + size
     return out
+
+
+def _bw_read_int(data, pos):
+    value = data[pos]
+    pos += 1
+    if value == 0xFF:
+        value = data[pos] | (data[pos + 1] << 8) | (data[pos + 2] << 16)
+        pos += 3
+    return value, pos
+
+
+def _arena_update_values(messages, update_type):
+    for payload in _message_payloads(messages, emulator.AVATAR_UPDATEARENA_MSG_ID):
+        if payload[4] != update_type:
+            continue
+        size, pos = _bw_read_int(payload, 5)
+        return pickle.loads(payload[pos:pos + size])
+    return None
 
 
 def _detailed_position_entity_ids(messages):
@@ -636,14 +655,19 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertEqual(sess["in_seq_at"], 1044)
 
-    def test_first_ready_player_schedules_and_starts_without_waiting(self):
+    def test_first_ready_player_schedules_and_starts_match_synchronously(self):
         s1 = _make_loading_session(1)
         s2 = _make_loading_session(2)
+        s1.pop("battle_start_wall", None)
+        s2.pop("battle_start_wall", None)
+        s1["server_time_zero_wall"] = 1000.0
+        s2["server_time_zero_wall"] = 1000.0
         emulator.active_battle_accounts[1] = s1
         emulator.active_battle_accounts[2] = s2
         scheduled = []
         sent = []
         arena_updates = []
+        now = [1000.0]
 
         def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
             sent.append((_sess, bytes(msgs), label, reliable))
@@ -652,20 +676,22 @@ class RuntimeCoreTests(unittest.TestCase):
         def capture_arena(_sock, _addr, _sess, update_type, data, label):
             arena_updates.append((_sess, update_type, data, label))
 
-        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+        with mock.patch.object(emulator.time, "time", side_effect=lambda: now[0]), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
                 mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
                 mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
                 mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
             emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
             self.assertEqual(len(scheduled), 1)
             self.assertAlmostEqual(scheduled[0][0],
-                                   emulator.BATTLE_READY_GUARD_SECONDS)
+                                   emulator.PREBATTLE_TIMER_SECONDS)
+            now[0] = 1025.1
             scheduled[0][1]()
 
         self.assertTrue(s1["battle_client_ready"])
         self.assertFalse(s2["battle_client_ready"])
         self.assertTrue(s1["battle_period_active"])
-        self.assertFalse(s2["battle_period_active"])
+        self.assertTrue(s2["battle_period_active"])
         self.assertTrue(s1["battle_period_timer_started"])
         self.assertTrue(s2["battle_period_timer_started"])
         self.assertEqual(len(arena_updates), 1)
@@ -677,8 +703,158 @@ class RuntimeCoreTests(unittest.TestCase):
                     ready_updates.append((_sess, payload))
         self.assertEqual(len(ready_updates), 2)
         battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
-        self.assertEqual(len(battle_sends), 1)
-        self.assertIs(battle_sends[0][0], s1)
+        self.assertEqual(len(battle_sends), 2)
+        self.assertEqual({entry[0]["account_id"] for entry in battle_sends}, {1, 2})
+
+    def test_ready_after_loading_delay_gets_full_prebattle_countdown(self):
+        sess = _make_loading_session(1)
+        sess.pop("battle_start_wall", None)
+        sess["server_time_zero_wall"] = 1000.0
+        emulator.active_battle_accounts[1] = sess
+        arena_updates = []
+        scheduled = []
+
+        def capture_arena(_sock, _addr, _sess, update_type, data, label):
+            arena_updates.append((_sess, update_type, data, label))
+
+        with mock.patch.object(emulator.time, "time", return_value=1021.0), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
+                mock.patch.object(emulator, "runtime_call_later",
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+            emulator.send_avatar_ready_and_prebattle(object(), sess["addr"], sess)
+
+        self.assertEqual(sess["battle_start_wall"], 1046.0)
+        self.assertEqual(sess["battle_end_wall"], 1946.0)
+        self.assertEqual(
+            arena_updates[0][2],
+            (emulator.ARENA_PERIOD_PREBATTLE, 43,
+             emulator.PREBATTLE_TIMER_SECONDS, None))
+        self.assertEqual(scheduled[0][0], 25.0)
+
+    def test_later_ready_player_keeps_existing_match_countdown(self):
+        s1 = _make_loading_session(1)
+        s2 = _make_loading_session(2)
+        s1.pop("battle_start_wall", None)
+        s2.pop("battle_start_wall", None)
+        s1["server_time_zero_wall"] = 1000.0
+        s2["server_time_zero_wall"] = 1000.0
+        emulator.active_battle_accounts[1] = s1
+        emulator.active_battle_accounts[2] = s2
+        scheduled = []
+        sent = []
+        arena_updates = []
+        now = [1000.0]
+
+        def capture_send(_sock, _addr, _sess, msgs, label, reliable=True):
+            sent.append((_sess, bytes(msgs), label, reliable))
+            return True
+
+        def capture_arena(_sock, _addr, _sess, update_type, data, label):
+            arena_updates.append((_sess, update_type, data, label))
+
+        with mock.patch.object(emulator.time, "time", side_effect=lambda: now[0]), \
+                mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
+                mock.patch.object(emulator, "runtime_call_later",
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
+            emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
+            self.assertEqual(s1["battle_start_wall"], 1025.0)
+            now[0] = 1010.0
+            emulator.send_avatar_ready_and_prebattle(object(), s2["addr"], s2)
+            self.assertEqual(s1["battle_start_wall"], 1025.0)
+            self.assertEqual(s2["battle_start_wall"], 1025.0)
+            self.assertEqual(len(scheduled), 1)
+            now[0] = 1025.1
+            scheduled[0][1]()
+
+        battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
+        self.assertEqual(len(battle_sends), 2)
+        self.assertEqual({entry[0]["account_id"] for entry in battle_sends}, {1, 2})
+        period_updates = [entry for entry in arena_updates
+                          if entry[1] == emulator.ARENA_UPDATE_PERIOD]
+        self.assertEqual(len(period_updates), 3)
+        self.assertEqual(period_updates[-2][2][1], 22)
+        self.assertEqual(period_updates[-1][2][1], 22)
+
+    def test_prebattle_timer_default_is_25_seconds(self):
+        self.assertEqual(emulator.PREBATTLE_TIMER_SECONDS, 25)
+        self.assertEqual(emulator.BATTLE_PERIOD_TIME_OFFSET_SECONDS, 3.0)
+
+    def test_ready_prebattle_period_uses_synced_start_wall(self):
+        sess = _make_loading_session(1)
+        sess["battle_start_wall"] = 1025.0
+        sess["server_time_zero_wall"] = 980.0
+        emulator.active_battle_accounts[1] = sess
+        arena_updates = []
+        scheduled = []
+
+        def capture_arena(_sock, _addr, _sess, update_type, data, label):
+            arena_updates.append((_sess, update_type, data, label))
+
+        with mock.patch.object(emulator.time, "time", return_value=1000.0), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
+                mock.patch.object(emulator, "runtime_call_later",
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+            emulator.send_avatar_ready_and_prebattle(object(), sess["addr"], sess)
+
+        self.assertEqual(len(arena_updates), 1)
+        self.assertEqual(
+            arena_updates[0][2],
+            (emulator.ARENA_PERIOD_PREBATTLE, 42,
+             emulator.PREBATTLE_TIMER_SECONDS, None))
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(scheduled[0][0], 25.0)
+
+    def test_prebattle_period_end_reaches_zero_at_scheduled_start(self):
+        sess = _make_loading_session(1)
+        sess.pop("battle_start_wall", None)
+        sess["server_time_zero_wall"] = 1000.0
+        emulator.active_battle_accounts[1] = sess
+        arena_updates = []
+        scheduled = []
+
+        def capture_arena(_sock, _addr, _sess, update_type, data, label):
+            arena_updates.append((_sess, update_type, data, label))
+
+        with mock.patch.object(emulator.time, "time", return_value=1000.0), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
+                mock.patch.object(emulator, "runtime_call_later",
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+            emulator.send_avatar_ready_and_prebattle(object(), sess["addr"], sess)
+
+        period_end = arena_updates[0][2][1]
+        client_server_time_at_start = (
+            sess["battle_start_wall"] -
+            sess["server_time_zero_wall"] -
+            emulator.BATTLE_PERIOD_TIME_OFFSET_SECONDS)
+        self.assertEqual(period_end, int(client_server_time_at_start))
+
+    def test_battle_period_start_messages_use_synced_end_wall(self):
+        s1 = _make_loading_session(1)
+        s2 = _make_loading_session(2)
+        s1["server_time_zero_wall"] = 100.0
+        s2["server_time_zero_wall"] = 130.0
+        emulator.sync_match_battle_timers([s1, s2], start_wall=200.0)
+
+        p1 = _arena_update_values(
+            emulator.build_battle_period_start_messages(s1),
+            emulator.ARENA_UPDATE_PERIOD)
+        p2 = _arena_update_values(
+            emulator.build_battle_period_start_messages(s2),
+            emulator.ARENA_UPDATE_PERIOD)
+
+        self.assertEqual(p1, (
+            emulator.ARENA_PERIOD_BATTLE, 997,
+            emulator.BATTLE_TIMER_SECONDS, None))
+        self.assertEqual(p2, (
+            emulator.ARENA_PERIOD_BATTLE, 967,
+            emulator.BATTLE_TIMER_SECONDS, None))
+        self.assertEqual(p1[1] + int(s1["server_time_zero_wall"]),
+                         p2[1] + int(s2["server_time_zero_wall"]))
 
     def test_late_ready_player_enters_running_match(self):
         s1 = _make_loading_session(1, ready=True)
@@ -1570,6 +1746,57 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertFalse(sess.get("queued_for_battle"))
         self.assertIn("battle_capture_state", sess)
+
+    def test_matchmaker_launch_sets_shared_launch_wall_without_starting_countdown(self):
+        original_queue = list(emulator.matchmaking_queue)
+        original_timer = emulator.matchmaking_timer
+        original_next = emulator.next_battle_id
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        s1 = _make_combat_session(311, 1, (0.0, 0.0, 0.0))
+        s2 = _make_combat_session(312, 2, (0.0, 0.0, 0.0))
+        s1["queued_for_battle"] = True
+        s2["queued_for_battle"] = True
+        s1["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
+        s2["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
+        scheduled = []
+        sent_players = []
+        try:
+            emulator.matchmaking_queue[:] = [
+                {"addr": s1["addr"], "sess": s1},
+                {"addr": s2["addr"], "sess": s2},
+            ]
+            emulator.matchmaking_timer = None
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (1.0, 0.0, 0.0, 1.0, 1.0, b"stone.model")
+            ]
+
+            def capture_player(_sock, _addr, sess):
+                sent_players.append(sess)
+
+            with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator.time, "time", return_value=1000.0), \
+                    mock.patch.object(emulator, "runtime_call_later",
+                                      side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                    mock.patch.object(emulator, "send_account_event", return_value=None), \
+                    mock.patch.object(emulator, "send_avatar_player", side_effect=capture_player):
+                emulator.start_matchmaking_timer(object())
+                self.assertEqual(len(scheduled), 1)
+                scheduled[0][1]()
+        finally:
+            emulator.matchmaking_queue[:] = original_queue
+            emulator.matchmaking_timer = original_timer
+            emulator.next_battle_id = original_next
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertEqual(sent_players, [s1, s2])
+        self.assertEqual(s1["battle_launch_wall"], 1000.0)
+        self.assertEqual(s2["battle_launch_wall"], 1000.0)
+        self.assertNotIn("battle_start_wall", s1)
+        self.assertNotIn("battle_start_wall", s2)
+        self.assertNotIn("battle_end_wall", s1)
+        self.assertNotIn("battle_end_wall", s2)
 
     def test_matchmaker_launch_uses_warm_static_obstacle_cache(self):
         original_queue = list(emulator.matchmaking_queue)

@@ -39,9 +39,10 @@ DEFAULT_CONFIG = {
         "team_weight_field": "maxHealth"
     },
     "battle": {
-        "prebattle_timer_seconds": 10,
+        "prebattle_timer_seconds": 25,
         "battle_timer_seconds": 900,
         "ready_guard_seconds": 1.0,
+        "period_time_offset_seconds": 3.0,
         "tick_hz": 60.0,
         "verbose_debug": False,
         "targeting_update_interval": 0.08,

@@ -3414,10 +3414,12 @@ BATTLE_FINISH_REASON_BASE = 2
 #   35=35_steppes, 37=37_caucasus, 38=38_mannerheim_line.
 ARENA_TYPE_KARELIA   = 1
 PREBATTLE_TIMER_SECONDS = int(get_value(
-    CONFIG, 'battle.prebattle_timer_seconds', 10))
+    CONFIG, 'battle.prebattle_timer_seconds', 25))
 BATTLE_TIMER_SECONDS = int(get_value(CONFIG, 'battle.battle_timer_seconds', 900))
 BATTLE_READY_GUARD_SECONDS = float(get_value(
     CONFIG, 'battle.ready_guard_seconds', 1.0))
+BATTLE_PERIOD_TIME_OFFSET_SECONDS = float(get_value(
+    CONFIG, 'battle.period_time_offset_seconds', 3.0))
 MATCHMAKING_MIN_SECONDS = float(get_value(
     CONFIG, 'matchmaking.min_seconds', 15))
 MATCHMAKING_MAX_SECONDS = float(get_value(
@@ -5328,6 +5330,70 @@ def current_server_time(sess: dict) -> int:
     return max(0, int(time.time() - zero_wall_time))
 
 
+def wall_time_to_server_time(sess: dict, wall_time: float) -> int:
+    zero_wall_time = sess.get('server_time_zero_wall')
+    if zero_wall_time is None:
+        return max(0, int(math.ceil(
+            float(wall_time) - BATTLE_PERIOD_TIME_OFFSET_SECONDS)))
+    return max(0, int(math.ceil(
+        float(wall_time) - float(zero_wall_time) -
+        BATTLE_PERIOD_TIME_OFFSET_SECONDS)))
+
+
+def get_session_battle_start_wall(sess: dict) -> float:
+    value = sess.get('battle_start_wall')
+    if value is None:
+        value = time.time() + PREBATTLE_TIMER_SECONDS
+        sess['battle_start_wall'] = value
+    return float(value)
+
+
+def get_session_battle_end_wall(sess: dict) -> float:
+    value = sess.get('battle_end_wall')
+    if value is None:
+        value = get_session_battle_start_wall(sess) + BATTLE_TIMER_SECONDS
+        sess['battle_end_wall'] = value
+    return float(value)
+
+
+def sync_match_battle_timers(sessions, start_wall=None, launch_wall=None):
+    sessions = [sess for sess in sessions if sess is not None]
+    if not sessions:
+        now = time.time()
+        return now + PREBATTLE_TIMER_SECONDS, now + PREBATTLE_TIMER_SECONDS + BATTLE_TIMER_SECONDS
+    if start_wall is None:
+        values = [
+            float(sess.get('battle_start_wall'))
+            for sess in sessions
+            if sess.get('battle_start_wall') is not None
+        ]
+        start_wall = max(values) if values else time.time() + PREBATTLE_TIMER_SECONDS
+    end_wall = float(start_wall) + BATTLE_TIMER_SECONDS
+    for sess in sessions:
+        sess['battle_start_wall'] = float(start_wall)
+        sess['battle_end_wall'] = end_wall
+        if launch_wall is not None:
+            sess['battle_launch_wall'] = float(launch_wall)
+    return float(start_wall), end_wall
+
+
+def sync_prebattle_countdown_after_ready(sessions):
+    sessions = [sess for sess in sessions if sess is not None]
+    if not sessions:
+        return time.time() + PREBATTLE_TIMER_SECONDS
+    if any(sess.get('battle_period_active') for sess in sessions):
+        start_wall, _end_wall = sync_match_battle_timers(sessions)
+        return start_wall
+    values = [
+        float(sess.get('battle_start_wall'))
+        for sess in sessions
+        if sess.get('battle_start_wall') is not None
+    ]
+    start_wall = max(values) if values else time.time() + PREBATTLE_TIMER_SECONDS
+    start_wall, _end_wall = sync_match_battle_timers(sessions, start_wall=start_wall)
+    return start_wall
+
+
 def send_avatar_arena_update(sock, addr, sess, update_type: int, data, label: str):
     msg = build_avatar_update_arena(update_type, data)
     send_lock = sess.setdefault('send_lock', threading.RLock())
@@ -5820,11 +5886,10 @@ def build_battle_vehicle_state_messages(sess: dict):
 
 
 def build_battle_period_start_messages(sess: dict):
-    now = current_server_time(sess)
+    end_time = wall_time_to_server_time(sess, get_session_battle_end_wall(sess))
     msgs = build_avatar_update_arena(
         ARENA_UPDATE_PERIOD,
-        (ARENA_PERIOD_BATTLE, now + BATTLE_TIMER_SECONDS,
-         BATTLE_TIMER_SECONDS, None))
+        (ARENA_PERIOD_BATTLE, end_time, BATTLE_TIMER_SECONDS, None))
     msgs += build_battle_motion_sync(
         sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
         sess.get('battle_yaw', 0.0),
@@ -5871,11 +5936,9 @@ def schedule_battle_period(sock, addr, sess):
         if match_id is not None else [sess])
     if not sessions:
         return
+    start_wall, _end_wall = sync_match_battle_timers(sessions)
     if any(player.get('battle_period_timer_started') for player in sessions):
         if sess.get('battle_client_ready') and not sess.get('battle_period_active'):
-            start_wall = float(sess.get(
-                'battle_start_wall',
-                time.time() + PREBATTLE_TIMER_SECONDS))
             if start_wall <= time.time() and not sess.get('battle_late_period_timer_started'):
                 generation = sess.get('battle_generation', 0)
                 sess['battle_late_period_timer_started'] = True
@@ -5896,11 +5959,6 @@ def schedule_battle_period(sock, addr, sess):
         id(player): player.get('battle_generation', 0)
         for player in sessions
     }
-    start_wall = max(
-        float(player.get(
-            'battle_start_wall',
-            time.time() + PREBATTLE_TIMER_SECONDS))
-        for player in sessions)
     for player in sessions:
         player['battle_period_timer_started'] = True
 
@@ -5910,11 +5968,14 @@ def schedule_battle_period(sock, addr, sess):
             if match_id is not None else [sess])
         if not current_sessions:
             return
+        current_start_wall, _end_wall = sync_match_battle_timers(current_sessions)
+        remaining = current_start_wall - time.time()
+        if remaining > 0.05:
+            runtime_call_later(remaining, _start_battle)
+            return
         started = False
         for player in current_sessions:
             if generations.get(id(player)) != player.get('battle_generation', 0):
-                continue
-            if not player.get('battle_client_ready'):
                 continue
             if player.get('battle_ended') or not player.get('battle_bundle_sent'):
                 continue
@@ -5968,10 +6029,10 @@ def send_avatar_player(sock, addr, sess):
     spawn_pos = pick_spawn_pos(arena_type_id, sess)
     init_battle_state(sess, spawn_pos)
     spawn_yaw = sess.get('battle_yaw', 0.0)
-    now = current_server_time(sess)
+    start_wall = float(sess.get('battle_start_wall') or
+                       (time.time() + PREBATTLE_TIMER_SECONDS))
     prebattle_left = max(0, int(math.ceil(
-        float(sess.get('battle_start_wall', time.time() + PREBATTLE_TIMER_SECONDS)) -
-        time.time())))
+        start_wall - time.time())))
     msgs = build_avatar_player_bundle(arena_type_id=arena_type_id,
                                       vehicle_compact_descr=veh_compact,
                                       vehicle_data=battle_vehicle,
@@ -5979,7 +6040,7 @@ def send_avatar_player(sock, addr, sess):
                                       spawn_pos=spawn_pos,
                                       spawn_yaw=spawn_yaw,
                                       initial_period=ARENA_PERIOD_PREBATTLE,
-                                      period_end_time=now + prebattle_left,
+                                      period_end_time=wall_time_to_server_time(sess, start_wall),
                                       period_length=PREBATTLE_TIMER_SECONDS)
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
@@ -6014,7 +6075,7 @@ def start_matchmaking_timer(sock):
             battle_id = next_battle_id
             next_battle_id += 1
         valid_batch = []
-        start_wall = time.time() + PREBATTLE_TIMER_SECONDS
+        launch_wall = time.time()
         for queued in batch:
             sess = queued.get('sess')
             addr = queued.get('addr')
@@ -6022,8 +6083,7 @@ def start_matchmaking_timer(sock):
                 continue
             sess['queued_for_battle'] = False
             sess['battle_match_id'] = battle_id
-            sess['battle_start_wall'] = start_wall
-            sess['battle_launch_wall'] = time.time()
+            sess['battle_launch_wall'] = launch_wall
             valid_batch.append(queued)
         if not valid_batch:
             return
@@ -6053,7 +6113,7 @@ def start_matchmaking_timer(sock):
             team_counts[team] = team_counts.get(team, 0) + 1
             base_assignment = sess.get('battle_base_assignment') or base_assignment
         print(f"    [matchmaker] launching battle #{battle_id} for "
-              f"{len(valid_batch)} player(s), synced start in "
+              f"{len(valid_batch)} player(s), prebattle after ready "
               f"{PREBATTLE_TIMER_SECONDS}s, teams="
               f"{team_counts.get(1, 0)}:{team_counts.get(2, 0)}, "
               f"bases={base_assignment}")
@@ -6118,15 +6178,20 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
                          "Avatar ready + initial vehicle position/targeting")
-    now = current_server_time(sess)
-    prebattle_left = max(0, int(math.ceil(
-        float(sess.get('battle_start_wall', time.time() + PREBATTLE_TIMER_SECONDS)) -
-        time.time())))
-    send_avatar_arena_update(
-        sock, addr, sess, ARENA_UPDATE_PERIOD,
-        (ARENA_PERIOD_PREBATTLE, now + prebattle_left,
-         PREBATTLE_TIMER_SECONDS, None),
-        "PERIOD=PREBATTLE")
+    match_id = sess.get('battle_match_id')
+    sessions = (
+        get_match_battle_sessions(match_id)
+        if match_id is not None else [sess])
+    start_wall = sync_prebattle_countdown_after_ready(sessions)
+    for viewer in sessions:
+        if not viewer.get('battle_client_ready') or not viewer.get('addr'):
+            continue
+        send_avatar_arena_update(
+            sock, viewer.get('addr'), viewer, ARENA_UPDATE_PERIOD,
+            (ARENA_PERIOD_PREBATTLE,
+             wall_time_to_server_time(viewer, start_wall),
+             PREBATTLE_TIMER_SECONDS, None),
+            "PERIOD=PREBATTLE")
     broadcast_match_avatar_ready(sock, sess)
     schedule_battle_period(sock, addr, sess)
 
