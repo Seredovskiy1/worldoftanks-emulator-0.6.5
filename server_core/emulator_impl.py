@@ -1547,6 +1547,7 @@ AVATAR_SHOW_TRACER_MSG_ID           = 0x8c
 AVATAR_STOP_TRACER_MSG_ID           = 0x8d
 AVATAR_EXPLODE_PROJECTILE_MSG_ID    = 0x8e
 AVATAR_ON_VEHICLE_LEFT_ARENA_MSG_ID = 0x91
+AVATAR_UPDATE_POSITIONS_MSG_ID      = 0x93
 VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
 VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID = 0x82
 VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID = 0x83
@@ -3521,8 +3522,14 @@ SPOTTING_STATIONARY_SPEED = float(get_value(
     CONFIG, 'combat.spotting_stationary_speed', 0.5))
 SPOTTING_SHOT_CAMO_PENALTY_SECONDS = float(get_value(
     CONFIG, 'combat.spotting_shot_camo_penalty_seconds', 5.0))
+SPOTTING_CAMO_SCALE = float(get_value(
+    CONFIG, 'combat.spotting_camo_scale', 2.0))
+SPOTTING_CAMO_CLASS_MULTIPLIERS = dict(get_value(
+    CONFIG, 'combat.spotting_camo_class_multipliers', {}))
 SPOTTING_VIEW_RANGE_FALLBACKS = dict(get_value(
     CONFIG, 'combat.spotting_view_range_fallbacks', {}))
+SPOTTING_VIEW_RANGE_CLASS_LIMITS = dict(get_value(
+    CONFIG, 'combat.spotting_view_range_class_limits', {}))
 SPOTTING_CAMO_FALLBACKS = dict(get_value(
     CONFIG, 'combat.spotting_camo_fallbacks', {}))
 SPOTTING_BUSH_RADIUS = float(get_value(
@@ -3917,6 +3924,13 @@ def build_avatar_update_own_vehicle_position(pos, yaw: float,
     em += struct.pack('<fff', yaw, 0.0, 0.0)   # direction VECTOR3: yaw,pitch,roll
     em += struct.pack('<ff', speed, rspeed)
     return msg_varlen(AVATAR_UPDATE_OWN_POSITION_MSG_ID, em)
+
+
+def build_avatar_update_positions(indices, positions) -> bytes:
+    em = struct.pack('<I', AVATAR_ENTITY_ID)
+    em += pack_uint8_array(indices)
+    em += pack_int16_array(positions)
+    return msg_varlen(AVATAR_UPDATE_POSITIONS_MSG_ID, em)
 
 
 def pack_direction3d(yaw: float, pitch: float = 0.0,
@@ -4566,6 +4580,24 @@ def class_view_range_fallback(vehicle_class: str) -> float:
         SPOTTING_VIEW_RANGE_FALLBACKS, vehicle_class, 330.0))
 
 
+def class_view_range_limits(vehicle_class: str):
+    values = spotting_class_value(
+        SPOTTING_VIEW_RANGE_CLASS_LIMITS, vehicle_class, None)
+    if isinstance(values, dict):
+        low = float(values.get('min', 0.0))
+        high = float(values.get('max', SPOTTING_MAX_RANGE))
+    elif isinstance(values, (list, tuple)):
+        low = float(values[0]) if len(values) >= 1 else 0.0
+        high = float(values[1]) if len(values) >= 2 else SPOTTING_MAX_RANGE
+    elif values is not None:
+        low = high = float(values)
+    else:
+        low, high = 0.0, SPOTTING_MAX_RANGE
+    if high < low:
+        low, high = high, low
+    return max(0.0, low), max(0.0, high)
+
+
 def class_camo_fallback(vehicle_class: str):
     values = spotting_class_value(
         SPOTTING_CAMO_FALLBACKS, vehicle_class, (0.12, 0.17))
@@ -4577,13 +4609,19 @@ def class_camo_fallback(vehicle_class: str):
     return moving, still
 
 
+def class_camo_multiplier(vehicle_class: str) -> float:
+    return float(spotting_class_value(
+        SPOTTING_CAMO_CLASS_MULTIPLIERS, vehicle_class, 1.0))
+
+
 def vehicle_view_range(vehicle: dict) -> float:
     vehicle = vehicle or {}
     vehicle_class = vehicle_spotting_class(vehicle)
     value = float(vehicle.get('circularVisionRadius') or 0.0)
     if value <= 0.0:
         value = class_view_range_fallback(vehicle_class)
-    return max(0.0, value)
+    low, high = class_view_range_limits(vehicle_class)
+    return clamp(max(0.0, value), low, high)
 
 
 def vehicle_base_invisibility(vehicle: dict, moving: bool) -> float:
@@ -4595,6 +4633,7 @@ def vehicle_base_invisibility(vehicle: dict, moving: bool) -> float:
     value = float(vehicle.get(key) or 0.0)
     if value <= 0.0:
         value = fallback
+    value *= class_camo_multiplier(vehicle_class)
     return clamp(value, 0.0, 0.95)
 
 
@@ -4663,17 +4702,25 @@ def vehicle_current_invisibility(source_sess: dict, observer_sess: dict,
                                  observer_pos, source_pos) -> float:
     vehicle = get_session_battle_vehicle(source_sess)
     moving = session_observed_speed(source_sess) > SPOTTING_STATIONARY_SPEED
-    camo = vehicle_base_invisibility(vehicle, moving)
-    camo += spotting_bush_bonus_between(observer_sess, source_sess,
-                                        observer_pos, source_pos)
+    camo = vehicle_base_invisibility(vehicle, moving) * SPOTTING_CAMO_SCALE
     shot_time = float(source_sess.get('battle_last_spotting_shot_time') or 0.0)
     if shot_time > 0.0 and time.time() - shot_time <= SPOTTING_SHOT_CAMO_PENALTY_SECONDS:
         factor = float((vehicle or {}).get('gunInvisibilityFactorAtShot') or 0.25)
         camo *= clamp(factor, 0.0, 1.0)
+    camo += spotting_bush_bonus_between(observer_sess, source_sess,
+                                        observer_pos, source_pos)
     return clamp(camo, 0.0, 0.95)
 
 
-def is_vehicle_visible_to(observer_sess: dict, source_sess: dict) -> bool:
+def is_live_vehicle_session(sess: dict) -> bool:
+    if sess.get('battle_ended'):
+        return False
+    if 'battle_vehicle_health' in sess:
+        return int(sess.get('battle_vehicle_health') or 0) > 0
+    return True
+
+
+def is_vehicle_directly_visible_to(observer_sess: dict, source_sess: dict) -> bool:
     if observer_sess is source_sess:
         return True
     if observer_sess.get('battle_match_id') != source_sess.get('battle_match_id'):
@@ -4704,11 +4751,87 @@ def is_vehicle_visible_to(observer_sess: dict, source_sess: dict) -> bool:
     return visible
 
 
+def is_vehicle_spotted_by_observer_team(observer_sess: dict, source_sess: dict) -> bool:
+    if not spotting_applies(observer_sess, source_sess):
+        return False
+    observer_team = observer_sess.get('battle_team')
+    if observer_team is None:
+        return False
+    match_id = observer_sess.get('battle_match_id')
+    with battle_lock:
+        spotters = [
+            sess for sess in active_battle_accounts.values()
+            if sess is not observer_sess and
+            sess is not source_sess and
+            sess.get('battle_match_id') == match_id and
+            sess.get('battle_team') == observer_team and
+            sess.get('battle_bundle_sent') and
+            sess.get('battle_period_active') and
+            is_live_vehicle_session(sess)
+        ]
+    for spotter in spotters:
+        if is_vehicle_directly_visible_to(spotter, source_sess):
+            return True
+    return False
+
+
+def is_vehicle_visible_to(observer_sess: dict, source_sess: dict) -> bool:
+    if is_vehicle_directly_visible_to(observer_sess, source_sess):
+        return True
+    return is_vehicle_spotted_by_observer_team(observer_sess, source_sess)
+
+
 def mark_remote_vehicle_spotted(observer_sess: dict, source_sess: dict):
     account_id = source_sess.get('account_id')
     if not account_id or is_same_battle_team(observer_sess, source_sess):
         return
     observer_sess.setdefault('battle_spotted_vehicle_ids', set()).add(account_id)
+
+
+def remember_remote_vehicle_in_arena(observer_sess: dict, remote_sess: dict):
+    account_id = remote_sess.get('account_id')
+    if account_id:
+        observer_sess.setdefault('arena_remote_accounts', set()).add(account_id)
+
+
+def client_arena_vehicle_ids(observer_sess: dict):
+    vehicle_ids = {PLAYER_VEHICLE_ID}
+    accounts = set(observer_sess.get('arena_remote_accounts', set()))
+    accounts.update(observer_sess.get('known_remote_accounts', set()))
+    for account_id in accounts:
+        try:
+            vehicle_ids.add(get_remote_vehicle_id({'account_id': int(account_id)}))
+        except (TypeError, ValueError):
+            continue
+    return sorted(vehicle_ids)
+
+
+def build_minimap_positions_update(observer_sess: dict, sessions) -> bytes:
+    ids = client_arena_vehicle_ids(observer_sess)
+    index_by_id = {vehicle_id: index for index, vehicle_id in enumerate(ids)}
+    indices = []
+    positions = []
+    seen = set()
+    for sess in sessions:
+        if sess.get('battle_match_id') != observer_sess.get('battle_match_id'):
+            continue
+        if sess is observer_sess:
+            vehicle_id = PLAYER_VEHICLE_ID
+        else:
+            account_id = sess.get('account_id')
+            if account_id not in observer_sess.setdefault('known_remote_accounts', set()):
+                continue
+            vehicle_id = get_remote_vehicle_id(sess)
+        if vehicle_id in seen or vehicle_id not in index_by_id:
+            continue
+        pos = safe_vec3(get_effective_vehicle_pos(sess, None), None)
+        if pos is None:
+            continue
+        seen.add(vehicle_id)
+        indices.append(index_by_id[vehicle_id])
+        positions.append(int(round(clamp(float(pos[0]), -32768.0, 32767.0))))
+        positions.append(int(round(clamp(float(pos[2]), -32768.0, 32767.0))))
+    return build_avatar_update_positions(indices, positions)
 
 
 def mark_vehicle_shot_visibility_penalty(sess: dict):
@@ -4902,6 +5025,7 @@ def send_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
                             f"fwd={fwd * 3.6:.1f}km/h)",
                             reliable=True):
         known.add(remote_account_id)
+        remember_remote_vehicle_in_arena(observer_sess, remote_sess)
         mark_remote_vehicle_spotted(observer_sess, remote_sess)
 
 def announce_battle_player(sock, sess: dict):
@@ -4982,6 +5106,17 @@ def start_battle_tick_loop(sock):
                     continue
                 tick_count += 1
                 remote_payloads = []
+                def payload_for(observer):
+                    payload = None
+                    for entry in remote_payloads:
+                        if entry[0] is observer:
+                            payload = entry[1]
+                            break
+                    if payload is None:
+                        payload = []
+                        remote_payloads.append((observer, payload))
+                    return payload
+
                 for sess in sessions:
                     flags = sess.get('battle_motion_flags', 0)
                     if sess.get('server_vehicle_authoritative', True):
@@ -5018,15 +5153,13 @@ def start_battle_tick_loop(sock):
                             continue
                         if source_account_id not in known:
                             continue
-                        payload = None
-                        for entry in remote_payloads:
-                            if entry[0] is observer:
-                                payload = entry[1]
-                                break
-                        if payload is None:
-                            payload = []
-                            remote_payloads.append((observer, payload))
-                        payload.append(remote_msg)
+                        payload_for(observer).append(remote_msg)
+                for observer in sessions:
+                    if not observer.get('addr'):
+                        continue
+                    msg = build_minimap_positions_update(observer, sessions)
+                    if msg:
+                        payload_for(observer).append(msg)
                 for observer, payload in remote_payloads:
                     send_avatar_messages(sock, observer.get('addr'), observer,
                                          b''.join(payload), '', reliable=False)
@@ -6212,6 +6345,7 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
         if send_avatar_messages(sock, observer.get('addr'), observer,
                                 outbound, '', reliable=True):
             known.add(source_account_id)
+            remember_remote_vehicle_in_arena(observer, source_sess)
             mark_remote_vehicle_spotted(observer, source_sess)
             if not was_known:
                 generation = observer.get('battle_generation', 0)
@@ -8096,6 +8230,13 @@ def pack_uint8_array(values) -> bytes:
     out = struct.pack('<i', len(values))
     for value in values:
         out += struct.pack('<B', int(value) & 0xff)
+    return out
+
+
+def pack_int16_array(values) -> bytes:
+    out = struct.pack('<i', len(values))
+    for value in values:
+        out += struct.pack('<h', int(clamp(int(value), -32768, 32767)))
     return out
 
 

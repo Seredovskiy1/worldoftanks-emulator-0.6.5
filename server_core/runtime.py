@@ -145,6 +145,17 @@ class EventLoopRuntime:
             return
         self.battle_tick_count += 1
         remote_payloads = []
+        def payload_for(observer):
+            payload = None
+            for entry in remote_payloads:
+                if entry[0] is observer:
+                    payload = entry[1]
+                    break
+            if payload is None:
+                payload = []
+                remote_payloads.append((observer, payload))
+            return payload
+
         for sess in sessions:
             in_prebattle = not sess.get("battle_period_active")
             flags = sess.get("battle_motion_flags", 0)
@@ -197,15 +208,15 @@ class EventLoopRuntime:
                     mod.send_remote_vehicle(sock, observer, sess)
                     if source_account_id not in known:
                         continue
-                payload = None
-                for entry in remote_payloads:
-                    if entry[0] is observer:
-                        payload = entry[1]
-                        break
-                if payload is None:
-                    payload = []
-                    remote_payloads.append((observer, payload))
-                payload.append(remote_msg)
+                payload_for(observer).append(remote_msg)
+        build_minimap = getattr(mod, "build_minimap_positions_update", None)
+        if build_minimap is not None:
+            for observer in active_sessions:
+                if not observer.get("addr"):
+                    continue
+                msg = build_minimap(observer, sessions)
+                if msg:
+                    payload_for(observer).append(msg)
         for observer, payload in remote_payloads:
             mod.send_avatar_messages(sock, observer.get("addr"), observer,
                                      b"".join(payload), "", reliable=False)

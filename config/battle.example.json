@@ -46,6 +46,21 @@
     "spotting_max_range": 445.0,
     "spotting_stationary_speed": 0.5,
     "spotting_shot_camo_penalty_seconds": 5.0,
+    "spotting_camo_scale": 2.0,
+    "spotting_camo_class_multipliers": {
+      "lightTank": 1.35,
+      "mediumTank": 1.0,
+      "AT-SPG": 1.05,
+      "heavyTank": 0.8,
+      "SPG": 0.85
+    },
+    "spotting_view_range_class_limits": {
+      "lightTank": [410.0, 445.0],
+      "mediumTank": [350.0, 390.0],
+      "AT-SPG": [340.0, 380.0],
+      "heavyTank": [300.0, 340.0],
+      "SPG": [280.0, 320.0]
+    },
     "spotting_bush_radius": 7.5,
     "spotting_bush_bonus": 0.08,
     "spotting_bush_max_bonus": 0.25,
