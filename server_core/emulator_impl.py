@@ -2385,8 +2385,7 @@ def get_shell_damage(shell: dict) -> int:
         base = max(20.0, caliber * 1.6)
     if base <= 0.0:
         base = max(20.0, get_shell_caliber(shell) * 1.6)
-    randomization = safe_float((shell or {}).get('damageRandomization', 0.25),
-                               0.25, 0.0, 0.95)
+    randomization = SHOT_DAMAGE_RANDOMIZATION
     return max(1, int(round(base * random.uniform(1.0 - randomization,
                                                   1.0 + randomization))))
 
@@ -3571,6 +3570,22 @@ SHOT_TANK_HIT_RADIUS_V = float(get_value(
     CONFIG, 'combat.shot_tank_hit_radius_v', 4.0))
 SHOT_TANK_MARKER_VERT_ABOVE = float(get_value(
     CONFIG, 'combat.shot_tank_marker_vert_above', 25.0))
+SHOT_DISPERSION_ENABLED = bool(get_value(
+    CONFIG, 'combat.shot_dispersion_enabled', True))
+SHOT_HIT_CHANCE_PERCENT = float(get_value(
+    CONFIG, 'combat.shot_hit_chance_percent', 70.0))
+SHOT_DISPERSION_RADIUS_AT_100M = float(get_value(
+    CONFIG, 'combat.shot_dispersion_radius_at_100m', 2.5))
+SHOT_DISPERSION_SERVER_RADIUS_SCALE = max(0.05, min(1.0, float(get_value(
+    CONFIG, 'combat.shot_dispersion_server_radius_scale', 0.45))))
+SHOT_DISPERSION_CENTER_BIAS = max(0.25, min(8.0, float(get_value(
+    CONFIG, 'combat.shot_dispersion_center_bias', 2.5))))
+SHOT_DISPERSION_MIN_RADIUS = float(get_value(
+    CONFIG, 'combat.shot_dispersion_min_radius', 0.25))
+SHOT_DISPERSION_MAX_RADIUS = float(get_value(
+    CONFIG, 'combat.shot_dispersion_max_radius', 30.0))
+SHOT_DAMAGE_RANDOMIZATION = max(0.0, min(0.95, float(get_value(
+    CONFIG, 'combat.shot_damage_randomization', 0.25))))
 SHOT_RESULT_RICOCHET = 0
 SHOT_RESULT_ARMOR_NOT_PIERCED = 1
 SHOT_RESULT_ARMOR_PIERCED_NO_DAMAGE = 2
@@ -3653,6 +3668,8 @@ STATIC_OBSTACLE_INDEX_CELL = max(8.0, float(get_value(
     CONFIG, 'combat.static_obstacle_index_cell', 50.0)))
 TANK_COLLISION_RADIUS = float(get_value(
     CONFIG, 'combat.tank_collision_radius', 2.5))
+TANK_COLLISION_ENABLED = bool(get_value(
+    CONFIG, 'combat.tank_collision_enabled', True))
 TANK_SLOPE_LIMIT_TAN = math.tan(math.radians(float(get_value(
     CONFIG, 'combat.tank_slope_limit_degrees', 35.0))))
 TANK_SLOPE_SOFT_TAN = math.tan(math.radians(float(get_value(
@@ -4306,6 +4323,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                vehicle_compact_descr: bytes = None,
                                vehicle_data: dict = None,
                                player_name: str = 'qwerty',
+                               team: int = 1,
                                spawn_pos=None,
                                spawn_yaw: float = 0.0,
                                initial_period: int = ARENA_PERIOD_PREBATTLE,
@@ -4394,7 +4412,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     # РїС–Р·РЅС–С€Рµ С‚РµР¶ РґР°С” init step #2. РўРѕРґС– Р· 4 РєСЂРѕРєС–РІ (1, 2, onEnterWorld,
     # onSpaceLoaded) Р·Р°РіСЂСѓР·РєР° Р·Р°РІРµСЂС€СѓС”С‚СЊСЃСЏ С– РїРѕС‡РёРЅР°С”С‚СЊСЃСЏ СЂРµР°Р»СЊРЅРёР№ Р±С–Р№.
     cell_props = b''
-    cell_props += struct.pack('<B', 1)              # team  (UINT8)
+    team = max(1, min(2, int(team or 1)))
+    cell_props += struct.pack('<B', team)              # team  (UINT8)
     cell_props += struct.pack('<I', PLAYER_VEHICLE_ID)  # playerVehicleID
 
     ccp = struct.pack('<I', SPACE_ID)
@@ -4406,7 +4425,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
 
     veh_info = (
         PLAYER_VEHICLE_ID, vehicle_compact_descr or get_vehicle_compact_descr(),
-        player_name, 1, True, False, False, 1, '', 0, 0)
+        player_name, team, True, False, False, 1, '', 0, 0)
     msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_LIST, [veh_info])
     msgs += build_avatar_update_arena(ARENA_UPDATE_STATISTICS,
                                       [(PLAYER_VEHICLE_ID, 0)])
@@ -4441,7 +4460,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                          vehicle_data=vehicle_data,
                                          pos=spawn_pos,
                                          yaw=spawn_yaw,
-                                         team=1,
+                                         team=team,
                                          player_name=player_name)
     return msgs
 
@@ -4532,11 +4551,10 @@ def get_remote_vehicle_id(sess: dict) -> int:
     return 1000 + int(sess.get('account_id') or 0)
 
 def get_display_team(observer_sess: dict, subject_sess: dict) -> int:
-    observer_team = observer_sess.get('battle_team')
     subject_team = subject_sess.get('battle_team')
-    if observer_team is None or subject_team is None:
+    if subject_team is None:
         return 1 if observer_sess is subject_sess else 2
-    return 1 if observer_team == subject_team else 2
+    return max(1, min(2, int(subject_team)))
 
 
 def vehicle_spotting_class(vehicle: dict) -> str:
@@ -4893,6 +4911,11 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
     prev = sess.get('client_vehicle_pos')
     prev_time = float(sess.get('client_vehicle_last_update_time', 0.0))
     now = time.time()
+    if prev is not None:
+        new_x, new_z, blocked = resolve_motion_against_vehicles(
+            sess, float(prev[0]), float(prev[2]), float(pos[0]), float(pos[2]))
+        if blocked:
+            pos = (new_x, float(pos[1]), new_z)
     if prev is None:
         print(f"    [client_pos] FIRST set client_vehicle_pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) yaw={yaw:.2f}")
     if prev is not None:
@@ -5610,6 +5633,9 @@ def advance_battle_motion(sess: dict, flags: int = None):
         cand_z = z + math.cos(yaw) * speed * dt
         new_x, new_z, blocked = resolve_motion_against_obstacles(
             arena_type_id, x, z, cand_x, cand_z)
+        if not blocked:
+            new_x, new_z, blocked = resolve_motion_against_vehicles(
+                sess, x, z, new_x, new_z)
         new_y, new_normal = sample_terrain(arena_type_id, new_x, new_z, y)
         uphill_blocked = new_normal[1] < min_normal_y and new_y > y + 0.05
         if uphill_blocked:
@@ -5858,12 +5884,16 @@ def build_targeting_for_point(sess: dict, target_pos):
     sess['battle_target_pos_time'] = now
     sess['battle_shot_pos'] = shot_pos
     sess['battle_shot_vec'] = shot_vec
+    dispersion_angle = (shot_dispersion_angle(shot_pos, target_pos)
+                        if SHOT_DISPERSION_ENABLED and not high_arc
+                        else 0.03)
     return (
         build_avatar_update_targeting_info(
             normalize_angle(turret_yaw - float(sess.get('battle_yaw', 0.0))),
             gun_pitch,
             turret_speed, gun_speed) +
-        build_avatar_update_gun_marker(shot_pos, shot_vec)
+        build_avatar_update_gun_marker(
+            shot_pos, shot_vec, dispersion_angle)
     )
 
 
@@ -6037,6 +6067,7 @@ def send_avatar_player(sock, addr, sess):
                                       vehicle_compact_descr=veh_compact,
                                       vehicle_data=battle_vehicle,
                                       player_name=sess.get('username') or 'player',
+                                      team=int(sess.get('battle_team') or 1),
                                       spawn_pos=spawn_pos,
                                       spawn_yaw=spawn_yaw,
                                       initial_period=ARENA_PERIOD_PREBATTLE,
@@ -6278,6 +6309,72 @@ def allocate_visual_shot_id(sess: dict) -> int:
     return shot_id
 
 
+def shot_dispersion_radius(shot_pos, target_pos) -> float:
+    dx = float(target_pos[0]) - float(shot_pos[0])
+    dy = float(target_pos[1]) - float(shot_pos[1])
+    dz = float(target_pos[2]) - float(shot_pos[2])
+    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    radius = distance / 100.0 * max(0.0, SHOT_DISPERSION_RADIUS_AT_100M)
+    return clamp(radius, SHOT_DISPERSION_MIN_RADIUS,
+                 SHOT_DISPERSION_MAX_RADIUS)
+
+
+def shot_dispersion_effective_radius(shot_pos, target_pos) -> float:
+    radius = shot_dispersion_radius(shot_pos, target_pos)
+    return max(0.01, min(radius, radius * SHOT_DISPERSION_SERVER_RADIUS_SCALE))
+
+
+def shot_dispersion_angle(shot_pos, target_pos) -> float:
+    shot_pos = safe_vec3(shot_pos, None)
+    target_pos = safe_vec3(target_pos, None)
+    if shot_pos is None or target_pos is None:
+        return 0.03
+    dx = float(target_pos[0]) - float(shot_pos[0])
+    dy = float(target_pos[1]) - float(shot_pos[1])
+    dz = float(target_pos[2]) - float(shot_pos[2])
+    distance = max(0.001, math.sqrt(dx * dx + dy * dy + dz * dz))
+    radius = shot_dispersion_radius(shot_pos, target_pos)
+    return max(0.001, math.atan(radius / distance))
+
+
+def random_xz_offset(radius_min: float, radius_max: float,
+                     center_bias: float = None):
+    radius_min = max(0.0, float(radius_min))
+    radius_max = max(radius_min, float(radius_max))
+    center_bias = SHOT_DISPERSION_CENTER_BIAS if center_bias is None else center_bias
+    center_bias = max(0.25, min(8.0, float(center_bias)))
+    angle = random.uniform(0.0, math.pi * 2.0)
+    fraction = clamp(random.uniform(0.0, 1.0), 0.0, 1.0) ** center_bias
+    radius = radius_min + (radius_max - radius_min) * fraction
+    return math.cos(angle) * radius, math.sin(angle) * radius
+
+
+def apply_shot_dispersion(sess: dict, shot_pos, target_pos):
+    sess['battle_last_shot_forced_miss'] = False
+    target_pos = safe_vec3(target_pos, None)
+    if target_pos is None:
+        return None
+    if not SHOT_DISPERSION_ENABLED or is_artillery_session(sess):
+        return target_pos
+    chance = clamp(SHOT_HIT_CHANCE_PERCENT / 100.0, 0.0, 1.0)
+    radius = shot_dispersion_effective_radius(shot_pos, target_pos)
+    if random.random() <= chance:
+        offset_x, offset_z = random_xz_offset(
+            0.0, min(radius, max(0.1, SHOT_TANK_HIT_RADIUS_H * 0.45)))
+    else:
+        miss_min = SHOT_TANK_HIT_RADIUS_H + 0.75
+        if radius >= miss_min:
+            offset_x, offset_z = random_xz_offset(miss_min, radius)
+        else:
+            sess['battle_last_shot_forced_miss'] = True
+            offset_x, offset_z = random_xz_offset(radius * 0.85, radius)
+    return (
+        float(target_pos[0]) + offset_x,
+        float(target_pos[1]),
+        float(target_pos[2]) + offset_z,
+    )
+
+
 def build_vehicle_shot_messages(sess: dict):
     sess['battle_last_shot_info'] = None
     sess['battle_last_server_shot_info'] = None
@@ -6308,7 +6405,7 @@ def build_vehicle_shot_messages(sess: dict):
     pos = get_effective_vehicle_pos(
         sess, sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
     shot_pos = (pos[0], pos[1] + 2.0, pos[2])
-    target_pos = sess.get('battle_target_pos')
+    target_pos = apply_shot_dispersion(sess, shot_pos, sess.get('battle_target_pos'))
     sess['battle_last_shot_target_pos'] = tuple(float(v) for v in target_pos) if target_pos is not None else None
     sess['battle_last_shot_target_pos_time'] = sess.get('battle_target_pos_time', 0.0)
     if target_pos is not None:
@@ -7724,6 +7821,96 @@ def resolve_motion_against_obstacles(arena_type_id: int,
     return prev_x, prev_z, True
 
 
+def segment_point_distance_sq(prev_x: float, prev_z: float,
+                              new_x: float, new_z: float,
+                              point_x: float, point_z: float) -> float:
+    dx = new_x - prev_x
+    dz = new_z - prev_z
+    length_sq = dx * dx + dz * dz
+    if length_sq <= 0.000001:
+        px = point_x - new_x
+        pz = point_z - new_z
+        return px * px + pz * pz
+    t = ((point_x - prev_x) * dx + (point_z - prev_z) * dz) / length_sq
+    t = max(0.0, min(1.0, t))
+    closest_x = prev_x + dx * t
+    closest_z = prev_z + dz * t
+    px = point_x - closest_x
+    pz = point_z - closest_z
+    return px * px + pz * pz
+
+
+def vehicle_blocks_motion(prev_x: float, prev_z: float,
+                          new_x: float, new_z: float,
+                          other_x: float, other_z: float,
+                          block_radius: float) -> bool:
+    radius_sq = block_radius * block_radius
+    prev_dx = other_x - prev_x
+    prev_dz = other_z - prev_z
+    new_dx = other_x - new_x
+    new_dz = other_z - new_z
+    prev_sq = prev_dx * prev_dx + prev_dz * prev_dz
+    new_sq = new_dx * new_dx + new_dz * new_dz
+    if prev_sq < radius_sq:
+        return new_sq <= prev_sq
+    return segment_point_distance_sq(
+        prev_x, prev_z, new_x, new_z, other_x, other_z) < radius_sq
+
+
+def find_blocking_vehicle_on_path(sess: dict, prev_x: float, prev_z: float,
+                                  new_x: float, new_z: float,
+                                  tank_radius: float = TANK_COLLISION_RADIUS):
+    if not TANK_COLLISION_ENABLED:
+        return None
+    match_id = sess.get('battle_match_id')
+    source_account_id = sess.get('account_id')
+    block_radius = max(0.1, float(tank_radius)) * 2.0
+    with battle_lock:
+        candidates = list(active_battle_accounts.values())
+    for other in candidates:
+        if other is sess:
+            continue
+        if other.get('account_id') == source_account_id:
+            continue
+        if match_id is not None and other.get('battle_match_id') != match_id:
+            continue
+        if not other.get('battle_bundle_sent'):
+            continue
+        if int(other.get('battle_vehicle_health') or 0) <= 0:
+            continue
+        other_pos = get_effective_vehicle_pos(other, other.get('battle_pos'))
+        if other_pos is None:
+            continue
+        other_x = float(other_pos[0])
+        other_z = float(other_pos[2])
+        if vehicle_blocks_motion(prev_x, prev_z, new_x, new_z,
+                                 other_x, other_z, block_radius):
+            return other, other_x, other_z, block_radius
+    return None
+
+
+def resolve_motion_against_vehicles(sess: dict,
+                                    prev_x: float, prev_z: float,
+                                    new_x: float, new_z: float,
+                                    tank_radius: float = TANK_COLLISION_RADIUS):
+    blocker = find_blocking_vehicle_on_path(
+        sess, prev_x, prev_z, new_x, new_z, tank_radius)
+    if blocker is None:
+        return new_x, new_z, False
+    if BATTLE_VERBOSE_DEBUG:
+        other, other_x, other_z, block_radius = blocker
+        print(f"    [motion] vehicle block pos=({new_x:.1f},{new_z:.1f}) "
+              f"other={other.get('username') or other.get('account_id')} "
+              f"otherPos=({other_x:.1f},{other_z:.1f}) blockR={block_radius:.1f}")
+    if (new_x != prev_x and find_blocking_vehicle_on_path(
+            sess, prev_x, prev_z, new_x, prev_z, tank_radius) is None):
+        return new_x, prev_z, True
+    if (new_z != prev_z and find_blocking_vehicle_on_path(
+            sess, prev_x, prev_z, prev_x, new_z, tank_radius) is None):
+        return prev_x, new_z, True
+    return prev_x, prev_z, True
+
+
 def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
                             shooter_gap: float = STATIC_OBSTACLE_SHOOTER_GAP,
                             target_gap: float = STATIC_OBSTACLE_TARGET_GAP):
@@ -8474,10 +8661,9 @@ def finish_battle_by_base_capture(sock, match_id, winner_team: int,
         if not addr:
             continue
         winner_display_team = 1 if viewer.get('battle_team') == winner_team else 2
-        captured_display_team = 1 if viewer.get('battle_team') == captured_base_team else 2
         msgs = b''
         msgs += build_avatar_update_arena(ARENA_UPDATE_BASE_CAPTURED,
-                                          int(captured_display_team))
+                                          int(captured_base_team))
         msgs += build_avatar_update_arena(
             ARENA_UPDATE_PERIOD,
             (ARENA_PERIOD_AFTERBATTLE, period_end_time, 30,
@@ -8675,10 +8861,9 @@ def send_base_capture_updates(sock, sessions, updates):
         msgs = b''
         for update in updates:
             base_team, base_id, points = update
-            display_team = 1 if viewer.get('battle_team') == base_team else 2
             msgs += build_avatar_update_arena(
                 ARENA_UPDATE_BASE_POINTS,
-                (display_team, int(base_id), int(points)))
+                (int(base_team), int(base_id), int(points)))
         send_avatar_messages(sock, addr, viewer, msgs,
                              "Avatar.updateArena(BASE_POINTS)",
                              reliable=True)
@@ -8755,6 +8940,9 @@ def finish_battle_if_needed(sock, source_sess: dict, target_sess: dict):
 
 
 def resolve_current_shot(source_sess: dict, shell: dict, shot_pos, shot_vec):
+    if source_sess.get('battle_last_shot_forced_miss'):
+        print("    [shot] miss: dispersion roll")
+        return None
     try:
         hit_info = find_shot_target(source_sess, shot_pos, shot_vec)
     except Exception as exc:

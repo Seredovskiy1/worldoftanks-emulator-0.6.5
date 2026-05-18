@@ -10,7 +10,7 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Editable server settings now live in `config/*.example.json`. For private local values, create matching `config/*.local.json` files. Local files override examples and are ignored by git.
+Editable server settings now live in `config/*.json`. For private local values, create matching `config/*.local.json` files. Local files override base configs and are ignored by git.
 
 Common local override example:
 

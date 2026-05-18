@@ -39,6 +39,19 @@ class ConfigTests(unittest.TestCase):
             config = load_config(root, force=True)
             self.assertIs(get_config(root), config)
 
+    def test_plain_json_config_overrides_legacy_example(self):
+        with tempfile.TemporaryDirectory() as root:
+            config_dir = os.path.join(root, "config")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, "battle.example.json"), "w", encoding="utf-8") as handle:
+                json.dump({"battle": {"tick_hz": 30}}, handle)
+            with open(os.path.join(config_dir, "battle.json"), "w", encoding="utf-8") as handle:
+                json.dump({"battle": {"tick_hz": 60}}, handle)
+
+            config = load_config(root, force=True)
+
+            self.assertEqual(config["battle"]["tick_hz"], 60)
+
     def test_resolve_existing_path_prefers_configured_path_then_legacy(self):
         with tempfile.TemporaryDirectory() as root:
             os.makedirs(os.path.join(root, "data"))

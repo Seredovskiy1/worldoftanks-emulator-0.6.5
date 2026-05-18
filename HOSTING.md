@@ -2,7 +2,7 @@
 
 ## Server config files
 
-The emulator reads JSON config from `config/*.example.json`, then `config/*.local.json`, then environment variables. Keep real secrets and machine-specific values in local files, for example `config/server.local.json`:
+The emulator reads JSON config from `config/*.json`, then `config/*.local.json`, then environment variables. Keep real secrets and machine-specific values in local files, for example `config/server.local.json`:
 
 ```json
 {

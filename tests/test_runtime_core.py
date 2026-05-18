@@ -321,13 +321,25 @@ class RuntimeCoreTests(unittest.TestCase):
     def setUp(self):
         self._active_battle_accounts = dict(emulator.active_battle_accounts)
         self._enable_client_shot_damage_effects = emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS
+        self._shot_dispersion_enabled = emulator.SHOT_DISPERSION_ENABLED
+        self._shot_dispersion_server_radius_scale = emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE
+        self._shot_dispersion_center_bias = emulator.SHOT_DISPERSION_CENTER_BIAS
+        self._shot_damage_randomization = emulator.SHOT_DAMAGE_RANDOMIZATION
         emulator.active_battle_accounts.clear()
         emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
+        emulator.SHOT_DISPERSION_ENABLED = False
+        emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = 0.45
+        emulator.SHOT_DISPERSION_CENTER_BIAS = 2.5
+        emulator.SHOT_DAMAGE_RANDOMIZATION = 0.0
 
     def tearDown(self):
         emulator.active_battle_accounts.clear()
         emulator.active_battle_accounts.update(self._active_battle_accounts)
         emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = self._enable_client_shot_damage_effects
+        emulator.SHOT_DISPERSION_ENABLED = self._shot_dispersion_enabled
+        emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = self._shot_dispersion_server_radius_scale
+        emulator.SHOT_DISPERSION_CENTER_BIAS = self._shot_dispersion_center_bias
+        emulator.SHOT_DAMAGE_RANDOMIZATION = self._shot_damage_randomization
 
     def test_a20_speed_limits_are_xml_values(self):
         vehicle = next(v for v in emulator.load_all_vehicles() if v["name"] == "A-20")
@@ -1350,6 +1362,34 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(was_blocked)
         self.assertEqual((new_x, new_z), (10.5, 0.0))
 
+    def test_vehicle_collision_blocks_tank_overlap(self):
+        source = _make_combat_session(401, 1, (0.0, 0.0, 0.0))
+        blocker = _make_combat_session(402, 2, (0.0, 0.0, 4.0))
+        source["battle_match_id"] = 700
+        blocker["battle_match_id"] = 700
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[blocker["account_id"]] = blocker
+
+        new_x, new_z, blocked = emulator.resolve_motion_against_vehicles(
+            source, 0.0, 0.0, 0.0, 4.0, tank_radius=2.5)
+
+        self.assertTrue(blocked)
+        self.assertEqual((new_x, new_z), (0.0, 0.0))
+
+    def test_vehicle_collision_allows_driving_out_of_overlap(self):
+        source = _make_combat_session(403, 1, (0.0, 0.0, 0.0))
+        blocker = _make_combat_session(404, 2, (0.0, 0.0, 2.0))
+        source["battle_match_id"] = 701
+        blocker["battle_match_id"] = 701
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[blocker["account_id"]] = blocker
+
+        new_x, new_z, blocked = emulator.resolve_motion_against_vehicles(
+            source, 0.0, 0.0, 0.0, -2.0, tank_radius=2.5)
+
+        self.assertFalse(blocked)
+        self.assertEqual((new_x, new_z), (0.0, -2.0))
+
     def test_static_obstacle_scaled_down_uses_footprint(self):
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
         try:
@@ -1833,6 +1873,187 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertFalse(sess.get("queued_for_battle"))
         self.assertIn("battle_capture_state", sess)
+
+    def test_remote_vehicle_messages_use_actual_team(self):
+        observer = _make_combat_session(501, 2, (0.0, 0.0, 0.0))
+        remote = _make_combat_session(502, 1, (0.0, 0.0, 10.0))
+        compact = emulator.get_vehicle_compact_descr()
+        remote["battle_vehicle"]["compactDescr"] = compact
+        remote["battle_vehicle_compactDescr"] = compact
+
+        msgs = emulator.build_remote_vehicle_messages(observer, remote)
+        veh_info = _arena_update_values(
+            msgs, emulator.ARENA_UPDATE_VEHICLE_ADDED)
+
+        self.assertEqual(veh_info[3], 1)
+
+    def test_base_capture_updates_use_actual_base_team(self):
+        viewer = _make_combat_session(503, 2, (0.0, 0.0, 0.0))
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               side_effect=capture_send):
+            emulator.send_base_capture_updates(
+                object(), [viewer], [(2, 2, 35)])
+
+        update = _arena_update_values(
+            sent[0], emulator.ARENA_UPDATE_BASE_POINTS)
+        self.assertEqual(update, (2, 2, 35))
+
+    def test_display_team_keeps_actual_team_for_client_map_flags(self):
+        viewer = _make_combat_session(506, 2, (0.0, 0.0, 0.0))
+        ally = _make_combat_session(507, 2, (0.0, 0.0, 5.0))
+        enemy = _make_combat_session(508, 1, (0.0, 0.0, 10.0))
+
+        self.assertEqual(emulator.get_display_team(viewer, ally), 2)
+        self.assertEqual(emulator.get_display_team(viewer, enemy), 1)
+
+    def test_shot_dispersion_miss_stays_inside_dispersion_circle(self):
+        source = _make_combat_session(504, 1, (0.0, 0.0, 40.0))
+        shell = _make_shell(compact=9201, speed=500.0, gravity=9.81)
+        source["battle_vehicle"].update({
+            "defaultAmmo": [9201, 1],
+            "shells": [shell],
+        })
+        source["battle_current_shell"] = 9201
+        source["battle_ammo_stock"] = {9201: 1}
+        source["battle_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_target_pos_time"] = time.time()
+        old_enabled = emulator.SHOT_DISPERSION_ENABLED
+        old_chance = emulator.SHOT_HIT_CHANCE_PERCENT
+        try:
+            emulator.SHOT_DISPERSION_ENABLED = True
+            emulator.SHOT_HIT_CHANCE_PERCENT = 0.0
+            with mock.patch.object(emulator.random, "random", return_value=1.0), \
+                    mock.patch.object(emulator.random, "uniform",
+                                      side_effect=[
+                                          0.0,
+                                          (emulator.SHOT_TANK_HIT_RADIUS_H + 0.75) ** 2,
+                                      ]):
+                _msgs, _reload_time, _shell_cd, fired = (
+                    emulator.build_vehicle_shot_messages(source))
+        finally:
+            emulator.SHOT_DISPERSION_ENABLED = old_enabled
+            emulator.SHOT_HIT_CHANCE_PERCENT = old_chance
+
+        self.assertTrue(fired)
+        radius = emulator.shot_dispersion_radius(
+            (0.0, 2.0, 40.0), (0.0, 1.3, 20.0))
+        effective_radius = emulator.shot_dispersion_effective_radius(
+            (0.0, 2.0, 40.0), (0.0, 1.3, 20.0))
+        offset = abs(source["battle_last_shot_target_pos"][0])
+        self.assertLessEqual(offset, radius)
+        self.assertLessEqual(offset, effective_radius)
+        self.assertTrue(source["battle_last_shot_forced_miss"])
+
+    def test_targeting_marker_uses_configured_dispersion_radius(self):
+        source = _make_combat_session(509, 1, (0.0, 0.0, 0.0))
+        target_pos = (0.0, 1.3, 100.0)
+        old_enabled = emulator.SHOT_DISPERSION_ENABLED
+        try:
+            emulator.SHOT_DISPERSION_ENABLED = True
+            msgs = emulator.build_targeting_for_point(source, target_pos)
+        finally:
+            emulator.SHOT_DISPERSION_ENABLED = old_enabled
+
+        payloads = _message_payloads(
+            msgs, emulator.AVATAR_UPDATE_GUN_MARKER_MSG_ID)
+        self.assertEqual(len(payloads), 1)
+        shot_pos = struct.unpack_from("<fff", payloads[0], 4)
+        angle = struct.unpack_from("<f", payloads[0], 28)[0]
+        dx = target_pos[0] - shot_pos[0]
+        dy = target_pos[1] - shot_pos[1]
+        dz = target_pos[2] - shot_pos[2]
+        distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+        visible_radius = math.tan(angle) * distance
+        self.assertAlmostEqual(
+            visible_radius,
+            emulator.shot_dispersion_radius(shot_pos, target_pos),
+            places=5)
+
+    def test_shot_dispersion_uses_smaller_server_radius_than_marker(self):
+        source = _make_combat_session(510, 1, (0.0, 0.0, 0.0))
+        shell = _make_shell(compact=9203, speed=500.0, gravity=9.81)
+        source["battle_vehicle"].update({
+            "defaultAmmo": [9203, 1],
+            "shells": [shell],
+        })
+        source["battle_current_shell"] = 9203
+        source["battle_ammo_stock"] = {9203: 1}
+        source["battle_target_pos"] = (0.0, 1.3, 100.0)
+        source["battle_target_pos_time"] = time.time()
+        old_enabled = emulator.SHOT_DISPERSION_ENABLED
+        old_chance = emulator.SHOT_HIT_CHANCE_PERCENT
+        old_scale = emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE
+        old_bias = emulator.SHOT_DISPERSION_CENTER_BIAS
+        try:
+            emulator.SHOT_DISPERSION_ENABLED = True
+            emulator.SHOT_HIT_CHANCE_PERCENT = 100.0
+            emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = 0.4
+            emulator.SHOT_DISPERSION_CENTER_BIAS = 1.0
+            with mock.patch.object(emulator.random, "random", return_value=0.0), \
+                    mock.patch.object(emulator.random, "uniform",
+                                      side_effect=[0.0, 1.0]):
+                _msgs, _reload_time, _shell_cd, fired = (
+                    emulator.build_vehicle_shot_messages(source))
+        finally:
+            emulator.SHOT_DISPERSION_ENABLED = old_enabled
+            emulator.SHOT_HIT_CHANCE_PERCENT = old_chance
+            emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = old_scale
+            emulator.SHOT_DISPERSION_CENTER_BIAS = old_bias
+
+        self.assertTrue(fired)
+        shot_pos = (0.0, 2.0, 0.0)
+        target_pos = (0.0, 1.3, 100.0)
+        visible = emulator.shot_dispersion_radius(shot_pos, target_pos)
+        effective = visible * 0.4
+        offset = abs(source["battle_last_shot_target_pos"][0])
+        self.assertAlmostEqual(offset, effective)
+        self.assertLess(offset, visible)
+
+    def test_shot_dispersion_hit_chance_can_force_center_hit(self):
+        source = _make_combat_session(505, 1, (0.0, 0.0, 40.0))
+        shell = _make_shell(compact=9202, speed=500.0, gravity=9.81)
+        source["battle_vehicle"].update({
+            "defaultAmmo": [9202, 1],
+            "shells": [shell],
+        })
+        source["battle_current_shell"] = 9202
+        source["battle_ammo_stock"] = {9202: 1}
+        source["battle_target_pos"] = (0.0, 1.3, 20.0)
+        source["battle_target_pos_time"] = time.time()
+        old_enabled = emulator.SHOT_DISPERSION_ENABLED
+        old_chance = emulator.SHOT_HIT_CHANCE_PERCENT
+        try:
+            emulator.SHOT_DISPERSION_ENABLED = True
+            emulator.SHOT_HIT_CHANCE_PERCENT = 100.0
+            with mock.patch.object(emulator.random, "random", return_value=0.0), \
+                    mock.patch.object(emulator.random, "uniform", return_value=0.0):
+                _msgs, _reload_time, _shell_cd, fired = (
+                    emulator.build_vehicle_shot_messages(source))
+        finally:
+            emulator.SHOT_DISPERSION_ENABLED = old_enabled
+            emulator.SHOT_HIT_CHANCE_PERCENT = old_chance
+
+        self.assertTrue(fired)
+        self.assertEqual(source["battle_last_shot_target_pos"],
+                         (0.0, 1.3, 20.0))
+
+    def test_damage_randomization_uses_configured_percent(self):
+        old_randomization = emulator.SHOT_DAMAGE_RANDOMIZATION
+        try:
+            emulator.SHOT_DAMAGE_RANDOMIZATION = 0.25
+            with mock.patch.object(emulator.random, "uniform", return_value=1.25):
+                damage = emulator.get_shell_damage(
+                    _make_shell(damage=100.0))
+        finally:
+            emulator.SHOT_DAMAGE_RANDOMIZATION = old_randomization
+
+        self.assertEqual(damage, 125)
 
     def test_artillery_direct_hit_uses_marker_target(self):
         artillery = _make_combat_vehicle()

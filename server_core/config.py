@@ -95,6 +95,14 @@ DEFAULT_CONFIG = {
         "remote_gun_pitch_limit_degrees": 12.0,
         "shot_trace_distance": 1200.0,
         "target_marker_occlusion_max_age": 3.0,
+        "shot_dispersion_enabled": True,
+        "shot_hit_chance_percent": 70.0,
+        "shot_dispersion_radius_at_100m": 2.5,
+        "shot_dispersion_server_radius_scale": 0.45,
+        "shot_dispersion_center_bias": 2.5,
+        "shot_dispersion_min_radius": 0.25,
+        "shot_dispersion_max_radius": 30.0,
+        "shot_damage_randomization": 0.25,
         "spotting_enabled": True,
         "spotting_auto_reveal_distance": 50.0,
         "spotting_max_range": 445.0,
@@ -187,6 +195,7 @@ DEFAULT_CONFIG = {
         "static_obstacle_chunk_margin": 80.0,
         "static_obstacle_terrain_y_tolerance": 6.0,
         "tank_collision_radius": 2.5,
+        "tank_collision_enabled": True,
         "tank_slope_limit_degrees": 35.0,
         "tank_slope_soft_degrees": 30.0,
         "tank_slope_sample_min_xz": 1.0,
@@ -379,8 +388,13 @@ def load_config(root_path=None, force=False):
         return _CONFIG
     config = copy.deepcopy(DEFAULT_CONFIG)
     config_dir = os.path.join(root, "config")
-    for pattern in ("*.example.json", "*.local.json"):
+    for pattern in ("*.example.json", "*.json", "*.local.json"):
         for path in sorted(glob.glob(os.path.join(config_dir, pattern))):
+            name = os.path.basename(path)
+            if pattern == "*.json" and (
+                    name.endswith(".example.json") or
+                    name.endswith(".local.json")):
+                continue
             _merge_dict(config, _read_json(path))
     _apply_env(config)
     _CONFIG = config
