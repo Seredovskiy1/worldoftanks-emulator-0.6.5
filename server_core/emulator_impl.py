@@ -2480,6 +2480,151 @@ def armor_dimensions(model: dict) -> dict:
     }
 
 
+def vehicle_collision_dimensions(vehicle: dict) -> tuple:
+    dims = armor_dimensions(vehicle_armor_model(vehicle))
+    half_width = max(
+        float(TANK_COLLISION_RADIUS),
+        float(dims['halfWidth']) * TANK_COLLISION_HALF_WIDTH_SCALE)
+    half_length = max(
+        half_width,
+        float(dims['halfLength']) * TANK_COLLISION_HALF_LENGTH_SCALE)
+    return half_width, half_length
+
+
+def vehicle_mass_tons(vehicle: dict) -> float:
+    return max(5.0, float((vehicle or {}).get('totalWeightKg') or 0.0) / 1000.0)
+
+
+def compute_ram_damage(source_vehicle: dict, target_vehicle: dict,
+                       closing_speed: float) -> tuple:
+    closing_speed = min(RAM_MAX_CLOSING_SPEED, max(0.0, float(closing_speed or 0.0)))
+    if closing_speed < RAM_MIN_CLOSING_SPEED or RAM_DAMAGE_SCALE <= 0.0:
+        return 0, 0
+    source_mass = vehicle_mass_tons(source_vehicle)
+    target_mass = vehicle_mass_tons(target_vehicle)
+    energy = closing_speed * closing_speed * RAM_DAMAGE_SCALE
+    damage_to_target = int(round(
+        energy * source_mass * clamp(source_mass / target_mass, 0.25, 2.5)))
+    damage_to_source = int(round(
+        energy * target_mass * clamp(target_mass / source_mass, 0.25, 2.5)))
+    return max(0, damage_to_target), max(0, damage_to_source)
+
+
+def _vehicle_axes(yaw: float):
+    sin_yaw = math.sin(yaw)
+    cos_yaw = math.cos(yaw)
+    return (cos_yaw, -sin_yaw), (sin_yaw, cos_yaw)
+
+
+def vehicle_footprints_overlap(ax: float, az: float, ayaw: float,
+                               ahw: float, ahl: float,
+                               bx: float, bz: float, byaw: float,
+                               bhw: float, bhl: float,
+                               margin: float = 0.0) -> bool:
+    a_right, a_forward = _vehicle_axes(ayaw)
+    b_right, b_forward = _vehicle_axes(byaw)
+    dx = bx - ax
+    dz = bz - az
+    for axis in (a_right, a_forward, b_right, b_forward):
+        dist = abs(dx * axis[0] + dz * axis[1])
+        a_extent = (
+            ahw * abs(a_right[0] * axis[0] + a_right[1] * axis[1]) +
+            ahl * abs(a_forward[0] * axis[0] + a_forward[1] * axis[1]))
+        b_extent = (
+            bhw * abs(b_right[0] * axis[0] + b_right[1] * axis[1]) +
+            bhl * abs(b_forward[0] * axis[0] + b_forward[1] * axis[1]))
+        if dist >= a_extent + b_extent + margin:
+            return False
+    return True
+
+
+def vehicle_footprint_contact_on_path(prev_x: float, prev_z: float,
+                                      new_x: float, new_z: float,
+                                      source_yaw: float,
+                                      source_half_width: float,
+                                      source_half_length: float,
+                                      other_x: float, other_z: float,
+                                      other_yaw: float,
+                                      other_half_width: float,
+                                      other_half_length: float,
+                                      margin: float):
+    prev_overlap = vehicle_footprints_overlap(
+        prev_x, prev_z, source_yaw, source_half_width, source_half_length,
+        other_x, other_z, other_yaw, other_half_width, other_half_length,
+        margin)
+    if prev_overlap:
+        prev_dx = other_x - prev_x
+        prev_dz = other_z - prev_z
+        new_dx = other_x - new_x
+        new_dz = other_z - new_z
+        if new_dx * new_dx + new_dz * new_dz <= prev_dx * prev_dx + prev_dz * prev_dz:
+            return {
+                'x': prev_x,
+                'z': prev_z,
+                't': 0.0,
+                'prev_overlap': True,
+            }
+        return None
+    dx = new_x - prev_x
+    dz = new_z - prev_z
+    distance = math.sqrt(dx * dx + dz * dz)
+    steps = int(min(16, max(1, math.ceil(distance / TANK_COLLISION_SWEEP_STEP))))
+    last_t = 0.0
+    for step in range(1, steps + 1):
+        t = float(step) / float(steps)
+        test_x = prev_x + dx * t
+        test_z = prev_z + dz * t
+        if not vehicle_footprints_overlap(
+                test_x, test_z, source_yaw,
+                source_half_width, source_half_length,
+                other_x, other_z, other_yaw,
+                other_half_width, other_half_length,
+                margin):
+            last_t = t
+            continue
+        low = last_t
+        high = t
+        for _i in range(14):
+            mid = (low + high) * 0.5
+            mid_x = prev_x + dx * mid
+            mid_z = prev_z + dz * mid
+            if vehicle_footprints_overlap(
+                    mid_x, mid_z, source_yaw,
+                    source_half_width, source_half_length,
+                    other_x, other_z, other_yaw,
+                    other_half_width, other_half_length,
+                    margin):
+                high = mid
+            else:
+                low = mid
+        contact_x = prev_x + dx * high
+        contact_z = prev_z + dz * high
+        return {
+            'x': contact_x,
+            'z': contact_z,
+            't': high,
+            'prev_overlap': False,
+        }
+    return None
+
+
+def vehicle_footprint_blocks_motion(prev_x: float, prev_z: float,
+                                    new_x: float, new_z: float,
+                                    source_yaw: float,
+                                    source_half_width: float,
+                                    source_half_length: float,
+                                    other_x: float, other_z: float,
+                                    other_yaw: float,
+                                    other_half_width: float,
+                                    other_half_length: float) -> bool:
+    return vehicle_footprint_contact_on_path(
+        prev_x, prev_z, new_x, new_z,
+        source_yaw, source_half_width, source_half_length,
+        other_x, other_z, other_yaw,
+        other_half_width, other_half_length,
+        TANK_COLLISION_MARGIN) is not None
+
+
 def vehicle_hit_yaw(target_sess: dict) -> float:
     if is_recent_client_vehicle_position(target_sess):
         return float(target_sess.get('client_vehicle_yaw',
@@ -3391,6 +3536,7 @@ def build_account_event_noargs(msg_id: int) -> bytes:
 # Arena GUI types (Р· res/scripts/common/constants.py):
 #   0=UNKNOWN, 1=RANDOM, 2=TRAINING, 3=COMPANY, 4=TOURNAMENT.
 ARENA_GUI_TYPE_RANDOM = 1
+ARENA_PERIOD_WAITING = 1
 ARENA_PERIOD_PREBATTLE = 2
 ARENA_PERIOD_BATTLE = 3
 ARENA_PERIOD_AFTERBATTLE = 4
@@ -3667,9 +3813,33 @@ STATIC_OBSTACLE_TANK_HALO = max(0.0, float(get_value(
 STATIC_OBSTACLE_INDEX_CELL = max(8.0, float(get_value(
     CONFIG, 'combat.static_obstacle_index_cell', 50.0)))
 TANK_COLLISION_RADIUS = float(get_value(
-    CONFIG, 'combat.tank_collision_radius', 2.5))
+    CONFIG, 'combat.tank_collision_radius', 1.0))
 TANK_COLLISION_ENABLED = bool(get_value(
     CONFIG, 'combat.tank_collision_enabled', True))
+TANK_COLLISION_HALF_WIDTH_SCALE = max(0.1, min(1.0, float(get_value(
+    CONFIG, 'combat.tank_collision_half_width_scale', 0.85))))
+TANK_COLLISION_HALF_LENGTH_SCALE = max(0.1, min(1.0, float(get_value(
+    CONFIG, 'combat.tank_collision_half_length_scale', 0.55))))
+TANK_COLLISION_MARGIN = max(0.0, float(get_value(
+    CONFIG, 'combat.tank_collision_margin', 0.05)))
+TANK_COLLISION_SWEEP_STEP = max(0.25, float(get_value(
+    CONFIG, 'combat.tank_collision_sweep_step', 1.0)))
+RAM_DAMAGE_ENABLED = bool(get_value(
+    CONFIG, 'combat.ram_damage_enabled', True))
+RAM_MIN_CLOSING_SPEED = max(0.0, float(get_value(
+    CONFIG, 'combat.ram_min_closing_speed', 6.0)))
+RAM_MAX_CLOSING_SPEED = max(RAM_MIN_CLOSING_SPEED, float(get_value(
+    CONFIG, 'combat.ram_max_closing_speed', 14.0)))
+RAM_DAMAGE_SCALE = max(0.0, float(get_value(
+    CONFIG, 'combat.ram_damage_scale', 0.006)))
+RAM_DAMAGE_COOLDOWN_SECONDS = max(0.0, float(get_value(
+    CONFIG, 'combat.ram_damage_cooldown_seconds', 0.75)))
+RAM_DAMAGE_CONTACT_MARGIN = max(0.0, float(get_value(
+    CONFIG, 'combat.ram_damage_contact_margin', 0.0)))
+RAM_FRIENDLY_DAMAGE = bool(get_value(
+    CONFIG, 'combat.ram_friendly_damage', False))
+RAM_PUSH_DISTANCE = max(0.0, float(get_value(
+    CONFIG, 'combat.ram_push_distance', 0.6)))
 TANK_SLOPE_LIMIT_TAN = math.tan(math.radians(float(get_value(
     CONFIG, 'combat.tank_slope_limit_degrees', 35.0))))
 TANK_SLOPE_SOFT_TAN = math.tan(math.radians(float(get_value(
@@ -4017,6 +4187,16 @@ def build_battle_motion_tick(pos, yaw: float,
                              speed: float = 0.0,
                              rspeed: float = 0.0) -> bytes:
     return build_vehicle_motion_update(pos, yaw)
+
+
+def build_battle_motion_tick_for_session(sess: dict, pos, yaw: float,
+                                         speed: float = 0.0,
+                                         rspeed: float = 0.0) -> bytes:
+    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed)
+    if sess.pop('battle_motion_force_position', False):
+        msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
+                                      space_id=SPACE_ID, vehicle_id=0)
+    return msgs
 
 
 def angle_to_int8(angle: float) -> int:
@@ -4911,9 +5091,11 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
     prev = sess.get('client_vehicle_pos')
     prev_time = float(sess.get('client_vehicle_last_update_time', 0.0))
     now = time.time()
-    if prev is not None:
+    motion_prev = prev if prev is not None else sess.get('battle_pos')
+    if motion_prev is not None:
         new_x, new_z, blocked = resolve_motion_against_vehicles(
-            sess, float(prev[0]), float(prev[2]), float(pos[0]), float(pos[2]))
+            sess, float(motion_prev[0]), float(motion_prev[2]),
+            float(pos[0]), float(pos[2]), yaw=yaw)
         if blocked:
             pos = (new_x, float(pos[1]), new_z)
     if prev is None:
@@ -5149,8 +5331,8 @@ def start_battle_tick_loop(sock):
                         addr = sess.get('addr')
                         if addr:
                             send_avatar_messages(sock, addr, sess,
-                                                 build_battle_motion_tick(
-                                                     pos, yaw, speed, rspeed),
+                                                 build_battle_motion_tick_for_session(
+                                                     sess, pos, yaw, speed, rspeed),
                                                  '',
                                                  reliable=False)
                     else:
@@ -5159,6 +5341,17 @@ def start_battle_tick_loop(sock):
                                            ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
                         yaw = float(sess.get('client_vehicle_yaw',
                                              sess.get('battle_yaw', 0.0)))
+                        if sess.pop('battle_motion_force_position', False):
+                            addr = sess.get('addr')
+                            if addr:
+                                send_avatar_messages(
+                                    sock, addr, sess,
+                                    build_forced_position(
+                                        PLAYER_VEHICLE_ID, pos, yaw,
+                                        space_id=SPACE_ID, vehicle_id=0),
+                                    '',
+                                    reliable=False)
+                    process_pending_vehicle_collision(sock, sess)
                     source_account_id = sess.get('account_id')
                     remote_id = get_remote_vehicle_id(sess)
                     _yaw, gun_pitch, turret_yaw = get_remote_vehicle_angles(sess)
@@ -5486,6 +5679,8 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_period_active'] = False
     sess['battle_turret_yaw'] = spawn_yaw
     sess['battle_gun_pitch'] = 0.0
+    sess.pop('battle_start_wall', None)
+    sess.pop('battle_end_wall', None)
     sess['battle_targeting_state_time'] = time.time()
     sess['battle_current_shell'] = 0
     sess['battle_next_shell'] = 0
@@ -5635,7 +5830,8 @@ def advance_battle_motion(sess: dict, flags: int = None):
             arena_type_id, x, z, cand_x, cand_z)
         if not blocked:
             new_x, new_z, blocked = resolve_motion_against_vehicles(
-                sess, x, z, new_x, new_z)
+                sess, x, z, new_x, new_z, yaw=yaw,
+                source_speed=speed, source_rspeed=rspeed)
         new_y, new_normal = sample_terrain(arena_type_id, new_x, new_z, y)
         uphill_blocked = new_normal[1] < min_normal_y and new_y > y + 0.05
         if uphill_blocked:
@@ -6059,10 +6255,7 @@ def send_avatar_player(sock, addr, sess):
     spawn_pos = pick_spawn_pos(arena_type_id, sess)
     init_battle_state(sess, spawn_pos)
     spawn_yaw = sess.get('battle_yaw', 0.0)
-    start_wall = float(sess.get('battle_start_wall') or
-                       (time.time() + PREBATTLE_TIMER_SECONDS))
-    prebattle_left = max(0, int(math.ceil(
-        start_wall - time.time())))
+    prebattle_left = 0
     msgs = build_avatar_player_bundle(arena_type_id=arena_type_id,
                                       vehicle_compact_descr=veh_compact,
                                       vehicle_data=battle_vehicle,
@@ -6070,9 +6263,9 @@ def send_avatar_player(sock, addr, sess):
                                       team=int(sess.get('battle_team') or 1),
                                       spawn_pos=spawn_pos,
                                       spawn_yaw=spawn_yaw,
-                                      initial_period=ARENA_PERIOD_PREBATTLE,
-                                      period_end_time=wall_time_to_server_time(sess, start_wall),
-                                      period_length=PREBATTLE_TIMER_SECONDS)
+                                      initial_period=ARENA_PERIOD_WAITING,
+                                      period_end_time=0,
+                                      period_length=0)
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
     try:
@@ -6213,9 +6406,12 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     sessions = (
         get_match_battle_sessions(match_id)
         if match_id is not None else [sess])
+    broadcast_match_avatar_ready(sock, sess)
+    if not all(player.get('battle_client_ready') for player in sessions):
+        return
     start_wall = sync_prebattle_countdown_after_ready(sessions)
     for viewer in sessions:
-        if not viewer.get('battle_client_ready') or not viewer.get('addr'):
+        if not viewer.get('addr'):
             continue
         send_avatar_arena_update(
             sock, viewer.get('addr'), viewer, ARENA_UPDATE_PERIOD,
@@ -6223,7 +6419,6 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
              wall_time_to_server_time(viewer, start_wall),
              PREBATTLE_TIMER_SECONDS, None),
             "PERIOD=PREBATTLE")
-    broadcast_match_avatar_ready(sock, sess)
     schedule_battle_period(sock, addr, sess)
 
 
@@ -7857,18 +8052,42 @@ def vehicle_blocks_motion(prev_x: float, prev_z: float,
         prev_x, prev_z, new_x, new_z, other_x, other_z) < radius_sq
 
 
+def collision_normal_xz(prev_x: float, prev_z: float,
+                        new_x: float, new_z: float,
+                        other_x: float, other_z: float):
+    nx = other_x - new_x
+    nz = other_z - new_z
+    length = math.sqrt(nx * nx + nz * nz)
+    if length <= 0.001:
+        nx = new_x - prev_x
+        nz = new_z - prev_z
+        length = math.sqrt(nx * nx + nz * nz)
+    if length <= 0.001:
+        return 0.0, 1.0
+    return nx / length, nz / length
+
+
 def find_blocking_vehicle_on_path(sess: dict, prev_x: float, prev_z: float,
                                   new_x: float, new_z: float,
-                                  tank_radius: float = TANK_COLLISION_RADIUS):
+                                  tank_radius: float = TANK_COLLISION_RADIUS,
+                                  yaw: float = None,
+                                  ignore_sess: dict = None):
     if not TANK_COLLISION_ENABLED:
         return None
     match_id = sess.get('battle_match_id')
     source_account_id = sess.get('account_id')
-    block_radius = max(0.1, float(tank_radius)) * 2.0
+    source_vehicle = get_session_battle_vehicle(sess)
+    source_half_width, source_half_length = vehicle_collision_dimensions(source_vehicle)
+    min_radius = max(0.1, float(tank_radius))
+    source_half_width = max(source_half_width, min_radius)
+    source_half_length = max(source_half_length, min_radius)
+    source_yaw = float(yaw if yaw is not None else sess.get('battle_yaw', 0.0))
     with battle_lock:
         candidates = list(active_battle_accounts.values())
     for other in candidates:
         if other is sess:
+            continue
+        if ignore_sess is not None and other is ignore_sess:
             continue
         if other.get('account_id') == source_account_id:
             continue
@@ -7883,32 +8102,92 @@ def find_blocking_vehicle_on_path(sess: dict, prev_x: float, prev_z: float,
             continue
         other_x = float(other_pos[0])
         other_z = float(other_pos[2])
-        if vehicle_blocks_motion(prev_x, prev_z, new_x, new_z,
-                                 other_x, other_z, block_radius):
-            return other, other_x, other_z, block_radius
+        other_vehicle = get_session_battle_vehicle(other)
+        other_half_width, other_half_length = vehicle_collision_dimensions(other_vehicle)
+        other_half_width = max(other_half_width, min_radius)
+        other_half_length = max(other_half_length, min_radius)
+        other_yaw = vehicle_hit_yaw(other)
+        contact = vehicle_footprint_contact_on_path(
+            prev_x, prev_z, new_x, new_z,
+            source_yaw, source_half_width, source_half_length,
+            other_x, other_z, other_yaw,
+            other_half_width, other_half_length,
+            TANK_COLLISION_MARGIN)
+        if contact is not None:
+            damage_contact = vehicle_footprint_contact_on_path(
+                prev_x, prev_z, new_x, new_z,
+                source_yaw, source_half_width, source_half_length,
+                other_x, other_z, other_yaw,
+                other_half_width, other_half_length,
+                RAM_DAMAGE_CONTACT_MARGIN)
+            resolved_contact = damage_contact if damage_contact is not None else contact
+            block_radius = max(source_half_width, source_half_length) + max(
+                other_half_width, other_half_length)
+            normal_x, normal_z = collision_normal_xz(
+                prev_x, prev_z, resolved_contact['x'], resolved_contact['z'],
+                other_x, other_z)
+            confirmed_contact = (
+                damage_contact is not None and
+                not bool(damage_contact.get('prev_overlap')))
+            return {
+                'session': other,
+                'x': other_x,
+                'z': other_z,
+                'normal': (normal_x, normal_z),
+                'block_radius': block_radius,
+                'contact_pos': (resolved_contact['x'], resolved_contact['z']),
+                'contact_t': float(resolved_contact.get('t', 0.0)),
+                'contact_confirmed': confirmed_contact,
+                'damage_contact_pos': (
+                    (damage_contact['x'], damage_contact['z'])
+                    if damage_contact is not None else None),
+            }
     return None
 
 
 def resolve_motion_against_vehicles(sess: dict,
                                     prev_x: float, prev_z: float,
                                     new_x: float, new_z: float,
-                                    tank_radius: float = TANK_COLLISION_RADIUS):
+                                    tank_radius: float = TANK_COLLISION_RADIUS,
+                                    yaw: float = None,
+                                    source_speed: float = None,
+                                    source_rspeed: float = None,
+                                    ignore_sess: dict = None):
     blocker = find_blocking_vehicle_on_path(
-        sess, prev_x, prev_z, new_x, new_z, tank_radius)
+        sess, prev_x, prev_z, new_x, new_z, tank_radius, yaw=yaw,
+        ignore_sess=ignore_sess)
     if blocker is None:
+        sess['battle_motion_blocked_by_vehicle'] = False
+        sess.pop('battle_vehicle_collision_info', None)
         return new_x, new_z, False
+    sess['battle_motion_blocked_by_vehicle'] = True
+    sess['battle_motion_force_position'] = True
+    sess['battle_last_vehicle_collision_time'] = time.time()
+    info = dict(blocker)
+    info['prev'] = (prev_x, prev_z)
+    info['attempt'] = (new_x, new_z)
+    info['source_yaw'] = float(yaw if yaw is not None else sess.get('battle_yaw', 0.0))
+    info['source_speed'] = float(source_speed if source_speed is not None else sess.get('battle_speed', 0.0))
+    info['source_rspeed'] = float(source_rspeed if source_rspeed is not None else sess.get('battle_rspeed', 0.0))
+    sess['battle_vehicle_collision_info'] = info
     if BATTLE_VERBOSE_DEBUG:
-        other, other_x, other_z, block_radius = blocker
+        other = blocker['session']
+        other_x = blocker['x']
+        other_z = blocker['z']
+        block_radius = blocker['block_radius']
         print(f"    [motion] vehicle block pos=({new_x:.1f},{new_z:.1f}) "
               f"other={other.get('username') or other.get('account_id')} "
               f"otherPos=({other_x:.1f},{other_z:.1f}) blockR={block_radius:.1f}")
     if (new_x != prev_x and find_blocking_vehicle_on_path(
-            sess, prev_x, prev_z, new_x, prev_z, tank_radius) is None):
+            sess, prev_x, prev_z, new_x, prev_z, tank_radius, yaw=yaw,
+            ignore_sess=ignore_sess) is None):
         return new_x, prev_z, True
     if (new_z != prev_z and find_blocking_vehicle_on_path(
-            sess, prev_x, prev_z, prev_x, new_z, tank_radius) is None):
+            sess, prev_x, prev_z, prev_x, new_z, tank_radius, yaw=yaw,
+            ignore_sess=ignore_sess) is None):
         return prev_x, new_z, True
-    return prev_x, prev_z, True
+    contact_pos = blocker.get('contact_pos') or (prev_x, prev_z)
+    return float(contact_pos[0]), float(contact_pos[1]), True
 
 
 def ray_static_obstacle_hit(source_sess: dict, shot_pos, shot_vec, hit_distance,
@@ -8349,6 +8628,217 @@ def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
     print(f"    [damage] {source_sess.get('username') or 'player'} -> "
           f"{target_sess.get('username') or 'player'} -{damage} hp "
           f"({max(0, int(target_sess.get('battle_vehicle_health') or 0))} left)")
+
+
+def vehicle_velocity_xz(sess: dict, speed=None, yaw=None):
+    if speed is None:
+        if (not sess.get('server_vehicle_authoritative', True) and
+                is_recent_client_vehicle_position(sess)):
+            speed = sess.get('client_vehicle_observed_speed', 0.0)
+        else:
+            speed = sess.get('battle_speed', 0.0)
+    if yaw is None:
+        yaw = vehicle_hit_yaw(sess)
+    speed = float(speed or 0.0)
+    yaw = float(yaw or 0.0)
+    return math.sin(yaw) * speed, math.cos(yaw) * speed
+
+
+def ram_closing_speed(source_sess: dict, target_sess: dict,
+                      collision_info: dict) -> float:
+    normal_x, normal_z = collision_info.get('normal') or (0.0, 1.0)
+    source_vx, source_vz = vehicle_velocity_xz(
+        source_sess,
+        collision_info.get('source_speed'),
+        collision_info.get('source_yaw'))
+    target_vx, target_vz = vehicle_velocity_xz(target_sess)
+    closing = (source_vx - target_vx) * normal_x + (source_vz - target_vz) * normal_z
+    return max(0.0, float(closing))
+
+
+def ram_damage_contact_confirmed(source_sess: dict, target_sess: dict,
+                                 collision_info: dict) -> bool:
+    if not collision_info.get('contact_confirmed'):
+        return False
+    contact_pos = collision_info.get('damage_contact_pos') or collision_info.get('contact_pos')
+    if not contact_pos:
+        return False
+    target_pos = get_effective_vehicle_pos(target_sess, target_sess.get('battle_pos'))
+    if target_pos is None:
+        return False
+    source_vehicle = get_session_battle_vehicle(source_sess)
+    target_vehicle = get_session_battle_vehicle(target_sess)
+    source_half_width, source_half_length = vehicle_collision_dimensions(source_vehicle)
+    target_half_width, target_half_length = vehicle_collision_dimensions(target_vehicle)
+    source_yaw = float(collision_info.get('source_yaw', source_sess.get('battle_yaw', 0.0)))
+    return vehicle_footprints_overlap(
+        float(contact_pos[0]), float(contact_pos[1]), source_yaw,
+        source_half_width, source_half_length,
+        float(target_pos[0]), float(target_pos[2]), vehicle_hit_yaw(target_sess),
+        target_half_width, target_half_length,
+        RAM_DAMAGE_CONTACT_MARGIN)
+
+
+def ram_pair_key(source_sess: dict, target_sess: dict):
+    source_id = source_sess.get('account_id') or id(source_sess)
+    target_id = target_sess.get('account_id') or id(target_sess)
+    source_id = int(source_id)
+    target_id = int(target_id)
+    return (source_id, target_id) if source_id <= target_id else (target_id, source_id)
+
+
+def claim_ram_cooldown(source_sess: dict, target_sess: dict,
+                       now: float) -> bool:
+    key = ram_pair_key(source_sess, target_sess)
+    source_times = source_sess.setdefault('battle_ram_contact_times', {})
+    target_times = target_sess.setdefault('battle_ram_contact_times', {})
+    last = max(float(source_times.get(key, -999999.0)),
+               float(target_times.get(key, -999999.0)))
+    if now - last < RAM_DAMAGE_COOLDOWN_SECONDS:
+        return False
+    source_times[key] = now
+    target_times[key] = now
+    return True
+
+
+def send_forced_vehicle_position(sock, sess: dict):
+    addr = sess.get('addr')
+    if not addr:
+        return False
+    pos = get_effective_vehicle_pos(
+        sess, sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
+    yaw = float(sess.get('battle_yaw', 0.0))
+    return send_avatar_messages(
+        sock, addr, sess,
+        build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
+                              space_id=SPACE_ID, vehicle_id=0),
+        '',
+        reliable=False)
+
+
+def try_push_ram_target(source_sess: dict, target_sess: dict,
+                        normal_x: float, normal_z: float) -> bool:
+    if RAM_PUSH_DISTANCE <= 0.0:
+        return False
+    pos = get_effective_vehicle_pos(target_sess, target_sess.get('battle_pos'))
+    if pos is None:
+        return False
+    arena_type_id = normalize_arena_type_id(
+        target_sess.get('battle_arena_type_id') or
+        source_sess.get('battle_arena_type_id'))
+    x, y, z = (float(pos[0]), float(pos[1]), float(pos[2]))
+    new_x = x + normal_x * RAM_PUSH_DISTANCE
+    new_z = z + normal_z * RAM_PUSH_DISTANCE
+    new_x, new_z, blocked = resolve_motion_against_obstacles(
+        arena_type_id, x, z, new_x, new_z)
+    if blocked:
+        return False
+    if find_blocking_vehicle_on_path(
+            target_sess, x, z, new_x, new_z,
+            yaw=vehicle_hit_yaw(target_sess),
+            ignore_sess=source_sess) is not None:
+        return False
+    new_y, _normal = sample_terrain(arena_type_id, new_x, new_z, y)
+    target_sess['battle_prev_pos'] = (x, y, z)
+    target_sess['battle_pos'] = (new_x, new_y, new_z)
+    target_sess['battle_speed'] = 0.0
+    target_sess['battle_rspeed'] = 0.0
+    target_sess['battle_motion_force_position'] = True
+    return True
+
+
+def sync_ram_collision(sock, source_sess: dict, target_sess: dict,
+                       normal_x: float, normal_z: float,
+                       push_target: bool = False):
+    source_sess['battle_speed'] = 0.0
+    source_sess['battle_rspeed'] = 0.0
+    if push_target:
+        try_push_ram_target(source_sess, target_sess, normal_x, normal_z)
+    source_sess['battle_motion_force_position'] = True
+    target_sess['battle_motion_force_position'] = True
+    send_forced_vehicle_position(sock, source_sess)
+    send_forced_vehicle_position(sock, target_sess)
+
+
+def apply_contact_damage(sock, source_sess: dict, target_sess: dict,
+                         damage: int) -> int:
+    health = int(target_sess.get('battle_vehicle_health') or 0)
+    if health <= 0 or damage <= 0:
+        return 0
+    actual = min(health, int(damage))
+    source_sess['battle_damage_dealt'] = int(source_sess.get(
+        'battle_damage_dealt', 0)) + actual
+    source_sess.setdefault('battle_damaged_vehicle_ids', set()).add(
+        target_sess.get('account_id'))
+    target_sess['battle_damage_received'] = int(target_sess.get(
+        'battle_damage_received', 0)) + actual
+    target_sess['battle_vehicle_health'] = max(0, health - actual)
+    broadcast_vehicle_health(sock, target_sess, source_sess, actual)
+    capture_drop_result = drop_invader_capture_on_damage(target_sess, source_sess)
+    if capture_drop_result is not None:
+        cap_updates, cap_sessions = capture_drop_result
+        if cap_updates and cap_sessions:
+            send_base_capture_updates(sock, cap_sessions, cap_updates)
+    return actual
+
+
+def process_ram_collision(sock, source_sess: dict,
+                          target_sess: dict,
+                          collision_info: dict) -> bool:
+    if not RAM_DAMAGE_ENABLED:
+        return False
+    if int(source_sess.get('battle_vehicle_health') or 0) <= 0:
+        return False
+    if int(target_sess.get('battle_vehicle_health') or 0) <= 0:
+        return False
+    normal_x, normal_z = collision_info.get('normal') or (0.0, 1.0)
+    if not ram_damage_contact_confirmed(source_sess, target_sess, collision_info):
+        sync_ram_collision(sock, source_sess, target_sess, normal_x, normal_z)
+        return False
+    closing_speed = min(
+        RAM_MAX_CLOSING_SPEED,
+        ram_closing_speed(source_sess, target_sess, collision_info))
+    if closing_speed < RAM_MIN_CLOSING_SPEED:
+        sync_ram_collision(sock, source_sess, target_sess, normal_x, normal_z)
+        return False
+    now = time.time()
+    if not claim_ram_cooldown(source_sess, target_sess, now):
+        sync_ram_collision(sock, source_sess, target_sess, normal_x, normal_z)
+        return False
+    sync_ram_collision(sock, source_sess, target_sess, normal_x, normal_z,
+                       push_target=True)
+    same_team = source_sess.get('battle_team') == target_sess.get('battle_team')
+    if same_team and not RAM_FRIENDLY_DAMAGE:
+        return True
+    damage_to_target, damage_to_source = compute_ram_damage(
+        get_session_battle_vehicle(source_sess),
+        get_session_battle_vehicle(target_sess),
+        closing_speed)
+    dealt_to_target = apply_contact_damage(
+        sock, source_sess, target_sess, damage_to_target)
+    dealt_to_source = apply_contact_damage(
+        sock, target_sess, source_sess, damage_to_source)
+    if dealt_to_target or dealt_to_source:
+        print(f"    [ram] {source_sess.get('username') or 'player'} -> "
+              f"{target_sess.get('username') or 'player'} "
+              f"closing={closing_speed:.2f}m/s "
+              f"damage={dealt_to_target}/{dealt_to_source}")
+    if int(target_sess.get('battle_vehicle_health') or 0) <= 0:
+        finish_battle_if_needed(sock, source_sess, target_sess)
+    if (not source_sess.get('battle_ended') and
+            int(source_sess.get('battle_vehicle_health') or 0) <= 0):
+        finish_battle_if_needed(sock, target_sess, source_sess)
+    return True
+
+
+def process_pending_vehicle_collision(sock, sess: dict) -> bool:
+    collision_info = sess.pop('battle_vehicle_collision_info', None)
+    if not collision_info:
+        return False
+    target_sess = collision_info.get('session')
+    if not isinstance(target_sess, dict):
+        return False
+    return process_ram_collision(sock, sess, target_sess, collision_info)
 
 
 def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,

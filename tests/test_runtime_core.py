@@ -142,10 +142,12 @@ def _make_session(account_id, period_active):
 
 
 def _make_combat_vehicle(health=300, hull=(50.0, 40.0, 35.0),
-                         turret=(60.0, 45.0, 40.0)):
+                         turret=(60.0, 45.0, 40.0),
+                         weight_kg=30000.0):
     return {
         "name": "TestTank",
         "maxHealth": health,
+        "totalWeightKg": weight_kg,
         "armorModel": {
             "hull": {
                 "primaryArmor": list(hull),
@@ -667,7 +669,7 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertEqual(sess["in_seq_at"], 1044)
 
-    def test_first_ready_player_schedules_and_starts_match_synchronously(self):
+    def test_match_countdown_waits_until_all_players_are_ready(self):
         s1 = _make_loading_session(1)
         s2 = _make_loading_session(2)
         s1.pop("battle_start_wall", None)
@@ -694,6 +696,9 @@ class RuntimeCoreTests(unittest.TestCase):
                 mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
                 mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
             emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
+            self.assertEqual(scheduled, [])
+            self.assertEqual(arena_updates, [])
+            emulator.send_avatar_ready_and_prebattle(object(), s2["addr"], s2)
             self.assertEqual(len(scheduled), 1)
             self.assertAlmostEqual(scheduled[0][0],
                                    emulator.PREBATTLE_TIMER_SECONDS)
@@ -701,19 +706,19 @@ class RuntimeCoreTests(unittest.TestCase):
             scheduled[0][1]()
 
         self.assertTrue(s1["battle_client_ready"])
-        self.assertFalse(s2["battle_client_ready"])
+        self.assertTrue(s2["battle_client_ready"])
         self.assertTrue(s1["battle_period_active"])
         self.assertTrue(s2["battle_period_active"])
         self.assertTrue(s1["battle_period_timer_started"])
         self.assertTrue(s2["battle_period_timer_started"])
-        self.assertEqual(len(arena_updates), 1)
+        self.assertEqual(len(arena_updates), 2)
         ready_updates = []
         for _sess, msgs, _label, _reliable in sent:
             for payload in _message_payloads(
                     msgs, emulator.AVATAR_UPDATEARENA_MSG_ID):
                 if payload[4] == emulator.ARENA_UPDATE_AVATAR_READY:
                     ready_updates.append((_sess, payload))
-        self.assertEqual(len(ready_updates), 2)
+        self.assertEqual(len(ready_updates), 4)
         battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
         self.assertEqual(len(battle_sends), 2)
         self.assertEqual({entry[0]["account_id"] for entry in battle_sends}, {1, 2})
@@ -744,7 +749,7 @@ class RuntimeCoreTests(unittest.TestCase):
              emulator.PREBATTLE_TIMER_SECONDS, None))
         self.assertEqual(scheduled[0][0], 25.0)
 
-    def test_later_ready_player_keeps_existing_match_countdown(self):
+    def test_second_ready_player_starts_shared_countdown(self):
         s1 = _make_loading_session(1)
         s2 = _make_loading_session(2)
         s1.pop("battle_start_wall", None)
@@ -772,13 +777,14 @@ class RuntimeCoreTests(unittest.TestCase):
                                   side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
                 mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
             emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
-            self.assertEqual(s1["battle_start_wall"], 1025.0)
+            self.assertNotIn("battle_start_wall", s1)
+            self.assertNotIn("battle_start_wall", s2)
             now[0] = 1010.0
             emulator.send_avatar_ready_and_prebattle(object(), s2["addr"], s2)
-            self.assertEqual(s1["battle_start_wall"], 1025.0)
-            self.assertEqual(s2["battle_start_wall"], 1025.0)
+            self.assertEqual(s1["battle_start_wall"], 1035.0)
+            self.assertEqual(s2["battle_start_wall"], 1035.0)
             self.assertEqual(len(scheduled), 1)
-            now[0] = 1025.1
+            now[0] = 1035.1
             scheduled[0][1]()
 
         battle_sends = [entry for entry in sent if "PERIOD=BATTLE" in entry[2]]
@@ -786,9 +792,9 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual({entry[0]["account_id"] for entry in battle_sends}, {1, 2})
         period_updates = [entry for entry in arena_updates
                           if entry[1] == emulator.ARENA_UPDATE_PERIOD]
-        self.assertEqual(len(period_updates), 3)
-        self.assertEqual(period_updates[-2][2][1], 22)
-        self.assertEqual(period_updates[-1][2][1], 22)
+        self.assertEqual(len(period_updates), 2)
+        self.assertEqual(period_updates[0][2][1], 32)
+        self.assertEqual(period_updates[1][2][1], 32)
 
     def test_prebattle_timer_default_is_25_seconds(self):
         self.assertEqual(emulator.PREBATTLE_TIMER_SECONDS, 25)
@@ -1389,6 +1395,209 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertFalse(blocked)
         self.assertEqual((new_x, new_z), (0.0, -2.0))
+
+    def test_vehicle_collision_dimensions_use_visual_body_scale(self):
+        half_width, half_length = emulator.vehicle_collision_dimensions(
+            _make_combat_vehicle())
+
+        self.assertAlmostEqual(half_width, 2.04)
+        self.assertAlmostEqual(half_length, 2.86)
+
+    def test_vehicle_collision_returns_contact_point_for_swept_overlap(self):
+        source = _make_combat_session(413, 1, (0.0, 0.0, 0.0))
+        blocker = _make_combat_session(414, 2, (0.0, 0.0, 12.0))
+        source["battle_match_id"] = 706
+        blocker["battle_match_id"] = 706
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[blocker["account_id"]] = blocker
+
+        new_x, new_z, blocked = emulator.resolve_motion_against_vehicles(
+            source, 0.0, 0.0, 0.0, 20.0, yaw=0.0, tank_radius=2.5)
+        info = source.get("battle_vehicle_collision_info")
+
+        self.assertTrue(blocked)
+        self.assertEqual(new_x, 0.0)
+        self.assertGreater(new_z, 6.15)
+        self.assertLess(new_z, 6.45)
+        self.assertIsNotNone(info)
+        self.assertTrue(info.get("contact_confirmed"))
+        self.assertGreater(info.get("contact_t"), 0.0)
+
+    def test_ram_damage_formula_favors_heavier_vehicle(self):
+        light = _make_combat_vehicle(health=290, weight_kg=17530.0)
+        heavy = _make_combat_vehicle(health=3200, weight_kg=188980.0)
+
+        self.assertEqual(
+            emulator.compute_ram_damage(light, heavy, 5.0),
+            (0, 0))
+
+        damage_to_heavy, damage_to_light = emulator.compute_ram_damage(
+            light, heavy, 10.0)
+        damage_to_light_from_heavy, damage_to_heavy_self = emulator.compute_ram_damage(
+            heavy, light, 12.0)
+
+        self.assertGreater(damage_to_light, 150)
+        self.assertLess(damage_to_light, 290)
+        self.assertGreater(damage_to_light, damage_to_heavy)
+        self.assertGreater(damage_to_light_from_heavy, damage_to_heavy_self)
+        self.assertGreater(damage_to_light_from_heavy, damage_to_heavy)
+
+    def test_slow_vehicle_collision_blocks_without_ram_damage(self):
+        source = _make_combat_session(
+            405, 1, (0.0, 0.0, 0.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=30000.0))
+        blocker = _make_combat_session(
+            406, 2, (0.0, 0.0, 12.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=30000.0))
+        source["battle_match_id"] = 702
+        blocker["battle_match_id"] = 702
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[blocker["account_id"]] = blocker
+
+        _new_x, _new_z, blocked = emulator.resolve_motion_against_vehicles(
+            source, 0.0, 0.0, 0.0, 20.0, yaw=0.0, source_speed=5.0)
+        source["battle_pos"] = (_new_x, 0.0, _new_z)
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True):
+            processed = emulator.process_pending_vehicle_collision(object(), source)
+
+        self.assertTrue(blocked)
+        self.assertFalse(processed)
+        self.assertEqual(source["battle_vehicle_health"], 500)
+        self.assertEqual(blocker["battle_vehicle_health"], 500)
+
+    def test_ram_damage_requires_confirmed_contact_point(self):
+        source = _make_combat_session(
+            415, 1, (0.0, 0.0, 0.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=60000.0))
+        target = _make_combat_session(
+            416, 2, (0.0, 0.0, 12.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=10000.0))
+        collision_info = {
+            "session": target,
+            "normal": (0.0, 1.0),
+            "source_yaw": 0.0,
+            "source_speed": 10.0,
+        }
+
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True):
+            processed = emulator.process_ram_collision(object(), source, target, collision_info)
+
+        self.assertFalse(processed)
+        self.assertEqual(source["battle_vehicle_health"], 500)
+        self.assertEqual(target["battle_vehicle_health"], 500)
+
+    def test_enemy_ram_damages_both_tanks_and_forces_positions(self):
+        source = _make_combat_session(
+            407, 1, (0.0, 0.0, 0.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=60000.0))
+        target = _make_combat_session(
+            408, 2, (0.0, 0.0, 12.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=10000.0))
+        source["battle_match_id"] = 703
+        target["battle_match_id"] = 703
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "sample_terrain", return_value=(0.0, (0.0, 1.0, 0.0))):
+            _new_x, _new_z, blocked = emulator.resolve_motion_against_vehicles(
+                source, 0.0, 0.0, 0.0, 20.0, yaw=0.0, source_speed=10.0)
+            source["battle_pos"] = (_new_x, 0.0, _new_z)
+            processed = emulator.process_pending_vehicle_collision(object(), source)
+
+        self.assertTrue(blocked)
+        self.assertTrue(processed)
+        self.assertLess(target["battle_vehicle_health"], 500)
+        self.assertLess(source["battle_vehicle_health"], 500)
+        self.assertGreater(source["battle_damage_dealt"], target["battle_damage_dealt"])
+        forced_sends = [
+            entry for entry in sent
+            if entry[1][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])
+        ]
+        self.assertGreaterEqual(len(forced_sends), 2)
+
+    def test_friendly_ram_forces_positions_without_health_damage(self):
+        source = _make_combat_session(
+            409, 1, (0.0, 0.0, 0.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=60000.0))
+        target = _make_combat_session(
+            410, 1, (0.0, 0.0, 12.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=10000.0))
+        source["battle_match_id"] = 704
+        target["battle_match_id"] = 704
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "sample_terrain", return_value=(0.0, (0.0, 1.0, 0.0))):
+            _new_x, _new_z, _blocked = emulator.resolve_motion_against_vehicles(
+                source, 0.0, 0.0, 0.0, 20.0, yaw=0.0, source_speed=10.0)
+            source["battle_pos"] = (_new_x, 0.0, _new_z)
+            processed = emulator.process_pending_vehicle_collision(object(), source)
+
+        self.assertTrue(processed)
+        self.assertEqual(source["battle_vehicle_health"], 500)
+        self.assertEqual(target["battle_vehicle_health"], 500)
+        forced_sends = [
+            entry for entry in sent
+            if entry[1][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])
+        ]
+        self.assertGreaterEqual(len(forced_sends), 2)
+
+    def test_ram_cooldown_prevents_damage_every_tick(self):
+        source = _make_combat_session(
+            411, 1, (0.0, 0.0, 0.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=60000.0))
+        target = _make_combat_session(
+            412, 2, (0.0, 0.0, 12.0),
+            health=500,
+            vehicle=_make_combat_vehicle(health=500, weight_kg=10000.0))
+        source["battle_match_id"] = 705
+        target["battle_match_id"] = 705
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        collision_info = {
+            "session": target,
+            "normal": (0.0, 1.0),
+            "source_yaw": 0.0,
+            "source_speed": 10.0,
+            "contact_pos": (0.0, 6.3),
+            "damage_contact_pos": (0.0, 6.3),
+            "contact_confirmed": True,
+        }
+
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "sample_terrain", return_value=(0.0, (0.0, 1.0, 0.0))), \
+                mock.patch.object(emulator.time, "time", side_effect=[1000.0, 1000.1]):
+            first = emulator.process_ram_collision(object(), source, target, collision_info)
+            after_first = (source["battle_vehicle_health"],
+                           target["battle_vehicle_health"])
+            second = emulator.process_ram_collision(object(), source, target, collision_info)
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertEqual(
+            (source["battle_vehicle_health"], target["battle_vehicle_health"]),
+            after_first)
 
     def test_static_obstacle_scaled_down_uses_footprint(self):
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)

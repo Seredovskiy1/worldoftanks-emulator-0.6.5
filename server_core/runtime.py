@@ -174,14 +174,34 @@ class EventLoopRuntime:
                 pos, yaw, speed, rspeed = mod.advance_battle_motion(sess, flags)
                 addr = sess.get("addr")
                 if addr:
+                    tick_msg_builder = getattr(
+                        mod, "build_battle_motion_tick_for_session", None)
+                    msgs = (tick_msg_builder(sess, pos, yaw, speed, rspeed)
+                            if tick_msg_builder is not None else
+                            mod.build_battle_motion_tick(pos, yaw, speed, rspeed))
                     mod.send_avatar_messages(sock, addr, sess,
-                                             mod.build_battle_motion_tick(pos, yaw, speed, rspeed),
+                                             msgs,
                                              "",
                                              reliable=False)
             else:
                 pos = mod.get_effective_vehicle_pos(
                     sess, sess.get("battle_pos", mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA]))
                 yaw = float(sess.get("client_vehicle_yaw", sess.get("battle_yaw", 0.0)))
+                if sess.pop("battle_motion_force_position", False):
+                    addr = sess.get("addr")
+                    if addr:
+                        mod.send_avatar_messages(
+                            sock, addr, sess,
+                            mod.build_forced_position(
+                                mod.PLAYER_VEHICLE_ID, pos, yaw,
+                                space_id=mod.SPACE_ID, vehicle_id=0),
+                            "",
+                            reliable=False)
+            if not in_prebattle:
+                process_collision = getattr(
+                    mod, "process_pending_vehicle_collision", None)
+                if process_collision is not None:
+                    process_collision(sock, sess)
             source_account_id = sess.get("account_id")
             remote_id = mod.get_remote_vehicle_id(sess)
             _yaw, gun_pitch, turret_yaw = mod.get_remote_vehicle_angles(sess)
