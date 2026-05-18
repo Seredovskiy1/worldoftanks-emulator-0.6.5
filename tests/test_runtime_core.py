@@ -1403,6 +1403,22 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(half_width, 2.04)
         self.assertAlmostEqual(half_length, 2.86)
 
+    def test_destroyed_vehicle_blocks_other_vehicle_motion(self):
+        source = _make_combat_session(417, 1, (0.0, 0.0, 0.0))
+        blocker = _make_combat_session(418, 2, (0.0, 0.0, 12.0), health=0)
+        source["battle_match_id"] = 707
+        blocker["battle_match_id"] = 707
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[blocker["account_id"]] = blocker
+
+        new_x, new_z, blocked = emulator.resolve_motion_against_vehicles(
+            source, 0.0, 0.0, 0.0, 20.0, yaw=0.0, tank_radius=1.0)
+
+        self.assertTrue(blocked)
+        self.assertEqual(new_x, 0.0)
+        self.assertGreater(new_z, 6.15)
+        self.assertLess(new_z, 6.45)
+
     def test_vehicle_collision_returns_contact_point_for_swept_overlap(self):
         source = _make_combat_session(413, 1, (0.0, 0.0, 0.0))
         blocker = _make_combat_session(414, 2, (0.0, 0.0, 12.0))
@@ -1422,6 +1438,48 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIsNotNone(info)
         self.assertTrue(info.get("contact_confirmed"))
         self.assertGreater(info.get("contact_t"), 0.0)
+
+    def test_destroyed_vehicle_tick_stays_frozen(self):
+        sess = _make_combat_session(419, 1, (0.0, 0.0, 0.0), health=0)
+        sess["battle_motion_flags"] = 1
+        sess["battle_speed"] = 8.0
+        sess["battle_rspeed"] = 1.0
+        sess["battle_last_motion_time"] = time.time() - 1.0
+        sess["server_vehicle_authoritative"] = False
+        sess["client_vehicle_pos"] = (0.0, 0.0, 4.0)
+
+        with mock.patch.object(emulator, "sample_terrain",
+                               return_value=(0.0, (0.0, 1.0, 0.0))):
+            pos, _yaw, speed, rspeed = emulator.advance_battle_motion(sess, 1)
+
+        self.assertEqual(pos, (0.0, 0.0, 0.0))
+        self.assertEqual(speed, 0.0)
+        self.assertEqual(rspeed, 0.0)
+        self.assertEqual(sess["battle_motion_flags"], 0)
+        self.assertEqual(sess["battle_speed"], 0.0)
+        self.assertEqual(sess["battle_rspeed"], 0.0)
+        self.assertTrue(sess["server_vehicle_authoritative"])
+        self.assertIsNone(sess["client_vehicle_pos"])
+
+    def test_destroyed_vehicle_move_input_is_ignored(self):
+        sess = _make_combat_session(420, 1, (0.0, 0.0, 0.0), health=0)
+        sess["battle_motion_flags"] = 0
+        sess["battle_speed"] = 5.0
+        sess["battle_rspeed"] = 0.5
+        sess["battle_client_control_enabled"] = True
+        move_id = next(iter(emulator.AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS))
+        payload = b"\x00\x00\x00\x00\x01"
+
+        with mock.patch.object(emulator, "send_avatar_messages", return_value=True) as send_mock:
+            handled = emulator.handle_avatar_base_method(
+                object(), sess["addr"], sess, move_id, payload)
+
+        self.assertTrue(handled)
+        self.assertEqual(sess["battle_motion_flags"], 0)
+        self.assertEqual(sess["battle_speed"], 0.0)
+        self.assertEqual(sess["battle_rspeed"], 0.0)
+        self.assertFalse(sess["battle_client_control_enabled"])
+        send_mock.assert_called()
 
     def test_ram_damage_formula_favors_heavier_vehicle(self):
         light = _make_combat_vehicle(health=290, weight_kg=17530.0)
@@ -3027,6 +3085,48 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(source["battle_frags"], 1)
         self.assertIn(152, source["battle_killed_vehicle_ids"])
         self.assertEqual(target["battle_killer_account_id"], 151)
+
+    def test_killed_vehicle_freezes_without_battle_end(self):
+        source = _make_combat_session(153, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(154, 2, (0.0, 0.0, 20.0), health=80)
+        teammate = _make_combat_session(155, 2, (20.0, 0.0, 20.0), health=300)
+        target["battle_motion_flags"] = 1
+        target["battle_speed"] = 7.0
+        target["battle_rspeed"] = 1.0
+        target["battle_client_control_enabled"] = True
+        target["server_vehicle_authoritative"] = False
+        target["client_vehicle_pos"] = (0.0, 0.0, 22.0)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        emulator.active_battle_accounts[teammate["account_id"]] = teammate
+
+        with mock.patch.object(emulator, "find_shot_target", return_value=hit_info), \
+                mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
+            _target, damage, _resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(penetration=200.0, damage=100.0),
+                (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+
+        self.assertEqual(damage, 80)
+        self.assertEqual(target["battle_vehicle_health"], 0)
+        self.assertFalse(source.get("battle_ended", False))
+        self.assertEqual(target["battle_motion_flags"], 0)
+        self.assertEqual(target["battle_speed"], 0.0)
+        self.assertEqual(target["battle_rspeed"], 0.0)
+        self.assertFalse(target["battle_client_control_enabled"])
+        self.assertTrue(target["server_vehicle_authoritative"])
+        self.assertIsNone(target["client_vehicle_pos"])
 
     def test_pack_damage_segment_clamps_to_uint64(self):
         for component in ("hull", "turret", "unknown"):

@@ -4920,6 +4920,27 @@ def is_live_vehicle_session(sess: dict) -> bool:
     return True
 
 
+def is_destroyed_vehicle_session(sess: dict) -> bool:
+    return 'battle_vehicle_health' in sess and int(sess.get('battle_vehicle_health') or 0) <= 0
+
+
+def freeze_destroyed_vehicle(sess: dict) -> bool:
+    if not is_destroyed_vehicle_session(sess):
+        return False
+    sess['battle_motion_flags'] = 0
+    sess['battle_speed'] = 0.0
+    sess['battle_rspeed'] = 0.0
+    sess['battle_target_speed'] = 0.0
+    sess['battle_target_rspeed'] = 0.0
+    sess['client_vehicle_observed_speed'] = 0.0
+    sess['client_vehicle_observed_rspeed'] = 0.0
+    sess['client_vehicle_pos'] = None
+    sess['client_vehicle_last_update_time'] = 0.0
+    sess['server_vehicle_authoritative'] = True
+    sess['battle_motion_force_position'] = True
+    return True
+
+
 def is_vehicle_directly_visible_to(observer_sess: dict, source_sess: dict) -> bool:
     if observer_sess is source_sess:
         return True
@@ -5088,6 +5109,8 @@ def get_effective_vehicle_pos(sess: dict, fallback=None):
 
 
 def record_client_vehicle_position(sess: dict, pos, yaw: float):
+    if freeze_destroyed_vehicle(sess):
+        return
     prev = sess.get('client_vehicle_pos')
     prev_time = float(sess.get('client_vehicle_last_update_time', 0.0))
     now = time.time()
@@ -5755,6 +5778,11 @@ def advance_battle_motion(sess: dict, flags: int = None):
     y = current_height
     prev_pos = (x, y, z)
     yaw = float(sess.get('battle_yaw', 0.0))
+    if freeze_destroyed_vehicle(sess):
+        sess['battle_prev_pos'] = prev_pos
+        sess['battle_pos'] = (x, y, z)
+        sess['battle_yaw'] = yaw
+        return (x, y, z), yaw, 0.0, 0.0
     if flags is None:
         flags = sess.get('battle_motion_flags', 0)
 
@@ -5916,6 +5944,24 @@ def enable_client_vehicle_control(sock, addr, sess, label: str = ''):
 def disable_client_vehicle_control_message(sess):
     sess['battle_client_control_enabled'] = False
     return build_control_entity(PLAYER_VEHICLE_ID, False)
+
+
+def send_destroyed_vehicle_freeze(sock, sess: dict) -> bool:
+    if not freeze_destroyed_vehicle(sess):
+        return False
+    addr = sess.get('addr')
+    if not addr:
+        return False
+    pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    yaw = float(sess.get('battle_yaw', 0.0))
+    msgs = b''
+    if sess.get('battle_client_control_enabled'):
+        msgs += disable_client_vehicle_control_message(sess)
+    msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
+                                  space_id=SPACE_ID, vehicle_id=0)
+    return send_avatar_messages(sock, addr, sess, msgs,
+                                "Vehicle.destroyed freeze",
+                                reliable=True)
 
 
 def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
@@ -8095,8 +8141,6 @@ def find_blocking_vehicle_on_path(sess: dict, prev_x: float, prev_z: float,
             continue
         if not other.get('battle_bundle_sent'):
             continue
-        if int(other.get('battle_vehicle_health') or 0) <= 0:
-            continue
         other_pos = get_effective_vehicle_pos(other, other.get('battle_pos'))
         if other_pos is None:
             continue
@@ -8774,6 +8818,8 @@ def apply_contact_damage(sock, source_sess: dict, target_sess: dict,
         'battle_damage_received', 0)) + actual
     target_sess['battle_vehicle_health'] = max(0, health - actual)
     broadcast_vehicle_health(sock, target_sess, source_sess, actual)
+    if target_sess['battle_vehicle_health'] <= 0:
+        send_destroyed_vehicle_freeze(sock, target_sess)
     capture_drop_result = drop_invader_capture_on_damage(target_sess, source_sess)
     if capture_drop_result is not None:
         cap_updates, cap_sessions = capture_drop_result
@@ -9468,6 +9514,8 @@ def apply_resolved_shot_damage(sock, source_sess: dict, shell: dict,
         target['battle_damage_received'] = int(target.get(
             'battle_damage_received', 0)) + damage
         target['battle_vehicle_health'] = max(0, health - damage)
+        if target['battle_vehicle_health'] <= 0:
+            send_destroyed_vehicle_freeze(sock, target)
     result_name = {
         SHOT_RESULT_RICOCHET: 'ricochet',
         SHOT_RESULT_ARMOR_NOT_PIERCED: 'not_pierced',
@@ -9517,6 +9565,9 @@ def get_projectile_impact_pos(sess: dict, shot_pos, shot_vec, resolved: dict):
 
 def handle_vehicle_shot(sock, addr, sess: dict, log_blocked: bool = False):
     if sess.get('battle_ended'):
+        return True
+    if is_destroyed_vehicle_session(sess):
+        send_destroyed_vehicle_freeze(sock, sess)
         return True
     msgs, reload_time, shell_cd, fired = build_vehicle_shot_messages(sess)
     if not fired:
@@ -9694,6 +9745,9 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             flags = payload[0]
         else:
             return True
+        if is_destroyed_vehicle_session(sess):
+            send_destroyed_vehicle_freeze(sock, sess)
+            return True
         prev_flags = sess.get('battle_motion_flags', 0)
         was_idle = (
             prev_flags == 0 and
@@ -9734,6 +9788,9 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
         return True
 
     if msg_id in AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS:
+        if is_destroyed_vehicle_session(sess):
+            send_destroyed_vehicle_freeze(sock, sess)
+            return True
         target_pos = parse_vector3_exposed(payload)
         if target_pos is None:
             return True
@@ -9750,6 +9807,9 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
         return True
 
     if msg_id in AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN_IDS:
+        if is_destroyed_vehicle_session(sess):
+            send_destroyed_vehicle_freeze(sock, sess)
+            return True
         pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
         yaw = sess.get('battle_yaw', 0.0)
         target_pos = (pos[0] + math.sin(yaw) * 100.0,
