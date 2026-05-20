@@ -3789,9 +3789,9 @@ SHOT_TARGET_OVERSHOOT = float(get_value(
 STATIC_OBSTACLE_MOVE_RADIUS_FACTOR = float(get_value(
     CONFIG, 'combat.static_obstacle_move_radius_factor', 0.5))
 STATIC_OBSTACLE_MOVE_RADIUS_MIN = float(get_value(
-    CONFIG, 'combat.static_obstacle_move_radius_min', 2.0))
+    CONFIG, 'combat.static_obstacle_move_radius_min', 2.8))
 STATIC_OBSTACLE_MOVE_RADIUS_MAX = float(get_value(
-    CONFIG, 'combat.static_obstacle_move_radius_max', 6.0))
+    CONFIG, 'combat.static_obstacle_move_radius_max', 4.5))
 STATIC_OBSTACLE_SHOT_RADIUS_PAD = float(get_value(
     CONFIG, 'combat.static_obstacle_shot_radius_pad', 1.0))
 STATIC_OBSTACLE_SHOOTER_GAP = float(get_value(
@@ -3805,11 +3805,11 @@ STATIC_OBSTACLE_Y_HEIGHT = float(get_value(
 STATIC_OBSTACLE_CHUNK_MARGIN = float(get_value(
     CONFIG, 'combat.static_obstacle_chunk_margin', 80.0))
 STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE = float(get_value(
-    CONFIG, 'combat.static_obstacle_terrain_y_tolerance', 6.0))
+    CONFIG, 'combat.static_obstacle_terrain_y_tolerance', 3.5))
 STATIC_OBSTACLE_FOOTPRINT_SHRINK = max(0.05, min(1.0, float(get_value(
-    CONFIG, 'combat.static_obstacle_footprint_shrink', 0.90))))
+    CONFIG, 'combat.static_obstacle_footprint_shrink', 0.75))))
 STATIC_OBSTACLE_TANK_HALO = max(0.0, float(get_value(
-    CONFIG, 'combat.static_obstacle_tank_halo', 1.2)))
+    CONFIG, 'combat.static_obstacle_tank_halo', 0.8)))
 STATIC_OBSTACLE_INDEX_CELL = max(8.0, float(get_value(
     CONFIG, 'combat.static_obstacle_index_cell', 50.0)))
 TANK_COLLISION_RADIUS = float(get_value(
@@ -4435,7 +4435,8 @@ def build_artillery_visible_tracer(shot_pos, impact_pos, shot_vec, shell: dict):
         ARTILLERY_VISIBLE_TRACER_GRAVITY_FACTOR,
         12.0,
         35.0)
-    flight_time = ARTILLERY_VISIBLE_TRACER_TIME
+    shell_speed = float((shell or {}).get('speed', 800.0))
+    flight_time = estimate_projectile_flight_time(shot_pos, impact_pos, (0.0, -shell_speed, 0.0))
     velocity = (
         (impact_pos[0] - start[0]) / flight_time,
         (impact_pos[1] - start[1] + 0.5 * gravity * flight_time * flight_time) / flight_time,
@@ -5846,9 +5847,6 @@ def advance_battle_motion(sess: dict, flags: int = None):
     prev_yaw = yaw
     yaw += rspeed * dt
     yaw = normalize_angle(yaw)
-    if now - float(sess.get('last_targeting_update', 0.0)) > 0.25:
-        turret_yaw = float(sess.get('battle_turret_yaw', prev_yaw))
-        sess['battle_turret_yaw'] = normalize_angle(turret_yaw + yaw - prev_yaw)
 
     blocked_dbg = False
     if abs(speed) > 0.001:
@@ -7122,12 +7120,12 @@ def stone_obstacle_radius_fallback(model_path: bytes) -> float:
             return 6.0
         return 5.0
     if b'stones03' in name or b'stones04' in name:
-        return 10.0
+        return 6.0
     if b'stones01' in name or b'stones02' in name or b'stones05' in name:
-        return 7.5
+        return 5.5
     if b'stones5' in name:
         return 4.0
-    return 3.2
+    return 3.0
 
 
 def fallback_model_obstacle_bounds(model_path: bytes):
@@ -7522,12 +7520,21 @@ _STATIC_OBSTACLE_ENV_KEYWORDS = (
 )
 
 
+_STATIC_OBSTACLE_EXCLUDE_KEYWORDS = (
+    b'tree', b'stump', b'bush', b'fence', b'log',
+    b'dead', b'broken', b'debris', b'fallen', b'trunk', b'branch', b'snag', b'wood',
+)
+
+
 def is_static_obstacle_model(model_path: bytes) -> bool:
     name = (model_path or b'').lower()
     if not (name.endswith(b'.model') or name.endswith(b'.modelx')):
         return False
     if b'/lod1/' in name or b'/lod2/' in name:
         return False
+    for keyword in _STATIC_OBSTACLE_EXCLUDE_KEYWORDS:
+        if keyword in name:
+            return False
     for prefix in _STATIC_OBSTACLE_PREFIXES:
         if name.startswith(prefix):
             return True
@@ -7605,7 +7612,11 @@ def iter_static_model_instances_from_chunk(data: bytes, ignored=None):
             if ignored is not None:
                 ignored['resource'] = int(ignored.get('resource', 0)) + 1
             continue
-        transform = read_chunk_model_transform(data, match.end())
+        transform = None
+        for add in (1, 0):
+            transform = read_chunk_model_transform(data, match.end() + add)
+            if transform is not None:
+                break
         if transform is None:
             if ignored is not None:
                 ignored['transform'] = int(ignored.get('transform', 0)) + 1
@@ -9875,10 +9886,12 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
 
     if cmd == CMD_SYNC_DATA:
         if sess.get('sync_data_stream_sent'):
-            msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_sync_pickle(0))
+            account_id = int(sess.get('account_id') or 0)
+            current_rev = get_account_sync_revision(account_id)
+            msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_sync_pickle(current_rev))
             if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
                 return
-            print(f"    [>] onCmdResponseExt(req={req_id}, res=0, ext=empty_sync)")
+            print(f"    [>] onCmdResponseExt(req={req_id}, res=0, ext=empty_sync rev={current_rev})")
             return
         sess['sync_data_stream_sent'] = True
         send_sync_stream(sock, addr, sess, req_id)

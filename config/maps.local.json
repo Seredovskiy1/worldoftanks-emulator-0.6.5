@@ -5,9 +5,8 @@
     "static_obstacle_exclusions": {
       "1": [
         {
-          "center": [-288.22, -175.19],
-          "radius": 2.0,
-          "model": "env044_Caucasus_Stones02.model"
+          "center": [3.6, 36.2],
+          "radius": 4.0
         }
       ]
     },
