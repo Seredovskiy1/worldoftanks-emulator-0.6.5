@@ -1528,6 +1528,7 @@ SPACE_ID            = 1   # arbitrary SpaceID for hangar
 ACCOUNT_SHOWGUI_MSG_ID          = 0x90
 ACCOUNT_RECEIVE_ACTIVE_ARENAS_MSG_ID = 0x91
 ACCOUNT_RECEIVE_SERVER_STATS_MSG_ID = 0x92
+ACCOUNT_RECEIVE_QUEUE_INFO_MSG_ID = 0x93
 ACCOUNT_ONCMDRESPONSE_MSG_ID    = 0x82
 ACCOUNT_ONCMDRESPONSEEXT_MSG_ID = 0x83
 ACCOUNT_UPDATE_MSG_ID           = 0x95
@@ -1591,7 +1592,8 @@ CMD_BUY_TMAN     = 303
 CMD_DISMISS_TMAN = 306
 CMD_SYNC_DOSSIERS = 600
 CMD_SET_LANGUAGE = 1000
-CMD_REQ_ARENA_LIST = 502
+CMD_REQ_ARENA_LIST = 500
+CMD_REQ_QUEUE_INFO = 502
 CMD_REQ_SERVER_STATS = 501
 CMD_ENQUEUE_FOR_ARENA = 700  # vehInvID, arenaTypeID, queueType
 CMD_DEQUEUE      = 701
@@ -1713,6 +1715,68 @@ def build_account_receive_active_arenas():
                                int(arena['roundLength']),
                                0.0)
     return msg_varlen(ACCOUNT_RECEIVE_ACTIVE_ARENAS_MSG_ID, payload)
+
+def get_queued_vehicle_info(sess):
+    vehicle = sess.get('battle_vehicle')
+    if not vehicle:
+        return None
+    level = vehicle.get('level', 1)
+    tags = vehicle.get('tags', [])
+    vclass = 'lightTank'
+    for t in ('lightTank', 'mediumTank', 'heavyTank', 'SPG', 'AT-SPG'):
+        if t in tags:
+            vclass = t
+            break
+    return level, vclass
+
+def get_matchmaking_queue_stats():
+    levels = [0] * 11
+    classes = [0] * 5
+    length = 0
+    with queue_lock:
+        for queued in matchmaking_queue:
+            q_sess = queued.get('sess')
+            if q_sess:
+                info = get_queued_vehicle_info(q_sess)
+                if info:
+                    level, vclass = info
+                    if 1 <= level <= 10:
+                        levels[level] += 1
+                    class_idx = {'heavyTank': 0, 'mediumTank': 1, 'lightTank': 2, 'AT-SPG': 3, 'SPG': 4}.get(vclass, 2)
+                    classes[class_idx] += 1
+                    length += 1
+    if length > 0:
+        user_level = 1
+        for lvl, cnt in enumerate(levels):
+            if cnt > 0:
+                user_level = lvl
+                break
+        fake_levels = [
+            user_level, user_level, user_level, user_level, user_level, user_level,
+            max(1, user_level - 1), max(1, user_level - 1), max(1, user_level - 1), max(1, user_level - 1),
+            min(10, user_level + 1), min(10, user_level + 1), min(10, user_level + 1), min(10, user_level + 1)
+        ]
+        fake_classes = [2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 3, 3, 4]
+        for lvl in fake_levels:
+            levels[lvl] += 1
+        for cls in fake_classes:
+            classes[cls] += 1
+        length += 14
+    return length, levels, classes
+
+def build_account_receive_queue_info(randoms_length=0, randoms_levels=None, randoms_classes=None, companies_length=0):
+    payload = struct.pack('<I', PLAYER_ENTITY_ID)
+    payload += b'\x01'
+    payload += struct.pack('<I', randoms_length)
+    if randoms_levels is None:
+        randoms_levels = [0] * 11
+    payload += pack_uint32_array(randoms_levels)
+    if randoms_classes is None:
+        randoms_classes = [0] * 5
+    payload += pack_uint32_array(randoms_classes)
+    payload += b'\x01'
+    payload += struct.pack('<I', companies_length)
+    return msg_varlen(ACCOUNT_RECEIVE_QUEUE_INFO_MSG_ID, payload)
 
 def build_account_server_counters_update():
     stats = get_server_stats()
@@ -3365,20 +3429,222 @@ def make_empty_ext_pickle() -> bytes:
 
 
 def make_shop_pickle() -> bytes:
-    """Shop.__cache РїРѕРІРЅРёР№ СЃР»РѕРІРЅРёРє, С‰Рѕ Р±СѓРґРµ Р·Р°РїРёСЃР°РЅРёР№ РєР»С–С”РЅС‚РѕРј Сѓ
-    `Shop.__cache = data` РїС–СЃР»СЏ onSyncStreamComplete (zlib + cPickle).
-    requesters.py Р·Р°РїРёС‚СѓС” items РґР»СЏ РІСЃС–С… nation x itemType РїР°СЂ; СЏРєС‰Рѕ
-    `__cache['items'][nation][itemType]` = None в†’ ShopParser.parseModules
-    РІРїР°РґРµ Р· 'NoneType' is unsubscriptable."""
-    # nation IDs Сѓ WoT 0.6.5 (res/scripts/common/nations.py):
-    #   0=ussr, 1=germany, 2=usa, 15=NONE_INDEX (Р°СЂС‚РµС„Р°РєС‚Рё: optDev, equipment).
-    # itemTypeID 1..11 (ITEM_TYPE_NAMES: vehicle, vehicleChassis ... equipment).
+    """Shop.__cache повний словник, що буде записаний клієнтом у
+    `Shop.__cache = data` після onSyncStreamComplete (zlib + cPickle).
+    requesters.py запитує items для всіх nation x itemType пар; якщо
+    `__cache['items'][nation][itemType]` = None → ShopParser.parseModules
+    впаде з 'NoneType' is unsubscriptable."""
     NATION_IDS  = (0, 1, 2, 15)
     ITEM_TYPES  = tuple(range(1, 12))
     items = {n: {it: ({}, set()) for it in ITEM_TYPES} for n in NATION_IDS}
-    for nation_id, prices in collect_shell_prices(load_all_vehicles()).items():
-        if nation_id in items:
-            items[nation_id][10] = (prices, set())
+
+    def ps(b, o):
+        s = []; i = o; c = []
+        while i < len(b):
+            ch = b[i]; i += 1
+            if ch == 0:
+                t = bytes(c).decode('latin1')
+                if t == '':
+                    return s, i
+                s.append(t); c = []
+            else:
+                c.append(ch)
+
+    def parse(blob, typ, name, strings):
+        n = {'name': name, 'type': typ, 'children': [], 'data': b''}
+        if typ != 0:
+            n['data'] = blob; return n
+        if len(blob) < 2:
+            return n
+        nc = struct.unpack_from('<h', blob, 0)[0]; p = 2; rec = []
+        for _ in range(max(0, nc)):
+            if p + 6 > len(blob):
+                break
+            dp, k = struct.unpack_from('<ih', blob, p); p += 6; rec.append((dp, k))
+        if p + 4 > len(blob):
+            return n
+        fin = struct.unpack_from('<i', blob, p)[0]; p += 4
+        do = p; dps = [r[0] for r in rec] + [fin]
+        own = (dps[0] & 0x0fffffff) if rec else (fin & 0x0fffffff)
+        n['data'] = blob[do:do + own]
+        for i, (dp, k) in enumerate(rec):
+            st = dp & 0x0fffffff; en = dps[i + 1] & 0x0fffffff
+            ct = (dps[i + 1] & 0xf0000000) >> 28
+            cn = strings[k] if 0 <= k < len(strings) else f'__{k}'
+            n['children'].append(parse(blob[do + st:do + en], ct, cn, strings))
+        return n
+
+    def find(n, name):
+        if n is None:
+            return None
+        for c in n['children']:
+            if c['name'] == name:
+                return c
+        return None
+
+    def get_int(n, default=0):
+        if n is None:
+            return default
+        d = n['data']
+        if not d:
+            return default
+        t = n.get('type', 2)
+        if t == 2:
+            return int.from_bytes(d, 'little', signed=True)
+        if t == 1:
+            try:
+                return int(float(d.decode('latin1').strip()))
+            except Exception:
+                return default
+        if len(d) <= 8:
+            return int.from_bytes(d, 'little', signed=True)
+        return default
+
+    def load(fp):
+        if not os.path.exists(fp):
+            return None
+        try:
+            with open(fp, 'rb') as f:
+                b = f.read()
+        except Exception:
+            return None
+        if not b:
+            return None
+        s, o = ps(b, 5)
+        return parse(b[o:], 0, 'r', s)
+
+    def parse_components_xml(path):
+        n = load(path)
+        if n is None:
+            return {}
+        ids_node = find(n, 'ids')
+        if ids_node is None:
+            return {}
+        res = {}
+        for c in ids_node['children']:
+            res[c['name']] = get_int(c)
+        return res
+
+    def parse_shared_prices(xml_path, ids_map, item_type, nation_id):
+        prices = {}
+        root = load(xml_path)
+        if root is None:
+            return prices
+        shared = find(root, 'shared')
+        if shared is None:
+            return prices
+        for comp_node in shared['children']:
+            name = comp_node['name']
+            if name in ids_map:
+                comp_id = ids_map[name]
+                price_node = find(comp_node, 'price')
+                if price_node is not None:
+                    price_val = get_int(price_node)
+                    gold_node = find(price_node, 'gold')
+                    price = (0, price_val) if gold_node is not None else (price_val, 0)
+                    comp_descr = (comp_id << 8) | (nation_id << 4) | item_type
+                    prices[comp_descr] = price
+        return prices
+
+    import json
+    vehicles_json_path = os.path.join(ROOT_DIR, 'data', '_vehicles.json')
+    if os.path.exists(vehicles_json_path):
+        with open(vehicles_json_path, 'r', encoding='utf-8') as f:
+            veh_data = json.load(f)
+        for veh in veh_data.get('vehicles', []):
+            nation_name = veh.get('nation')
+            nations_map = {'ussr': 0, 'germany': 1, 'usa': 2}
+            nation_id = nations_map.get(nation_name)
+            if nation_id is not None:
+                veh_id = veh.get('vehicleTypeID')
+                price_val = veh.get('price', 0)
+                tags = veh.get('tags', [])
+                is_premium = 'premium' in tags or 'promo' in tags or veh.get('level', 1) in (8, 9, 10) and price_val < 50000
+                price = (0, price_val) if is_premium else (price_val, 0)
+                items[nation_id][1][0][veh_id] = price
+                for shell in veh.get('shells', []):
+                    shell_descr = int(shell.get('compactDescr', 0))
+                    if shell_descr:
+                        shell_nation = (shell_descr >> 4) & 15
+                        shell_price = shell.get('price', [0, 0])
+                        items[shell_nation][10][0][shell_descr] = tuple(shell_price)
+
+    client_root = get_value(CONFIG, 'paths.client_root') or r'C:\Users\qwerty\Desktop\World_of_Tanks'
+    base_dir = os.path.join(client_root, 'res', 'scripts', 'item_defs', 'vehicles')
+    nations_map = {'ussr': 0, 'germany': 1, 'usa': 2}
+    for nation_name, nation_id in nations_map.items():
+        comp_dir = os.path.join(base_dir, nation_name, 'components')
+        comp_configs = [
+            ('guns.xml', 4),
+            ('engines.xml', 5),
+            ('fuelTanks.xml', 6),
+            ('radios.xml', 7),
+        ]
+        for fname, itype in comp_configs:
+            xml_path = os.path.join(comp_dir, fname)
+            ids_map = parse_components_xml(xml_path)
+            comp_prices = parse_shared_prices(xml_path, ids_map, itype, nation_id)
+            items[nation_id][itype][0].update(comp_prices)
+
+        chassis_map = parse_components_xml(os.path.join(comp_dir, 'chassis.xml'))
+        turret_map = parse_components_xml(os.path.join(comp_dir, 'turrets.xml'))
+        nation_dir = os.path.join(base_dir, nation_name)
+        if os.path.exists(nation_dir):
+            for file in os.listdir(nation_dir):
+                if file.endswith('.xml') and file != 'list.xml':
+                    veh_xml_path = os.path.join(nation_dir, file)
+                    root = load(veh_xml_path)
+                    if root is None:
+                        continue
+                    chassis_node = find(root, 'chassis')
+                    if chassis_node:
+                        for ch in chassis_node['children']:
+                            name = ch['name']
+                            if name in chassis_map:
+                                comp_id = chassis_map[name]
+                                price_node = find(ch, 'price')
+                                if price_node is not None:
+                                    price_val = get_int(price_node)
+                                    gold_node = find(price_node, 'gold')
+                                    price = (0, price_val) if gold_node is not None else (price_val, 0)
+                                    comp_descr = (comp_id << 8) | (nation_id << 4) | 2
+                                    items[nation_id][2][0][comp_descr] = price
+
+                    for child in root['children']:
+                        if child['name'].startswith('turrets'):
+                            for tur in child['children']:
+                                name = tur['name']
+                                if name in turret_map:
+                                    comp_id = turret_map[name]
+                                    price_node = find(tur, 'price')
+                                    if price_node is not None:
+                                        price_val = get_int(price_node)
+                                        gold_node = find(price_node, 'gold')
+                                        price = (0, price_val) if gold_node is not None else (price_val, 0)
+                                        comp_descr = (comp_id << 8) | (nation_id << 4) | 3
+                                        items[nation_id][3][0][comp_descr] = price
+
+    common_dir = os.path.join(base_dir, 'common')
+    for fname, itype in (('optional_devices.xml', 9), ('equipments.xml', 11)):
+        xml_path = os.path.join(common_dir, fname)
+        if os.path.exists(xml_path):
+            root = load(xml_path)
+            if root is not None:
+                for child in root['children']:
+                    if child['name'] in ('xmlns:xmlref', 'shared'):
+                        continue
+                    idn = find(child, 'id')
+                    if idn is None:
+                        continue
+                    item_id = get_int(idn)
+                    price_node = find(child, 'price')
+                    price = (0, 0)
+                    if price_node is not None:
+                        price_val = get_int(price_node)
+                        gold_node = find(price_node, 'gold')
+                        price = (0, price_val) if gold_node is not None else (price_val, 0)
+                    comp_descr = (item_id << 8) | (15 << 4) | itype
+                    items[15][itype][0][comp_descr] = price
 
     shop = {
         'rev': 1,
@@ -9876,7 +10142,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
     req_id, cmd = parse_doCmd_request(msg_id, payload)
     if req_id is None:
         return
-    if cmd in (CMD_REQ_ARENA_LIST, CMD_REQ_SERVER_STATS):
+    if cmd in (CMD_REQ_ARENA_LIST, CMD_REQ_SERVER_STATS, CMD_REQ_QUEUE_INFO):
         stat_cmd_count = sess.get('stat_cmd_count', 0) + 1
         sess['stat_cmd_count'] = stat_cmd_count
         if stat_cmd_count % 50 == 1:
@@ -10108,6 +10374,14 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
                              "Account.receiveActiveArenas()",
                              reliable=True)
         send_account_server_counters(sock, addr, sess)
+        return
+
+    if cmd == CMD_REQ_QUEUE_INFO:
+        randoms_length, randoms_levels, randoms_classes = get_matchmaking_queue_stats()
+        send_avatar_messages(sock, addr, sess,
+                             build_account_receive_queue_info(randoms_length, randoms_levels, randoms_classes),
+                             "Account.receiveQueueInfo()",
+                             reliable=True)
         return
 
     if cmd == CMD_REQ_SERVER_STATS:
