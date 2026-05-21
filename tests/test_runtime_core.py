@@ -2511,9 +2511,13 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertLess(tracer_velocity[1], 0.0)
         self.assertGreaterEqual(tracer_gravity, 12.0)
         self.assertEqual(target["battle_vehicle_health"], 300)
+        expected_delay = emulator.estimate_artillery_shell_flight_time(
+            (source["battle_pos"][0], source["battle_pos"][1] + 2.0,
+             source["battle_pos"][2]),
+            marker,
+            shell["speed"])
         self.assertGreaterEqual(scheduled[0][0], emulator.ARTILLERY_FLIGHT_TIME_MIN)
-        self.assertAlmostEqual(scheduled[0][0],
-                               emulator.ARTILLERY_VISIBLE_TRACER_TIME)
+        self.assertAlmostEqual(scheduled[0][0], expected_delay)
 
         before_callback = len(sent_messages)
         with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
@@ -2566,8 +2570,32 @@ class RuntimeCoreTests(unittest.TestCase):
                                 emulator.ARTILLERY_VISIBLE_TRACER_MIN_VX)
         server_velocity = source["battle_last_server_shot_info"][2]
         self.assertAlmostEqual(server_velocity[0], 0.0, places=5)
+        expected_time = emulator.estimate_artillery_shell_flight_time(
+            (source["battle_pos"][0], source["battle_pos"][1] + 2.0,
+             source["battle_pos"][2]),
+            source["battle_target_pos"],
+            shell["speed"])
         self.assertEqual(source["battle_last_visual_flight_time"],
-                         emulator.ARTILLERY_VISIBLE_TRACER_TIME)
+                         expected_time)
+
+    def test_artillery_visible_tracer_time_scales_with_distance(self):
+        shell = _make_shell(kind="HIGH_EXPLOSIVE", compact=9103,
+                            speed=200.0, gravity=160.0)
+        shot_pos = (0.0, 2.0, 0.0)
+        near = (0.0, 1.3, 20.0)
+        far = (0.0, 1.3, 400.0)
+
+        near_time = emulator.build_artillery_visible_tracer(
+            shot_pos, near, (0.0, -0.1, 1.0), shell)[4]
+        far_time = emulator.build_artillery_visible_tracer(
+            shot_pos, far, (0.0, -0.1, 1.0), shell)[4]
+
+        self.assertAlmostEqual(near_time, emulator.ARTILLERY_FLIGHT_TIME_MIN)
+        self.assertGreater(far_time, near_time)
+        self.assertAlmostEqual(
+            far_time,
+            emulator.estimate_artillery_shell_flight_time(
+                shot_pos, far, shell["speed"]))
 
     def test_non_artillery_tracer_keeps_player_vehicle_id(self):
         shell = _make_shell(compact=9102, speed=120.0, gravity=9.81)

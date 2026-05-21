@@ -4660,6 +4660,20 @@ def build_avatar_show_tracer(shot_id: int, shot_pos, velocity,
     return msg_varlen(AVATAR_SHOW_TRACER_MSG_ID, em)
 
 
+def estimate_artillery_shell_flight_time(shot_pos, impact_pos, shell_speed: float) -> float:
+    shot_pos = safe_vec3(shot_pos, None)
+    impact_pos = safe_vec3(impact_pos, None)
+    speed = safe_float(shell_speed, 800.0, 1.0)
+    if shot_pos is None or impact_pos is None:
+        return ARTILLERY_FLIGHT_TIME_MIN
+    dx = impact_pos[0] - shot_pos[0]
+    dy = impact_pos[1] - shot_pos[1]
+    dz = impact_pos[2] - shot_pos[2]
+    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    return clamp(distance / speed, ARTILLERY_FLIGHT_TIME_MIN,
+                 ARTILLERY_FLIGHT_TIME_MAX)
+
+
 def build_artillery_visible_tracer(shot_pos, impact_pos, shot_vec, shell: dict):
     shot_pos = safe_vec3(shot_pos, (0.0, 0.0, 0.0))
     impact_pos = safe_vec3(impact_pos, shot_pos)
@@ -4701,8 +4715,9 @@ def build_artillery_visible_tracer(shot_pos, impact_pos, shot_vec, shell: dict):
         ARTILLERY_VISIBLE_TRACER_GRAVITY_FACTOR,
         12.0,
         35.0)
-    shell_speed = float((shell or {}).get('speed', 800.0))
-    flight_time = estimate_projectile_flight_time(shot_pos, impact_pos, (0.0, -shell_speed, 0.0))
+    shell_speed = safe_float((shell or {}).get('speed', 800.0), 800.0, 1.0)
+    flight_time = estimate_artillery_shell_flight_time(
+        shot_pos, impact_pos, shell_speed)
     velocity = (
         (impact_pos[0] - start[0]) / flight_time,
         (impact_pos[1] - start[1] + 0.5 * gravity * flight_time * flight_time) / flight_time,
