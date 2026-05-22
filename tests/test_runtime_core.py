@@ -2346,6 +2346,97 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator.matchmaking_queue[:] = original_queue
             emulator.MATCHMAKING_QUEUE_FAKE_FILLERS = original_fillers
 
+    def test_vehicle_lock_diff_matches_client_cache_shape(self):
+        self.assertEqual(
+            emulator.build_vehicle_lock_diff(7, emulator.LOCK_REASON_IN_QUEUE),
+            {"cache": {"vehsLock": {7: emulator.LOCK_REASON_IN_QUEUE}}},
+        )
+        self.assertEqual(
+            emulator.build_vehicle_lock_diff(7, None),
+            {"cache": {"vehsLock": {7: None}}},
+        )
+
+    def test_enqueue_pushes_vehicle_queue_lock(self):
+        sess = {
+            "account_id": 771,
+            "username": "queued",
+            "addr": ("127.0.0.1", 1771),
+        }
+        sock = object()
+        addr = sess["addr"]
+        payload = struct.pack(
+            "<hhiii", 0, emulator.CMD_ENQUEUE_FOR_ARENA, 1,
+            emulator.ARENA_TYPE_KARELIA, 0)
+
+        with mock.patch.object(emulator, "store_battle_entry",
+                               return_value=91), \
+                mock.patch.object(emulator, "send_account_event",
+                                  return_value=True) as send_event, \
+                mock.patch.object(emulator, "enqueue_for_matchmaking",
+                                  return_value=None) as enqueue, \
+                mock.patch.object(emulator, "push_account_diff",
+                                  return_value=True) as push_diff:
+            emulator.handle_account_doCmd(sock, addr, sess, 0xc4, payload)
+
+        send_event.assert_called_once_with(
+            sock, addr, sess, emulator.ACCOUNT_ONENQUEUED_MSG_ID,
+            "Account.onEnqueued()")
+        push_diff.assert_called_once_with(
+            sock, addr, sess,
+            {"cache": {"vehsLock": {1: emulator.LOCK_REASON_IN_QUEUE}}})
+        enqueue.assert_called_once_with(sock, addr, sess)
+        self.assertEqual(sess["battle_vehicle_inv_id"], 1)
+        self.assertEqual(sess["battle_id"], 91)
+
+    def test_dequeue_pushes_vehicle_unlock_and_cancels_empty_queue_timer(self):
+        class FakeTimer:
+            def __init__(self):
+                self.cancelled = False
+
+            def cancel(self):
+                self.cancelled = True
+
+        original_queue = list(emulator.matchmaking_queue)
+        original_timer = emulator.matchmaking_timer
+        sess = {
+            "account_id": 772,
+            "username": "queued",
+            "addr": ("127.0.0.1", 1772),
+            "battle_vehicle_inv_id": 4,
+            "queued_for_battle": True,
+        }
+        sock = object()
+        addr = sess["addr"]
+        timer = FakeTimer()
+        payload = struct.pack("<hhiii", 0, emulator.CMD_DEQUEUE, 0, 0, 0)
+        try:
+            emulator.matchmaking_queue[:] = [{"addr": addr, "sess": sess}]
+            emulator.matchmaking_timer = timer
+            emulator.active_battle_accounts[sess["account_id"]] = sess
+
+            with mock.patch.object(emulator, "broadcast_account_server_counters",
+                                   return_value=None) as counters, \
+                    mock.patch.object(emulator, "send_account_event",
+                                      return_value=True) as send_event, \
+                    mock.patch.object(emulator, "push_account_diff",
+                                      return_value=True) as push_diff:
+                emulator.handle_account_doCmd(sock, addr, sess, 0xc4, payload)
+        finally:
+            emulator.matchmaking_queue[:] = original_queue
+            emulator.matchmaking_timer = original_timer
+
+        self.assertEqual(emulator.matchmaking_queue, original_queue)
+        self.assertIs(emulator.matchmaking_timer, original_timer)
+        self.assertFalse(sess["queued_for_battle"])
+        self.assertTrue(timer.cancelled)
+        self.assertNotIn(sess["account_id"], emulator.active_battle_accounts)
+        counters.assert_called_once_with(sock)
+        send_event.assert_called_once_with(
+            sock, addr, sess, emulator.ACCOUNT_ONDEQUEUED_MSG_ID,
+            "Account.onDequeued()")
+        push_diff.assert_called_once_with(
+            sock, addr, sess, {"cache": {"vehsLock": {4: None}}})
+
     def test_matchmaker_launch_does_not_cold_load_static_obstacles(self):
         original_queue = list(emulator.matchmaking_queue)
         original_timer = emulator.matchmaking_timer

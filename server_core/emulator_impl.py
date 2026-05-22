@@ -1604,6 +1604,10 @@ RES_FAILURE      = -1
 RES_WRONG_ARGS   = -2
 RES_NON_PLAYER   = -3
 RES_SHOP_DESYNC  = -4
+LOCK_REASON_NONE = 0
+LOCK_REASON_ON_ARENA = 16
+LOCK_REASON_ROSTER = 32
+LOCK_REASON_IN_QUEUE = 1 | LOCK_REASON_ROSTER
 
 
 def bw_pack_int(value: int) -> bytes:
@@ -3454,6 +3458,27 @@ def build_account_state_diff(account_id: int) -> dict:
             11: dict(load_account_consumables(account_id)),
         },
     }
+
+
+def build_vehicle_lock_diff(veh_inv_id: int, lock_reason) -> dict:
+    return {
+        'cache': {
+            'vehsLock': {
+                int(veh_inv_id): lock_reason,
+            },
+        },
+    }
+
+
+def push_vehicle_lock_diff(sock, addr, sess, lock_reason,
+                           veh_inv_id: int = None) -> bool:
+    if veh_inv_id is None:
+        veh_inv_id = sess.get('battle_vehicle_inv_id')
+    if not veh_inv_id:
+        return False
+    return push_account_diff(sock, addr, sess,
+                             build_vehicle_lock_diff(veh_inv_id,
+                                                     lock_reason))
 
 
 def make_empty_ext_pickle() -> bytes:
@@ -6835,12 +6860,19 @@ def enqueue_for_matchmaking(sock, addr, sess):
         start_matchmaking_timer(sock)
 
 def dequeue_from_matchmaking(sess):
+    global matchmaking_timer
+    timer_to_cancel = None
     with queue_lock:
         matchmaking_queue[:] = [
             queued for queued in matchmaking_queue
             if queued.get('sess') is not sess
         ]
+        if not matchmaking_queue and matchmaking_timer is not None:
+            timer_to_cancel = matchmaking_timer
+            matchmaking_timer = None
     sess['queued_for_battle'] = False
+    if timer_to_cancel is not None and hasattr(timer_to_cancel, 'cancel'):
+        timer_to_cancel.cancel()
 
 
 def send_avatar_ready_and_prebattle(sock, addr, sess):
@@ -10816,6 +10848,8 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         # entity event onEnqueued, РїС–СЃР»СЏ СЏРєРѕРіРѕ РєР»С–С”РЅС‚ РїРѕРєР°Р·СѓС” "РЈ С‡РµСЂР·С–...".
         send_account_event(sock, addr, sess,
                            ACCOUNT_ONENQUEUED_MSG_ID, "Account.onEnqueued()")
+        push_vehicle_lock_diff(sock, addr, sess, LOCK_REASON_IN_QUEUE,
+                               veh_inv_id)
         enqueue_for_matchmaking(sock, addr, sess)
         return
 
@@ -10826,6 +10860,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         broadcast_account_server_counters(sock)
         send_account_event(sock, addr, sess,
                            ACCOUNT_ONDEQUEUED_MSG_ID, "Account.onDequeued()")
+        push_vehicle_lock_diff(sock, addr, sess, None)
         return
 
     if cmd == 0 and sess.get('battle_bundle_sent'):
