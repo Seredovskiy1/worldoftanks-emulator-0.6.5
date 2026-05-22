@@ -46,6 +46,8 @@ builtins.print = print
 LOGIN_PORT  = int(get_value(CONFIG, 'server.login_port', 20016))
 BASEAPP_PORT = int(get_value(CONFIG, 'server.baseapp_port', 20017))
 PUBLIC_HOST = str(get_value(CONFIG, 'server.public_host', '26.108.162.225'))
+BASEAPP_INIT_DELAY_SECONDS = float(get_value(
+    CONFIG, 'server.baseapp_init_delay_seconds', 0.05))
 
 # { token_bytes : { 'bf_key': bytes, 'addr': (ip,port) } }
 active_sessions = {}
@@ -499,6 +501,7 @@ def count_account_tankmen(account_id: int) -> int:
 
 
 def seed_default_account_inventory(account_id: int):
+    account_id = int(account_id)
     veh_list = load_all_vehicles()
     if not veh_list:
         return
@@ -533,8 +536,108 @@ def seed_default_account_inventory(account_id: int):
                         "compact_descr, quantity) VALUES (%s, %s, %s) "
                         "ON DUPLICATE KEY UPDATE quantity=quantity",
                         (account_id, cd, qty))
+                cur.execute(
+                    "SELECT vehicle_inv_id, COUNT(*) FROM tankmen "
+                    "WHERE account_id=%s AND vehicle_inv_id IS NOT NULL "
+                    "GROUP BY vehicle_inv_id",
+                    (account_id,))
+                tankmen_existing = {
+                    int(veh_inv_id): int(count)
+                    for veh_inv_id, count in (cur.fetchall() or [])
+                    if veh_inv_id is not None
+                }
+                cur.execute(
+                    "SELECT vehicle_inv_id, COUNT(*) "
+                    "FROM vehicle_consumable_slots WHERE account_id=%s "
+                    "GROUP BY vehicle_inv_id",
+                    (account_id,))
+                consumable_existing = {
+                    int(veh_inv_id): int(count)
+                    for veh_inv_id, count in (cur.fetchall() or [])
+                    if veh_inv_id is not None
+                }
+                cur.execute(
+                    "SELECT vehicle_inv_id, COUNT(*) "
+                    "FROM vehicle_optional_device_slots WHERE account_id=%s "
+                    "GROUP BY vehicle_inv_id",
+                    (account_id,))
+                opt_existing = {
+                    int(veh_inv_id): int(count)
+                    for veh_inv_id, count in (cur.fetchall() or [])
+                    if veh_inv_id is not None
+                }
+
+                consumable_layout = [
+                    make_artefact_compact_descr(ITEM_TYPE_EQUIPMENT, 4),
+                    make_artefact_compact_descr(ITEM_TYPE_EQUIPMENT, 2),
+                    make_artefact_compact_descr(ITEM_TYPE_EQUIPMENT, 1),
+                ]
+                opt_device_layout = [
+                    make_artefact_compact_descr(ITEM_TYPE_OPTIONAL_DEVICE, 4),
+                    make_artefact_compact_descr(ITEM_TYPE_OPTIONAL_DEVICE, 5),
+                    make_artefact_compact_descr(ITEM_TYPE_OPTIONAL_DEVICE, 1),
+                ]
+                tankmen_rows = []
+                consumable_rows = []
+                opt_rows = []
                 for vehicle in veh_list:
-                    seed_vehicle_default_inventory(cur, account_id, vehicle, now)
+                    veh_inv_id = int(vehicle['inv_id'])
+                    nation_id = int(vehicle.get('nationID') or 0)
+                    vehicle_type_id = int(vehicle.get('vehicleTypeID') or 0)
+                    nation_name = vehicle.get('nation') or 'ussr'
+                    crew_size = int(vehicle.get('crewSize') or 4)
+                    if int(tankmen_existing.get(veh_inv_id, 0)) <= 0:
+                        for slot in range(min(crew_size, len(DEFAULT_CREW_ROLES))):
+                            passport = pick_random_passport(nation_name)
+                            if passport is None:
+                                continue
+                            tankmen_rows.append((
+                                account_id, veh_inv_id, slot, nation_id,
+                                vehicle_type_id, DEFAULT_CREW_ROLES[slot],
+                                1 if passport['is_female'] else 0,
+                                passport['first_name_id'],
+                                passport['last_name_id'],
+                                passport['icon_id'], now))
+                    if int(consumable_existing.get(veh_inv_id, 0)) <= 0:
+                        for slot_idx, cd in enumerate(consumable_layout):
+                            consumable_rows.append((
+                                account_id, veh_inv_id, slot_idx, cd))
+                    if int(opt_existing.get(veh_inv_id, 0)) <= 0:
+                        for slot_idx, cd in enumerate(opt_device_layout):
+                            opt_rows.append((
+                                account_id, veh_inv_id, slot_idx, cd))
+                if tankmen_rows:
+                    cur.executemany(
+                        "INSERT INTO tankmen(account_id, vehicle_inv_id, "
+                        "slot_idx, nation_id, vehicle_type_id, role_id, "
+                        "role_level, is_female, is_premium, first_name_id, "
+                        "last_name_id, icon_id, free_xp, skills, "
+                        "last_skill_level, created_at) VALUES "
+                        "(%s, %s, %s, %s, %s, %s, 100, %s, 0, %s, %s, %s, "
+                        "0, '', 0, %s)",
+                        tankmen_rows)
+                if consumable_rows:
+                    cur.executemany(
+                        "INSERT INTO vehicle_consumable_slots(account_id, "
+                        "vehicle_inv_id, slot_idx, compact_descr) "
+                        "VALUES (%s, %s, %s, %s) "
+                        "ON DUPLICATE KEY UPDATE "
+                        "compact_descr=VALUES(compact_descr)",
+                        consumable_rows)
+                if opt_rows:
+                    cur.executemany(
+                        "INSERT INTO vehicle_optional_device_slots(account_id, "
+                        "vehicle_inv_id, slot_idx, compact_descr) "
+                        "VALUES (%s, %s, %s, %s) "
+                        "ON DUPLICATE KEY UPDATE "
+                        "compact_descr=VALUES(compact_descr)",
+                        opt_rows)
+                if tankmen_rows or consumable_rows or opt_rows:
+                    print(f"[*] seed_default_account_inventory: "
+                          f"account={account_id} "
+                          f"tankmen={len(tankmen_rows)} "
+                          f"eqSlots={len(consumable_rows)} "
+                          f"optSlots={len(opt_rows)}")
                 fix_legacy_tankman_nations(cur, account_id, veh_list)
         finally:
             conn.close()
@@ -8268,6 +8371,12 @@ def build_static_obstacles_from_chunk_data(arena_type_id: int, chunk_x: int,
 
 
 def load_static_obstacles_for_arena(arena_type_id: int):
+    try:
+        raw_arena_type_id = int(arena_type_id)
+    except (TypeError, ValueError):
+        raw_arena_type_id = None
+    if raw_arena_type_id in STATIC_OBSTACLE_CACHE:
+        return STATIC_OBSTACLE_CACHE[raw_arena_type_id]
     arena_type_id = normalize_arena_type_id(arena_type_id)
     if arena_type_id in STATIC_OBSTACLE_CACHE:
         return STATIC_OBSTACLE_CACHE[arena_type_id]
@@ -9164,6 +9273,50 @@ def find_artillery_shot_target(source_sess: dict, shot_pos, shot_vec):
     return None
 
 
+def find_direct_ray_shot_candidate(source_sess: dict, shot_pos, shot_vec,
+                                   candidates):
+    source_account_id = source_sess.get('account_id')
+    source_team = source_sess.get('battle_team')
+    match_id = source_sess.get('battle_match_id')
+    best = None
+    for target in candidates:
+        if target.get('account_id') == source_account_id:
+            continue
+        if target.get('battle_match_id') != match_id:
+            continue
+        if source_team is not None and target.get('battle_team') == source_team:
+            continue
+        if int(target.get('battle_vehicle_health') or 0) <= 0:
+            continue
+        vehicle = get_session_battle_vehicle(target)
+        armor_model = vehicle_armor_model(vehicle)
+        dims = armor_dimensions(armor_model)
+        yaw = vehicle_hit_yaw(target)
+        positions = unique_positions((
+            target.get('battle_pos'),
+            target.get('battle_prev_pos'),
+            target.get('client_vehicle_pos'),
+        ))
+        for pos in positions:
+            ray_hit = ray_vehicle_box_hit(shot_pos, shot_vec, pos, yaw, dims)
+            if ray_hit is None:
+                continue
+            distance = float(ray_hit[3])
+            if best is None or distance < best['distance']:
+                best = {
+                    'target': target,
+                    'pos': pos,
+                    'center': (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2]),
+                    'vehicle': vehicle,
+                    'armorModel': armor_model,
+                    'dims': dims,
+                    'yaw': yaw,
+                    'rayHit': ray_hit,
+                    'distance': distance,
+                }
+    return best
+
+
 def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     shot_pos = safe_vec3(shot_pos, None)
     shot_vec = safe_vec3(shot_vec, None)
@@ -9181,9 +9334,8 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     marker_time = source_sess.get('battle_last_shot_target_pos_time',
                                   source_sess.get('battle_target_pos_time', 0.0))
     marker_pos = safe_vec3(marker_pos, None)
-    if marker_pos is None or not is_target_marker_fresh(source_sess, marker_time):
-        print("    [shot] miss: no fresh client aim marker")
-        return None
+    marker_fresh = (marker_pos is not None and
+                    is_target_marker_fresh(source_sess, marker_time))
 
     with battle_lock:
         candidates = list(active_battle_accounts.values())
@@ -9192,42 +9344,56 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     best_h = None
     best_center = None
     best_pos = None
-    for target in candidates:
-        if target.get('account_id') == source_account_id:
-            continue
-        if target.get('battle_match_id') != match_id:
-            continue
-        if source_team is not None and target.get('battle_team') == source_team:
-            continue
-        health = int(target.get('battle_vehicle_health') or 0)
-        if health <= 0:
-            continue
-        positions = unique_positions((
-            target.get('battle_pos'),
-            target.get('battle_prev_pos'),
-            target.get('client_vehicle_pos'),
-        ))
-        if not positions:
-            continue
-        for pos in positions:
-            center = (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2])
-            dx = center[0] - float(marker_pos[0])
-            dz = center[2] - float(marker_pos[2])
-            horizontal = math.sqrt(dx * dx + dz * dz)
-            vertical_signed = center[1] - float(marker_pos[1])
-            if horizontal > SHOT_TANK_HIT_RADIUS_H:
+    if marker_fresh:
+        for target in candidates:
+            if target.get('account_id') == source_account_id:
                 continue
-            if vertical_signed < -SHOT_TANK_HIT_RADIUS_V:
+            if target.get('battle_match_id') != match_id:
                 continue
-            if vertical_signed > SHOT_TANK_MARKER_VERT_ABOVE:
+            if source_team is not None and target.get('battle_team') == source_team:
                 continue
-            if best_target is None or horizontal < best_h:
-                best_target = target
-                best_h = horizontal
-                best_center = center
-                best_pos = pos
+            health = int(target.get('battle_vehicle_health') or 0)
+            if health <= 0:
+                continue
+            positions = unique_positions((
+                target.get('battle_pos'),
+                target.get('battle_prev_pos'),
+                target.get('client_vehicle_pos'),
+            ))
+            if not positions:
+                continue
+            for pos in positions:
+                center = (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2])
+                dx = center[0] - float(marker_pos[0])
+                dz = center[2] - float(marker_pos[2])
+                horizontal = math.sqrt(dx * dx + dz * dz)
+                vertical_signed = center[1] - float(marker_pos[1])
+                if horizontal > SHOT_TANK_HIT_RADIUS_H:
+                    continue
+                if vertical_signed < -SHOT_TANK_HIT_RADIUS_V:
+                    continue
+                if vertical_signed > SHOT_TANK_MARKER_VERT_ABOVE:
+                    continue
+                if best_target is None or horizontal < best_h:
+                    best_target = target
+                    best_h = horizontal
+                    best_center = center
+                    best_pos = pos
+
+    ray_candidate = None
+    if best_target is None:
+        ray_candidate = find_direct_ray_shot_candidate(
+            source_sess, shot_pos, shot_vec, candidates)
+        if ray_candidate is not None:
+            best_target = ray_candidate['target']
+            best_pos = ray_candidate['pos']
+            best_center = ray_candidate['center']
+            best_h = None
 
     if best_target is None:
+        if not marker_fresh:
+            print("    [shot] miss: no fresh client aim marker and no direct ray hit")
+            return None
         print(f"    [shot] miss: no tank near client aim marker")
         print(f"    [shot] debug: marker_pos={marker_pos} marker_time={marker_time:.3f} age={time.time()-marker_time:.3f}")
         print(f"    [shot] debug: candidates={len(candidates)} match_id={match_id} source_team={source_team}")
@@ -9256,11 +9422,18 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v_signed={vertical_signed:+.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V_below={SHOT_TANK_HIT_RADIUS_V} V_above={SHOT_TANK_MARKER_VERT_ABOVE})")
         return None
 
-    vehicle = get_session_battle_vehicle(best_target)
-    armor_model = vehicle_armor_model(vehicle)
-    dims = armor_dimensions(armor_model)
-    yaw = vehicle_hit_yaw(best_target)
-    ray_hit = ray_vehicle_box_hit(shot_pos, shot_vec, best_pos, yaw, dims)
+    if ray_candidate is not None:
+        vehicle = ray_candidate['vehicle']
+        armor_model = ray_candidate['armorModel']
+        dims = ray_candidate['dims']
+        yaw = ray_candidate['yaw']
+        ray_hit = ray_candidate['rayHit']
+    else:
+        vehicle = get_session_battle_vehicle(best_target)
+        armor_model = vehicle_armor_model(vehicle)
+        dims = armor_dimensions(armor_model)
+        yaw = vehicle_hit_yaw(best_target)
+        ray_hit = ray_vehicle_box_hit(shot_pos, shot_vec, best_pos, yaw, dims)
     if ray_hit is None:
         fallback_hit = fallback_hit_from_marker(marker_pos, best_pos, yaw, dims)
         if fallback_hit is None:
@@ -9316,7 +9489,10 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
     component, zone = armor_component_and_zone(hit_local, normal, dims)
     armor = get_zone_armor(armor_model, component, zone)
     armor *= get_component_homogenization(armor_model, component)
-    print(f"    [shot] hit: marker_h={best_h:.2f}m component={component} zone={zone}")
+    if best_h is None:
+        print(f"    [shot] hit: ray_dist={hit_distance:.2f}m component={component} zone={zone}")
+    else:
+        print(f"    [shot] hit: marker_h={best_h:.2f}m component={component} zone={zone}")
     return {
         'target': best_target,
         'targetPos': best_pos,
@@ -10907,6 +11083,18 @@ def send_init_bundle(sock, addr, sess):
 
 # в”Ђв”Ђ tickSync loop в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
+def schedule_init_bundle(sock, addr, sess):
+    if sess.get('init_sent') or sess.get('init_scheduled'):
+        return
+    sess['init_scheduled'] = True
+
+    def _send():
+        sess['init_scheduled'] = False
+        send_init_bundle(sock, addr, sess)
+
+    runtime_call_later(BASEAPP_INIT_DELAY_SECONDS, _send)
+
+
 tick_counter = 0
 
 def start_tick_thread(sock, addr, sess=None):
@@ -11059,6 +11247,7 @@ def handle_baseapp(sock):
         # РљРѕР¶РµРЅ РЅРѕРІРёР№ baseAppLogin в†’ РЅРѕРІРёР№ channel, СЃРєРёРґР°С”РјРѕ СѓСЃС– counters,
         # С–РЅР°РєС€Рµ РїРѕРІС‚РѕСЂРЅРµ РїС–РґРєР»СЋС‡РµРЅРЅСЏ РїС–РґРµ Р· seq=N+1, Р° РєР»С–С”РЅС‚ С‡РµРєР°С” 0.
         sess['init_sent'] = False
+        sess['init_scheduled'] = False
         sess['tick_started'] = False
         sess['in_seq_at'] = 0
         sess['in_seq_buffered'] = set()
@@ -11072,6 +11261,7 @@ def handle_baseapp(sock):
         reply = make_reply(reply_id, token_received)
         reply = bw_encrypt_packet(reply, sess['bf_key'])
         runtime_sendto(sock, reply, addr)
+        schedule_init_bundle(sock, addr, sess)
         print(f"[>] baseAppLogin Reply РІС–РґРїСЂР°РІР»РµРЅРѕ")
 
         # 2) Init РІС–РґРїСЂР°РІРёРјРѕ РїС–СЃР»СЏ РїРµСЂС€РѕРіРѕ enableEntities/authenticate РІС–Рґ РєР»С–С”РЅС‚Р°.

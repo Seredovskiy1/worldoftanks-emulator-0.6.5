@@ -377,6 +377,29 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(speed, 20.0)
         self.assertGreaterEqual(rspeed, 0.0)
 
+    def test_schedule_init_bundle_runs_once_after_baseapp_login(self):
+        sess = {"init_sent": False, "init_scheduled": False}
+        scheduled = []
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return object()
+
+        with mock.patch.object(emulator, "runtime_call_later",
+                               side_effect=capture_later):
+            emulator.schedule_init_bundle(object(), ("127.0.0.1", 20017), sess)
+            emulator.schedule_init_bundle(object(), ("127.0.0.1", 20017), sess)
+
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(scheduled[0][0], emulator.BASEAPP_INIT_DELAY_SECONDS)
+        self.assertTrue(sess["init_scheduled"])
+
+        with mock.patch.object(emulator, "send_init_bundle") as send_init:
+            scheduled[0][1]()
+
+        send_init.assert_called_once()
+        self.assertFalse(sess["init_scheduled"])
+
     def test_vehicle_class_tags_identify_artillery_and_tank_destroyers(self):
         vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
         for name in ("S-51", "SU-18", "M7_Priest", "Hummel"):
@@ -1031,7 +1054,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(len(seen), MAX_SOCKET_READS_PER_TURN)
         self.assertEqual(len(sock.sent), MAX_SOCKET_READS_PER_TURN)
         self.assertEqual(sock.remaining, 5)
-        self.assertEqual(runtime.outbound, [])
+        self.assertFalse(runtime.outbound)
 
     def test_battle_motion_tick_uses_detailed_position(self):
         pos = (-360.0, 100.0, -360.0)
@@ -3690,6 +3713,27 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(target["battle_vehicle_health"], 160)
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
         self.assertGreater(resolved["impactCos"], emulator.SHOT_ARMOR_AUTORICOCHET_COS)
+
+    def test_direct_ray_hit_without_fresh_marker_damages_close_target(self):
+        source = _make_combat_session(186, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(187, 2, (0.0, 0.0, 5.0), health=300)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit",
+                               return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages",
+                                  return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle",
+                                  return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(penetration=200.0, damage=100.0),
+                (0.0, 1.3, 0.0), (0.0, 0.0, 1.0))
+
+        self.assertIs(hit_target, target)
+        self.assertEqual(damage, 100)
+        self.assertEqual(target["battle_vehicle_health"], 200)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
 
     def test_direct_marker_fix_ignores_off_silhouette_marker(self):
         source = _make_combat_session(183, 1, (3.2, 0.0, -50.0))

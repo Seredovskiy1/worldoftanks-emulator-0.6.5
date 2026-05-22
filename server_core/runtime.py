@@ -2,6 +2,7 @@ import heapq
 import selectors
 import socket
 import time
+from collections import deque
 
 
 FORCED_POSITION_BROADCAST_INTERVAL = 1.0
@@ -50,7 +51,7 @@ class EventLoopRuntime:
         self.module = module
         self.selector = selectors.DefaultSelector()
         self.scheduled = []
-        self.outbound = []
+        self.outbound = deque()
         self.seq = 0
         self.running = False
         self.login_sock = None
@@ -317,7 +318,7 @@ class EventLoopRuntime:
 
     def _flush_outbound(self):
         while self.outbound:
-            sock, data, addr = self.outbound.pop(0)
+            sock, data, addr = self.outbound.popleft()
             try:
                 sock.sendto(data, addr)
             except OSError:

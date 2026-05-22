@@ -2,6 +2,7 @@
   "server": {
     "login_port": 20016,
     "baseapp_port": 20017,
+    "baseapp_init_delay_seconds": 0.05,
     "public_host": "26.108.162.225",
     "private_key_path": "private_key.pem"
   },
