@@ -245,7 +245,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -493,7 +494,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -740,7 +742,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "ussr",
@@ -985,7 +988,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "ussr",
@@ -1230,7 +1234,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "ussr",
@@ -1477,7 +1482,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -1724,7 +1730,8 @@
           "maxDistance": 400.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "ussr",
@@ -1972,7 +1979,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "ussr",
@@ -2219,7 +2227,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "ussr",
@@ -2467,7 +2476,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "ussr",
@@ -2714,7 +2724,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "ussr",
@@ -2961,7 +2972,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "ussr",
@@ -3207,7 +3219,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "ussr",
@@ -3451,7 +3464,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 1
     },
     {
       "nation": "ussr",
@@ -3699,7 +3713,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "ussr",
@@ -3917,7 +3932,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "ussr",
@@ -4165,7 +4181,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "ussr",
@@ -4413,7 +4430,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "ussr",
@@ -4658,7 +4676,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "ussr",
@@ -4876,7 +4895,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "ussr",
@@ -5123,7 +5143,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "ussr",
@@ -5371,7 +5392,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "ussr",
@@ -5589,7 +5611,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 13
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -5836,7 +5859,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "ussr",
@@ -6084,7 +6108,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "ussr",
@@ -6332,7 +6357,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "ussr",
@@ -6579,7 +6605,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "ussr",
@@ -6827,7 +6854,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "ussr",
@@ -7075,7 +7103,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 10
     },
     {
       "nation": "ussr",
@@ -7323,7 +7352,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "ussr",
@@ -7541,7 +7571,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "ussr",
@@ -7789,7 +7820,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "ussr",
@@ -8037,7 +8069,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "ussr",
@@ -8286,7 +8319,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "ussr",
@@ -8540,7 +8574,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "ussr",
@@ -8787,7 +8822,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "ussr",
@@ -9034,7 +9070,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -9281,7 +9318,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -9498,7 +9536,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 5
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "ussr",
@@ -9743,7 +9782,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "ussr",
@@ -9988,7 +10028,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "ussr",
@@ -10233,7 +10274,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "ussr",
@@ -10480,7 +10522,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "ussr",
@@ -10728,7 +10771,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "ussr",
@@ -10981,7 +11025,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -11229,7 +11274,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "germany",
@@ -11448,7 +11494,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 12
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "germany",
@@ -11696,7 +11743,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "germany",
@@ -11941,7 +11989,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "germany",
@@ -12190,7 +12239,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "germany",
@@ -12439,7 +12489,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "germany",
@@ -12688,7 +12739,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -12937,7 +12989,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "germany",
@@ -13152,7 +13205,8 @@
           "maxDistance": 350.0,
           "effectsIndex": 1
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "germany",
@@ -13398,7 +13452,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -13646,7 +13701,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -13893,7 +13949,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 12
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "germany",
@@ -14137,7 +14194,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 1
     },
     {
       "nation": "germany",
@@ -14382,7 +14440,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -14627,7 +14686,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "germany",
@@ -14884,7 +14944,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "germany",
@@ -15131,7 +15192,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "germany",
@@ -15379,7 +15441,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "germany",
@@ -15628,7 +15691,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 12
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -15873,7 +15937,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -16134,7 +16199,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "germany",
@@ -16379,7 +16445,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "germany",
@@ -16627,7 +16694,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 12
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "germany",
@@ -16845,7 +16913,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -17060,7 +17129,8 @@
           "maxDistance": 350.0,
           "effectsIndex": 1
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -17308,7 +17378,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "germany",
@@ -17555,7 +17626,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -17830,7 +17902,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 10
     },
     {
       "nation": "germany",
@@ -18077,7 +18150,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -18337,7 +18411,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "germany",
@@ -18597,7 +18672,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "germany",
@@ -18854,7 +18930,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "germany",
@@ -19099,7 +19176,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "germany",
@@ -19356,7 +19434,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "germany",
@@ -19576,7 +19655,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "germany",
@@ -19796,7 +19876,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 12
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -20062,7 +20143,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "germany",
@@ -20309,7 +20391,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -20524,7 +20607,8 @@
           "maxDistance": 350.0,
           "effectsIndex": 1
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -20768,7 +20852,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "germany",
@@ -21012,7 +21097,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "germany",
@@ -21256,7 +21342,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "germany",
@@ -21503,7 +21590,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "germany",
@@ -21764,7 +21852,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -22010,7 +22099,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -22225,7 +22315,8 @@
           "maxDistance": 380.0,
           "effectsIndex": 1
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "usa",
@@ -22469,7 +22560,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 1
     },
     {
       "nation": "usa",
@@ -22727,7 +22819,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "usa",
@@ -22973,7 +23066,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -23220,7 +23314,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "usa",
@@ -23467,7 +23562,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "usa",
@@ -23651,7 +23747,8 @@
           "maxDistance": 350.0,
           "effectsIndex": 0
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "usa",
@@ -23868,7 +23965,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "usa",
@@ -24115,7 +24213,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -24362,7 +24461,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 10
     },
     {
       "nation": "usa",
@@ -24609,7 +24709,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "usa",
@@ -24855,7 +24956,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "usa",
@@ -25113,7 +25215,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -25330,7 +25433,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "usa",
@@ -25577,7 +25681,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "usa",
@@ -25794,7 +25899,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 12
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -26041,7 +26147,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -26258,7 +26365,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 8
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "usa",
@@ -26504,7 +26612,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "usa",
@@ -26719,7 +26828,8 @@
           "maxDistance": 380.0,
           "effectsIndex": 1
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "usa",
@@ -26965,7 +27075,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -27210,7 +27321,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "usa",
@@ -27457,7 +27569,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -27703,7 +27816,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "usa",
@@ -27920,7 +28034,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 4
         }
-      ]
+      ],
+      "level": 3
     },
     {
       "nation": "usa",
@@ -28172,7 +28287,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -28424,7 +28540,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "usa",
@@ -28641,7 +28758,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "usa",
@@ -28859,7 +28977,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 4
         }
-      ]
+      ],
+      "level": 4
     },
     {
       "nation": "usa",
@@ -29076,7 +29195,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 6
     },
     {
       "nation": "usa",
@@ -29339,7 +29459,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -29592,7 +29713,8 @@
           "maxDistance": 10000.0,
           "effectsIndex": 11
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -29871,7 +29993,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "usa",
@@ -30134,7 +30257,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 9
     },
     {
       "nation": "usa",
@@ -30397,7 +30521,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 7
     },
     {
       "nation": "usa",
@@ -30611,7 +30736,8 @@
           "maxDistance": 380.0,
           "effectsIndex": 1
         }
-      ]
+      ],
+      "level": 2
     },
     {
       "nation": "usa",
@@ -30827,7 +30953,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 5
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -31073,7 +31200,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 5
     },
     {
       "nation": "usa",
@@ -31332,7 +31460,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 7
         }
-      ]
+      ],
+      "level": 8
     },
     {
       "nation": "usa",
@@ -31581,7 +31710,8 @@
           "maxDistance": 720.0,
           "effectsIndex": 3
         }
-      ]
+      ],
+      "level": 3
     }
   ],
   "components": {

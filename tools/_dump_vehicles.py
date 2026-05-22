@@ -577,6 +577,7 @@ for nation in NATIONS:
         gun_rotation_speed = math.radians(
             get_float(find(gun_shared_node, 'rotationSpeed'), 30.0))
         reload_time = get_float(find(gun_shared_node, 'reloadTime'), 5.0)
+        level = max(1, min(10, get_int(find(veh, 'level'), 1)))
         hull_weight = get_float(find_path(veh, 'hull/weight'), 0.0)
         chassis_weight = get_float(find(chassis_veh_node, 'weight'), 0.0)
         turret_weight = get_float(find(turret_veh_node, 'weight'), 0.0)
@@ -681,6 +682,7 @@ for nation in NATIONS:
         result['vehicles'].append({
             'nation': nation, 'nationID': nid,
             'name': veh_name, 'vehicleTypeID': vtype_id,
+            'level': level,
             'tags': vehicle_tags,
             'vehicleClass': vehicle_class,
             'isSPG': vehicle_class == 'SPG',
