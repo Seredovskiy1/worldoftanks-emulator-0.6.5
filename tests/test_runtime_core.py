@@ -3660,11 +3660,11 @@ class RuntimeCoreTests(unittest.TestCase):
             visible = emulator.update_remote_vehicle_visibility(
                 object(), observer, source)
 
-        self.assertTrue(visible)
+        self.assertFalse(visible)
         self.assertIn(source["account_id"], observer["known_remote_accounts"])
         self.assertEqual(sent, [])
 
-    def test_known_hidden_remote_shot_does_not_leave_aoi_during_shot(self):
+    def test_known_hidden_remote_shot_does_not_leave_aoi_or_send_tracer(self):
         source = _make_combat_session(
             195, 2, (0.0, 0.0, 300.0),
             vehicle={
@@ -3697,9 +3697,7 @@ class RuntimeCoreTests(unittest.TestCase):
                 (0.0, 0.0, -100.0), 9.81, 0)
 
         self.assertIn(source["account_id"], observer["known_remote_accounts"])
-        self.assertTrue(sent)
-        self.assertNotIn(bytes([emulator.CLIENT_LEAVE_AOI_MSG_ID]),
-                         [msg[:1] for msg in sent])
+        self.assertEqual(sent, [])
 
     def test_hidden_direct_shot_still_applies_damage_without_target_tracer(self):
         shell = _make_shell(compact=9303, penetration=500.0,

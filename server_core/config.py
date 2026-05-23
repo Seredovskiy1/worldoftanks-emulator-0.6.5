@@ -109,6 +109,7 @@ DEFAULT_CONFIG = {
         "spotting_stationary_speed": 0.5,
         "spotting_shot_camo_penalty_seconds": 5.0,
         "shot_visibility_grace_seconds": 1.0,
+        "keep_remote_entities_on_visibility_loss": True,
         "spotting_camo_scale": 2.0,
         "spotting_camo_class_multipliers": {
             "lightTank": 1.35,

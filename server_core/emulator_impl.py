@@ -4103,6 +4103,8 @@ SPOTTING_SHOT_CAMO_PENALTY_SECONDS = float(get_value(
     CONFIG, 'combat.spotting_shot_camo_penalty_seconds', 5.0))
 SHOT_VISIBILITY_GRACE_SECONDS = float(get_value(
     CONFIG, 'combat.shot_visibility_grace_seconds', 1.0))
+KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS = bool(get_value(
+    CONFIG, 'combat.keep_remote_entities_on_visibility_loss', True))
 SPOTTING_CAMO_SCALE = float(get_value(
     CONFIG, 'combat.spotting_camo_scale', 2.0))
 SPOTTING_CAMO_CLASS_MULTIPLIERS = dict(get_value(
@@ -5537,6 +5539,24 @@ def shot_visibility_grace_active(observer_sess: dict, source_sess: dict) -> bool
     return last > 0.0 and time.time() - last <= SHOT_VISIBILITY_GRACE_SECONDS
 
 
+def keep_remote_entity_on_visibility_loss(observer_sess: dict,
+                                          remote_sess: dict) -> bool:
+    if not KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS:
+        return False
+    if observer_sess is remote_sess:
+        return False
+    if observer_sess.get('battle_match_id') != remote_sess.get('battle_match_id'):
+        return False
+    if not observer_sess.get('battle_period_active'):
+        return False
+    if not remote_sess.get('battle_period_active'):
+        return False
+    if is_destroyed_vehicle_session(remote_sess):
+        return False
+    account_id = remote_sess.get('account_id')
+    return account_id in observer_sess.setdefault('known_remote_accounts', set())
+
+
 def remember_shot_visual_viewer(source_sess: dict, shot_id: int,
                                 viewer_sess: dict):
     account_id = viewer_sess.get('account_id')
@@ -5579,7 +5599,9 @@ def update_remote_vehicle_visibility(sock, observer_sess: dict,
         return True
     if not is_vehicle_visible_to(observer_sess, remote_sess):
         if shot_visibility_grace_active(observer_sess, remote_sess):
-            return True
+            return False
+        if keep_remote_entity_on_visibility_loss(observer_sess, remote_sess):
+            return False
         hide_remote_vehicle(sock, observer_sess, remote_sess)
         return False
     known = observer_sess.setdefault('known_remote_accounts', set())
@@ -7485,14 +7507,16 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
             continue
         known = observer.setdefault('known_remote_accounts', set())
         visible = is_vehicle_visible_to(observer, source_sess)
-        if not visible and not shot_visibility_grace_active(observer, source_sess):
+        if not visible and (
+                shot_visibility_grace_active(observer, source_sess) or
+                keep_remote_entity_on_visibility_loss(observer, source_sess)):
+            continue
+        if not visible:
             hide_remote_vehicle(sock, observer, source_sess)
             if hidden_msg and send_avatar_messages(
                     sock, observer.get('addr'), observer,
                     hidden_msg, '', reliable=True):
                 remember_shot_visual_viewer(source_sess, shot_id, observer)
-            continue
-        if not visible and source_account_id not in known:
             continue
         was_known = source_account_id in known
         outbound = b''
