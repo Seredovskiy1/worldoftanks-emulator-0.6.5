@@ -6,7 +6,7 @@ REM ============================================================
 REM   WoT 0.6.5 Emulator - Setup hosts entries (run once)
 REM ============================================================
 
-set "SERVER_HOST=wotorion.fun"
+set "SERVER_HOST=63.185.68.216"
 set "SERVER_IP="
 
 REM ---- Check admin ----
