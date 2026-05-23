@@ -5061,7 +5061,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     mapping_data = build_geometry_mapping_data(geometry_path)
     # РЈРЅС–РєР°Р»СЊРЅРёР№ SpaceEntryID (Mercury::Address) вЂ” С‰РѕР± GeometryMapping РЅРµ
     # РґРµРґСѓРїР»С–РєСѓРІР°РІСЃСЏ РїСЂРё reuse. РўСЂРёРјР°С”РјРѕ РґРµС‚РµСЂРјС–РЅРѕРІР°РЅРѕ РЅР° РѕСЃРЅРѕРІС– space_id+key.
-    entry_id = struct.pack('<IHH', SPACE_ID, 0, 1)   # ip=spaceID port=0 salt=1
+    entry_id = struct.pack('<IHH', SPACE_ID, 0, random.randint(1, 65535))
     msgs += build_space_data_message(SPACE_ID,
                                      SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
                                      mapping_data,
