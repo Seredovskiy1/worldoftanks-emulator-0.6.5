@@ -171,6 +171,7 @@ SCHEMA_STATEMENTS = (
     "CREATE TABLE IF NOT EXISTS accounts ("
     " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
     " username VARCHAR(32) NOT NULL,"
+    " email VARCHAR(255) NULL DEFAULT NULL,"
     " normalized_name VARCHAR(32) NOT NULL,"
     " password_hash CHAR(64) NOT NULL,"
     " created_at DATETIME NOT NULL,"
@@ -183,8 +184,10 @@ SCHEMA_STATEMENTS = (
     " premium_expire_at BIGINT NOT NULL DEFAULT 0,"
     " attrs BIGINT NOT NULL DEFAULT 0,"
     " clan_db_id BIGINT NOT NULL DEFAULT 0,"
+    " is_admin TINYINT NOT NULL DEFAULT 0,"
     " PRIMARY KEY (id),"
     " UNIQUE KEY uniq_username (username),"
+    " UNIQUE KEY uniq_email (email),"
     " UNIQUE KEY uniq_normalized_name (normalized_name)"
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
@@ -365,6 +368,18 @@ def init_database():
 def migrate_database_schema(cur):
     cur.execute(
         "SELECT COUNT(*) FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='accounts' "
+        "AND COLUMN_NAME='email'",
+        (DB_NAME,))
+    row = cur.fetchone()
+    if not row or int(row[0]) == 0:
+        cur.execute(
+            "ALTER TABLE accounts ADD COLUMN email "
+            "VARCHAR(255) NULL DEFAULT NULL AFTER username")
+        cur.execute(
+            "ALTER TABLE accounts ADD UNIQUE KEY uniq_email (email)")
+    cur.execute(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS "
         "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='tankmen' "
         "AND COLUMN_NAME='slot_idx'",
         (DB_NAME,))
@@ -443,11 +458,9 @@ def migrate_database_schema(cur):
 
 
 def get_or_create_account(username: str, password: str):
-    username = normalize_login_name(username)
-    normalized = username.lower()
+    email_input = (username or '').strip().lower()
     pwd_hash = password_hash(password)
     now = datetime.datetime.now()
-    new_account_id = None
     existing_account_id = None
     existing_username = None
     with db_lock:
@@ -456,25 +469,22 @@ def get_or_create_account(username: str, password: str):
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, username, password_hash FROM accounts "
-                    "WHERE normalized_name=%s",
-                    (normalized,))
+                    "WHERE email=%s",
+                    (email_input,))
                 row = cur.fetchone()
                 if row is None:
+                    norm_name = normalize_login_name(username).lower()
                     cur.execute(
-                        "INSERT INTO accounts(username, normalized_name, "
-                        "password_hash, created_at, last_login, credits, gold, "
-                        "free_xp, slots, berths) VALUES "
-                        "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                        (username, normalized, pwd_hash, now, now,
-                         DEFAULT_CREDITS, DEFAULT_GOLD, DEFAULT_FREE_XP,
-                         DEFAULT_SLOTS, DEFAULT_BERTHS))
-                    new_account_id = int(cur.lastrowid)
-                    cur.execute(
-                        "INSERT INTO dossier(account_id) VALUES (%s)",
-                        (new_account_id,))
+                        "SELECT id, username, password_hash FROM accounts "
+                        "WHERE normalized_name=%s",
+                        (norm_name,))
+                    row = cur.fetchone()
+                if row is None:
+                    return {'id': 0, 'username': username,
+                            'created': False, 'auth_failed': True}
                 else:
                     if str(row[2]) != pwd_hash:
-                        return {'id': 0, 'username': username,
+                        return {'id': 0, 'username': row[1],
                                 'created': False, 'auth_failed': True}
                     cur.execute(
                         "UPDATE accounts SET last_login=%s WHERE id=%s",
@@ -483,15 +493,6 @@ def get_or_create_account(username: str, password: str):
                     existing_username = row[1]
         finally:
             conn.close()
-    if new_account_id is not None:
-        try:
-            print(f"[*] seeding new account id={new_account_id}")
-            seed_default_account_inventory(new_account_id)
-        except Exception as e:
-            print(f"[!] seed_default_account_inventory failed: {e}")
-            import traceback
-            traceback.print_exc()
-        return {'id': new_account_id, 'username': username, 'created': True}
     if existing_account_id is not None:
         try:
             print(f"[*] re-seeding existing account id={existing_account_id}")

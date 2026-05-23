@@ -1,0 +1,105 @@
+<?php
+require_once 'db.php';
+?>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World of Tanks Project Orion 0.6.5 - Скачать игру</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+</head>
+<body>
+
+<div class="top-bar">
+    <div class="top-bar-content">
+        <div class="top-bar-links">
+            <a href="index.php">Портал</a>
+            <a href="download.php">Скачать</a>
+        </div>
+        <div class="top-bar-auth">
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <span>Здравствуйте, <a href="profile.php"><?php echo htmlspecialchars($_SESSION['username']); ?></a></span>
+                <?php if (isset($_SESSION['is_admin']) && $_SESSION['is_admin']): ?>
+                    | <a href="admin.php">Админ-панель</a>
+                <?php endif; ?>
+                | <a href="logout.php" class="logout">Выйти</a>
+            <?php else: ?>
+                <a href="login.php">Войти</a> или <a href="register.php">Создать аккаунт</a>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<div class="header-banner">
+    <div class="logo-container">
+        <img src="images/logo.png" alt="Logo" class="logo-icon">
+        <div class="logo-text-wrapper">
+            <div class="logo-text">World of Tanks</div>
+            <div class="logo-subtext">Project Orion 0.6.5</div>
+        </div>
+    </div>
+</div>
+
+<div class="nav-container">
+    <ul class="nav-menu">
+        <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
+        <li class="nav-item"><a href="download.php" class="nav-link active">Играть</a></li>
+        <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
+        <li class="nav-item"><a href="profile.php" class="nav-link">Личный кабинет</a></li>
+        <?php if (isset($_SESSION['is_admin']) && $_SESSION['is_admin']): ?>
+            <li class="nav-item"><a href="admin.php" class="nav-link">Управление танками</a></li>
+        <?php endif; ?>
+    </ul>
+</div>
+
+<div class="main-layout" style="justify-content: center;">
+    <div class="content-area" style="width: 800px;">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Скачать клиент игры</div>
+            </div>
+            <div class="card-body">
+                <div class="dl-box">
+                    <div class="dl-title">Полный клиент World of Tanks v.0.6.5</div>
+                    <div class="dl-meta">Размер: ~2.4 ГБ | Формат: ZIP-архив | Версия: 0.6.5 (2011 год)</div>
+                    <a href="#" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">Скачать клиент (Google Drive)</a>
+                </div>
+
+                <div class="dl-box" style="border-style: solid;">
+                    <div class="dl-title" style="color: #e5a93b;">Серверный лаунчер-патч</div>
+                    <div class="dl-meta">Размер: ~5 МБ | Обязательно для подключения к нашему серверу</div>
+                    <a href="#" class="btn btn-primary" style="font-size: 15px; background: linear-gradient(180deg, #e5a93b 0%, #b87c14 100%); color: #000; border-color: #ffcc00; font-weight: 800;">Скачать лаунчер</a>
+                </div>
+
+                <div style="font-size: 18px; font-weight: 600; color: #e5a93b; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #28282a; padding-bottom: 8px;">Инструкция по установке:</div>
+
+                <ul class="instruction-list">
+                    <li>
+                        <strong>Шаг 1:</strong> Скачайте полный архив клиента игры по ссылке выше.
+                    </li>
+                    <li>
+                        <strong>Шаг 2:</strong> Распакуйте архив в любую удобную папку (например, <code>C:\Games\World_of_Tanks_0.6.5</code>).
+                    </li>
+                    <li>
+                        <strong>Шаг 3:</strong> Скачайте файл лаунчер-патча и распакуйте его содержимое прямо в корневую папку игры с заменой существующих файлов.
+                    </li>
+                    <li>
+                        <strong>Шаг 4:</strong> Запустите игру через файл <code>WorldOfTanks.exe</code> или запустите лаунчер для автоматического подключения к серверу.
+                    </li>
+                    <li>
+                        <strong>Шаг 5:</strong> Войдите в игру, используя логин и пароль, которые вы зарегистрировали на сайте в разделе <a href="register.php">Регистрация</a>.
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Все права защищены.</p>
+</div>
+
+</body>
+</html>

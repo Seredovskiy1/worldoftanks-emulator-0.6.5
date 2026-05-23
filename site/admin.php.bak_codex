@@ -1,0 +1,307 @@
+<?php
+require_once 'db.php';
+
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
+    header('Location: login.php?error=admin');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['ajax'])) {
+    header('Content-Type: application/json');
+    $tank_name = trim($_POST['tank_name'] ?? '');
+    $status = intval($_POST['status'] ?? 0);
+
+    if (empty($tank_name)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
+        exit;
+    }
+
+    try {
+        if ($status === 1) {
+            $stmt = $pdo->prepare("DELETE FROM disabled_vehicles WHERE vehicle_name = ?");
+            $stmt->execute([$tank_name]);
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO disabled_vehicles (vehicle_name) VALUES (?) ON DUPLICATE KEY UPDATE vehicle_name = vehicle_name");
+            $stmt->execute([$tank_name]);
+        }
+        echo json_encode(['success' => true]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+$disabled_tanks = [];
+try {
+    $stmt = $pdo->query("SELECT vehicle_name FROM disabled_vehicles");
+    $disabled_tanks = $stmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Exception $e) {
+}
+
+$disabled_set = array_flip($disabled_tanks);
+
+$json_path = '_vehicles.json';
+$vehicles = [];
+if (file_exists($json_path)) {
+    $json_content = file_get_contents($json_path);
+    $data = json_decode($json_content, true);
+    if (isset($data['vehicles'])) {
+        $vehicles = $data['vehicles'];
+    }
+}
+
+$search = trim($_GET['search'] ?? '');
+$filter_nation = $_GET['nation'] ?? '';
+$filter_class = $_GET['class'] ?? '';
+$filter_tier = $_GET['tier'] ?? '';
+$filter_status = $_GET['status'] ?? '';
+
+$filtered_vehicles = [];
+foreach ($vehicles as $v) {
+    $name = $v['name'] ?? '';
+    $nation = $v['nation'] ?? '';
+    $class = $v['vehicleClass'] ?? '';
+    
+    $level = 1;
+    if (isset($v['tags'])) {
+        foreach ($v['tags'] as $tag) {
+            if (preg_match('/^tier(\d+)$/i', $tag, $matches)) {
+                $level = intval($matches[1]);
+                break;
+            }
+        }
+    }
+    
+    $is_enabled = !isset($disabled_set[$name]);
+
+    if (!empty($search) && stripos($name, $search) === false) {
+        continue;
+    }
+    if (!empty($filter_nation) && $nation !== $filter_nation) {
+        continue;
+    }
+    if (!empty($filter_class) && $class !== $filter_class) {
+        continue;
+    }
+    if (!empty($filter_tier) && $level !== intval($filter_tier)) {
+        continue;
+    }
+    if ($filter_status !== '') {
+        if ($filter_status === 'enabled' && !$is_enabled) {
+            continue;
+        }
+        if ($filter_status === 'disabled' && $is_enabled) {
+            continue;
+        }
+    }
+
+    $v['level_calculated'] = $level;
+    $v['is_enabled'] = $is_enabled;
+    $filtered_vehicles[] = $v;
+}
+
+$page = max(1, intval($_GET['page'] ?? 1));
+$limit = 25;
+$total_items = count($filtered_vehicles);
+$total_pages = ceil($total_items / $limit);
+$offset = ($page - 1) * $limit;
+$paginated_vehicles = array_slice($filtered_vehicles, $offset, $limit);
+?>
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World of Tanks 0.6.5 - Управління танками</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        function toggleTank(checkbox, tankName) {
+            const isEnabled = checkbox.checked ? 1 : 0;
+            const formData = new FormData();
+            formData.append('tank_name', tankName);
+            formData.append('status', isEnabled);
+
+            fetch('admin.php?ajax=1', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const statusTd = document.getElementById('status-' + btoa(tankName).replace(/=/g, ''));
+                    if (statusTd) {
+                        if (isEnabled) {
+                            statusTd.innerHTML = '<span class="status-active">Доступний</span>';
+                        } else {
+                            statusTd.innerHTML = '<span class="status-disabled">Відключений</span>';
+                        }
+                    }
+                } else {
+                    alert('Помилка оновлення статусу: ' + data.error);
+                    checkbox.checked = !checkbox.checked;
+                }
+            })
+            .catch(err => {
+                alert('Помилка зв\'язку з сервером');
+                checkbox.checked = !checkbox.checked;
+            });
+        }
+    </script>
+</head>
+<body>
+
+<div class="top-bar">
+    <div class="top-bar-content">
+        <div class="top-bar-links">
+            <a href="index.php">Портал</a>
+            <a href="download.php">Завантажити</a>
+        </div>
+        <div class="top-bar-auth">
+            <span>Адміністратор: <a href="profile.php"><?php echo htmlspecialchars($_SESSION['username']); ?></a></span>
+            | <a href="admin.php">Адмін-панель</a>
+            | <a href="logout.php" class="logout">Вийти</a>
+        </div>
+    </div>
+</div>
+
+<div class="header-banner">
+    <div class="logo-container">
+        <div class="logo-text">World of Tanks</div>
+        <div class="logo-subtext">Панель Адміністратора</div>
+    </div>
+</div>
+
+<div class="nav-container">
+    <ul class="nav-menu">
+        <li class="nav-item"><a href="index.php" class="nav-link">Головна</a></li>
+        <li class="nav-item"><a href="download.php" class="nav-link">Грати</a></li>
+        <li class="nav-item"><a href="register.php" class="nav-link">Реєстрація</a></li>
+        <li class="nav-item"><a href="profile.php" class="nav-link">Особистий кабінет</a></li>
+        <li class="nav-item"><a href="admin.php" class="nav-link active">Управління танками</a></li>
+    </ul>
+</div>
+
+<div class="main-layout" style="max-width: 1200px;">
+    <div class="content-area" style="width: 100%;">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Список техніки в грі (Всього: <?php echo $total_items; ?>)</div>
+            </div>
+            <div class="card-body">
+                <form action="admin.php" method="GET" class="tanks-filters">
+                    <input type="text" name="search" class="form-control search-input" placeholder="Пошук танка за назвою..." value="<?php echo htmlspecialchars($search); ?>">
+                    
+                    <select name="nation" class="form-control" style="width: 150px;">
+                        <option value="">Всі нації</option>
+                        <option value="ussr" <?php echo $filter_nation === 'ussr' ? 'selected' : ''; ?>>СРСР</option>
+                        <option value="germany" <?php echo $filter_nation === 'germany' ? 'selected' : ''; ?>>Німеччина</option>
+                        <option value="usa" <?php echo $filter_nation === 'usa' ? 'selected' : ''; ?>>США</option>
+                        <option value="france" <?php echo $filter_nation === 'france' ? 'selected' : ''; ?>>Франція</option>
+                        <option value="china" <?php echo $filter_nation === 'china' ? 'selected' : ''; ?>>Китай</option>
+                    </select>
+
+                    <select name="class" class="form-control" style="width: 150px;">
+                        <option value="">Всі класи</option>
+                        <option value="lightTank" <?php echo $filter_class === 'lightTank' ? 'selected' : ''; ?>>Легкі танки</option>
+                        <option value="mediumTank" <?php echo $filter_class === 'mediumTank' ? 'selected' : ''; ?>>Середні танки</option>
+                        <option value="heavyTank" <?php echo $filter_class === 'heavyTank' ? 'selected' : ''; ?>>Важкі танки</option>
+                        <option value="AT-SPG" <?php echo $filter_class === 'AT-SPG' ? 'selected' : ''; ?>>ПТ-САУ</option>
+                        <option value="SPG" <?php echo $filter_class === 'SPG' ? 'selected' : ''; ?>>САУ (Арта)</option>
+                    </select>
+
+                    <select name="tier" class="form-control" style="width: 100px;">
+                        <option value="">Всі рівні</option>
+                        <?php for ($i = 1; $i <= 10; $i++): ?>
+                            <option value="<?php echo $i; ?>" <?php echo $filter_tier === strval($i) ? 'selected' : ''; ?>>Рівень <?php echo $i; ?></option>
+                        <?php endfor; ?>
+                    </select>
+
+                    <select name="status" class="form-control" style="width: 150px;">
+                        <option value="">Всі статуси</option>
+                        <option value="enabled" <?php echo $filter_status === 'enabled' ? 'selected' : ''; ?>>Доступні</option>
+                        <option value="disabled" <?php echo $filter_status === 'disabled' ? 'selected' : ''; ?>>Відключені</option>
+                    </select>
+
+                    <button type="submit" class="btn btn-primary">Фільтрувати</button>
+                    <a href="admin.php" class="btn btn-secondary">Скинути</a>
+                </form>
+
+                <div class="tanks-table-container">
+                    <table class="tanks-table">
+                        <thead>
+                            <tr>
+                                <th>Назва</th>
+                                <th>Нація</th>
+                                <th>Клас</th>
+                                <th>Рівень</th>
+                                <th>Статус</th>
+                                <th>Доступність у грі</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($paginated_vehicles as $v): ?>
+                                <?php 
+                                $name = $v['name'] ?? '';
+                                $nation = $v['nation'] ?? 'ussr';
+                                $class = $v['vehicleClass'] ?? 'mediumTank';
+                                $level = $v['level_calculated'] ?? 1;
+                                $is_enabled = $v['is_enabled'];
+                                $unique_id = btoa_safe($name);
+                                ?>
+                                <tr>
+                                    <td style="font-weight: 600; color: #ffffff;"><?php echo htmlspecialchars($name); ?></td>
+                                    <td><span class="badge badge-<?php echo $nation; ?>"><?php echo htmlspecialchars($nation); ?></span></td>
+                                    <td><?php echo htmlspecialchars($class); ?></td>
+                                    <td style="font-weight: 600; color: #e5a93b;"><?php echo $level; ?></td>
+                                    <td id="status-<?php echo $unique_id; ?>">
+                                        <?php if ($is_enabled): ?>
+                                            <span class="status-active">Доступний</span>
+                                        <?php else: ?>
+                                            <span class="status-disabled">Відключений</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <label class="switch">
+                                            <input type="checkbox" <?php echo $is_enabled ? 'checked' : ''; ?> onchange="toggleTank(this, '<?php echo htmlspecialchars($name, ENT_QUOTES); ?>')">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($paginated_vehicles)): ?>
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 30px; color: #8c8c8c;">Танків не знайдено.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <?php if ($total_pages > 1): ?>
+                    <div class="pagination">
+                        <?php 
+                        $query_params = $_GET;
+                        for ($i = 1; $i <= $total_pages; $i++): 
+                            $query_params['page'] = $i;
+                            $link = 'admin.php?' . http_build_query($query_params);
+                        ?>
+                            <a href="<?php echo htmlspecialchars($link); ?>" class="pagination-item <?php echo $page === $i ? 'active' : ''; ?>"><?php echo $i; ?></a>
+                        <?php endfor; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    <p>&copy; 2026 World of Tanks 0.6.5 Emulator. Панель Адміністратора.</p>
+</div>
+
+</body>
+</html>
+<?php
+function btoa_safe($str) {
+    return str_replace('=', '', base64_encode($str));
+}
+?>

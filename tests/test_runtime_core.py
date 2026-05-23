@@ -374,14 +374,14 @@ class RuntimeCoreTests(unittest.TestCase):
         emulator.SHOT_RICOCHET_DAMAGE_FACTOR = self._shot_ricochet_damage_factor
 
     def test_a20_speed_limits_are_xml_values(self):
-        vehicle = next(v for v in emulator.load_all_vehicles() if v["name"] == "A-20")
+        vehicle = next(v for v in emulator.load_all_vehicles(include_disabled=True) if v["name"] == "A-20")
         forward, backward = emulator.get_vehicle_speed_limits(vehicle)
         self.assertAlmostEqual(forward, 20.0)
         self.assertAlmostEqual(backward, 5.555555555555555)
         self.assertAlmostEqual(forward * 3.6, 72.0)
 
     def test_battle_motion_target_uses_vehicle_speed(self):
-        vehicle = next(v for v in emulator.load_all_vehicles() if v["name"] == "A-20")
+        vehicle = next(v for v in emulator.load_all_vehicles(include_disabled=True) if v["name"] == "A-20")
         speed, rspeed = emulator.battle_motion_targets(1, vehicle)
         self.assertAlmostEqual(speed, 20.0)
         self.assertGreaterEqual(rspeed, 0.0)
@@ -410,7 +410,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertFalse(sess["init_scheduled"])
 
     def test_vehicle_class_tags_identify_artillery_and_tank_destroyers(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         for name in ("S-51", "SU-18", "M7_Priest", "Hummel"):
             self.assertEqual(vehicles[name]["vehicleClass"], "SPG")
             self.assertTrue(vehicles[name]["isSPG"])
@@ -422,7 +422,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertFalse(emulator.is_artillery_vehicle(vehicles["T-34"]))
 
     def test_loaded_vehicle_levels_include_tier_eight_spgs(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         for name in ("Object_261", "G_E", "T92"):
             self.assertEqual(vehicles[name]["level"], 8)
             self.assertTrue(emulator.is_artillery_vehicle(vehicles[name]))
@@ -444,7 +444,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertFalse(emulator.is_vehicle_visible_to(heavy, target))
 
     def test_light_effective_view_range_beats_heavy_even_when_xml_is_lower(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         a20 = vehicles["A-20"]
         maus = vehicles["Maus"]
 
@@ -454,7 +454,7 @@ class RuntimeCoreTests(unittest.TestCase):
                            emulator.vehicle_view_range(maus))
 
     def test_light_camo_is_better_than_heavy_camo_from_xml_data(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         a20 = vehicles["A-20"]
         maus = vehicles["Maus"]
 
@@ -466,7 +466,7 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator.vehicle_base_invisibility(maus, moving=False))
 
     def test_a20_must_close_inside_raw_view_range_to_spot_stationary_maus(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         a20 = _make_combat_session(
             57, 1, (0.0, 0.0, 0.0),
             vehicle=vehicles["A-20"])
@@ -481,7 +481,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertTrue(emulator.is_vehicle_visible_to(a20, maus))
 
     def test_a20_spots_maus_farther_than_maus_spots_a20_through_bush(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         a20 = _make_combat_session(
             59, 1, (0.0, 0.0, 0.0),
             vehicle=vehicles["A-20"])
@@ -496,7 +496,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertFalse(emulator.is_vehicle_visible_to(maus, a20))
 
     def test_a20_keeps_camo_advantage_after_shot_with_bush_cover(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         a20 = _make_combat_session(
             61, 1, (0.0, 0.0, 0.0),
             vehicle=vehicles["A-20"])
@@ -512,7 +512,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertFalse(emulator.is_vehicle_visible_to(maus, a20))
 
     def test_ally_direct_spot_makes_enemy_visible_to_team(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         spotter = _make_combat_session(
             63, 1, (0.0, 0.0, 0.0),
             vehicle=vehicles["A-20"])
@@ -540,7 +540,7 @@ class RuntimeCoreTests(unittest.TestCase):
                          ally.get("battle_spotted_vehicle_ids", set()))
 
     def test_runtime_shared_spotting_introduces_enemy_and_minimap_to_ally(self):
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         spotter = _make_combat_session(
             66, 1, (0.0, 0.0, 0.0),
             vehicle=vehicles["A-20"])
@@ -2431,7 +2431,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertEqual(length, 1)
             self.assertEqual(levels[8], 1)
             self.assertEqual(sum(levels), 1)
-            self.assertEqual(classes[4], 1)
+            self.assertEqual(classes[3], 1)
             self.assertEqual(sum(classes), 1)
         finally:
             emulator.matchmaking_queue[:] = original_queue
@@ -2440,7 +2440,7 @@ class RuntimeCoreTests(unittest.TestCase):
     def test_matchmaking_queue_stats_uses_loaded_vehicle_level(self):
         original_queue = list(emulator.matchmaking_queue)
         original_fillers = emulator.MATCHMAKING_QUEUE_FAKE_FILLERS
-        vehicles = {v["name"]: v for v in emulator.load_all_vehicles()}
+        vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}
         try:
             sess = _make_combat_session(903, 1, (0.0, 0.0, 0.0),
                                         vehicle=vehicles["Object_261"])
@@ -2452,8 +2452,38 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertEqual(length, 1)
             self.assertEqual(levels[8], 1)
             self.assertEqual(sum(levels), 1)
-            self.assertEqual(classes[4], 1)
+            self.assertEqual(classes[3], 1)
             self.assertEqual(sum(classes), 1)
+        finally:
+            emulator.matchmaking_queue[:] = original_queue
+            emulator.MATCHMAKING_QUEUE_FAKE_FILLERS = original_fillers
+
+    def test_matchmaking_queue_stats_uses_client_vehicle_class_order(self):
+        original_queue = list(emulator.matchmaking_queue)
+        original_fillers = emulator.MATCHMAKING_QUEUE_FAKE_FILLERS
+        try:
+            light = _make_combat_session(904, 1, (0.0, 0.0, 0.0),
+                                         vehicle={
+                                             "vehicleClass": "lightTank",
+                                             "tags": ["lightTank"],
+                                             "level": 3,
+                                         })
+            heavy = _make_combat_session(905, 1, (0.0, 0.0, 0.0),
+                                         vehicle={
+                                             "vehicleClass": "heavyTank",
+                                             "tags": ["heavyTank"],
+                                             "level": 5,
+                                         })
+            emulator.matchmaking_queue[:] = [
+                {"addr": light["addr"], "sess": light},
+                {"addr": heavy["addr"], "sess": heavy},
+            ]
+            emulator.MATCHMAKING_QUEUE_FAKE_FILLERS = 0
+
+            length, _levels, classes = emulator.get_matchmaking_queue_stats()
+
+            self.assertEqual(length, 2)
+            self.assertEqual(classes, [1, 0, 1, 0, 0])
         finally:
             emulator.matchmaking_queue[:] = original_queue
             emulator.MATCHMAKING_QUEUE_FAKE_FILLERS = original_fillers
@@ -2493,17 +2523,19 @@ class RuntimeCoreTests(unittest.TestCase):
         old_rev = dict(emulator._ACCOUNT_SYNC_REV)
         old_pickle = dict(emulator._CACHED_SYNC_PICKLE)
         old_blob = dict(emulator._CACHED_SYNC_BLOB)
+        old_external = dict(emulator._EXTERNAL_SYNC_REV_CACHE)
         try:
             emulator._ACCOUNT_SYNC_REV[account_id] = 0
+            emulator._EXTERNAL_SYNC_REV_CACHE.pop(account_id, None)
             emulator._CACHED_SYNC_PICKLE.pop(account_id, None)
             emulator._CACHED_SYNC_BLOB.pop(account_id, None)
 
             first = pickle.loads(emulator.get_sync_pickle(account_id))
-            emulator.bump_account_sync_revision(account_id)
+            new_rev = emulator.bump_account_sync_revision(account_id)
             second = pickle.loads(emulator.get_sync_pickle(account_id))
 
-            self.assertEqual(first["rev"], 0)
-            self.assertEqual(second["rev"], 1)
+            self.assertEqual(new_rev, first["rev"] + 1)
+            self.assertEqual(second["rev"], first["rev"] + 1)
         finally:
             emulator._ACCOUNT_SYNC_REV.clear()
             emulator._ACCOUNT_SYNC_REV.update(old_rev)
@@ -2511,6 +2543,8 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator._CACHED_SYNC_PICKLE.update(old_pickle)
             emulator._CACHED_SYNC_BLOB.clear()
             emulator._CACHED_SYNC_BLOB.update(old_blob)
+            emulator._EXTERNAL_SYNC_REV_CACHE.clear()
+            emulator._EXTERNAL_SYNC_REV_CACHE.update(old_external)
 
     def test_stale_sync_request_replays_full_stream(self):
         account_id = 987655
@@ -2632,6 +2666,8 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator.matchmaking_timer = None
             emulator.STATIC_OBSTACLE_CACHE.clear()
             with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator.random, "choice",
+                                      return_value=emulator.ARENA_TYPE_KARELIA), \
                     mock.patch.object(emulator, "runtime_call_later",
                                       side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
                     mock.patch.object(emulator, "load_static_obstacles_for_arena",
@@ -2679,6 +2715,8 @@ class RuntimeCoreTests(unittest.TestCase):
                 sent_players.append(sess)
 
             with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator.random, "choice",
+                                      return_value=emulator.ARENA_TYPE_KARELIA), \
                     mock.patch.object(emulator.time, "time", return_value=1000.0), \
                     mock.patch.object(emulator, "runtime_call_later",
                                       side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
@@ -2704,6 +2742,45 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(s1["battle_roster_sessions"], [s1, s2])
         self.assertEqual(s2["battle_roster_sessions"], [s1, s2])
 
+    def test_matchmaker_launch_randomizes_map_for_whole_batch(self):
+        original_queue = list(emulator.matchmaking_queue)
+        original_timer = emulator.matchmaking_timer
+        original_next = emulator.next_battle_id
+        original_enabled = emulator.ENABLED_ARENA_TYPE_IDS
+        original_fallback = emulator.ARENA_TYPE_FALLBACK
+        s1 = _make_combat_session(313, 1, (0.0, 0.0, 0.0))
+        s2 = _make_combat_session(314, 2, (0.0, 0.0, 0.0))
+        s1["queued_for_battle"] = True
+        s2["queued_for_battle"] = True
+        scheduled = []
+        try:
+            emulator.ENABLED_ARENA_TYPE_IDS = {1, 2}
+            emulator.ARENA_TYPE_FALLBACK = 1
+            emulator.matchmaking_queue[:] = [
+                {"addr": s1["addr"], "sess": s1},
+                {"addr": s2["addr"], "sess": s2},
+            ]
+            emulator.matchmaking_timer = None
+            with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator.random, "choice",
+                                      return_value=2), \
+                    mock.patch.object(emulator, "runtime_call_later",
+                                      side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                    mock.patch.object(emulator, "send_account_event", return_value=None), \
+                    mock.patch.object(emulator, "send_avatar_player", return_value=None):
+                emulator.start_matchmaking_timer(object())
+                scheduled[0][1]()
+        finally:
+            emulator.matchmaking_queue[:] = original_queue
+            emulator.matchmaking_timer = original_timer
+            emulator.next_battle_id = original_next
+            emulator.ENABLED_ARENA_TYPE_IDS = original_enabled
+            emulator.ARENA_TYPE_FALLBACK = original_fallback
+
+        self.assertEqual(s1["battle_arena_type_id"], 2)
+        self.assertEqual(s2["battle_arena_type_id"], 2)
+        self.assertIs(s1["battle_capture_state"], s2["battle_capture_state"])
+
     def test_matchmaker_launch_uses_warm_static_obstacle_cache(self):
         original_queue = list(emulator.matchmaking_queue)
         original_timer = emulator.matchmaking_timer
@@ -2721,6 +2798,8 @@ class RuntimeCoreTests(unittest.TestCase):
                 (1.0, 0.0, 0.0, 1.0, 1.0, b"stone.model")
             ]
             with mock.patch.object(emulator.random, "uniform", return_value=0.0), \
+                    mock.patch.object(emulator.random, "choice",
+                                      return_value=emulator.ARENA_TYPE_KARELIA), \
                     mock.patch.object(emulator, "runtime_call_later",
                                       side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
                     mock.patch.object(emulator, "load_static_obstacles_for_arena",

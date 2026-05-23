@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `accounts` (
     `premium_expire_at`  BIGINT           NOT NULL DEFAULT 0,
     `attrs`              BIGINT           NOT NULL DEFAULT 0,
     `clan_db_id`         BIGINT           NOT NULL DEFAULT 0,
+    `is_admin`           TINYINT          NOT NULL DEFAULT 0,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uniq_username`        (`username`),
     UNIQUE KEY `uniq_normalized_name` (`normalized_name`)
@@ -69,6 +70,36 @@ CREATE TABLE IF NOT EXISTS `account_double_xp_vehicles` (
         FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `disabled_vehicles` (
+    `vehicle_name`  VARCHAR(128) NOT NULL,
+    `updated_at`    DATETIME     NOT NULL,
+    PRIMARY KEY (`vehicle_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `account_vehicle_overrides` (
+    `account_id`    BIGINT UNSIGNED NOT NULL,
+    `vehicle_name`  VARCHAR(128)    NOT NULL,
+    `is_enabled`    TINYINT         NOT NULL,
+    `updated_at`    DATETIME        NOT NULL,
+    PRIMARY KEY (`account_id`, `vehicle_name`),
+    KEY `idx_account_vehicle_overrides_vehicle` (`vehicle_name`),
+    CONSTRAINT `fk_vehicle_overrides_account`
+        FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `vehicle_access_events` (
+    `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `scope`         VARCHAR(16)     NOT NULL,
+    `account_id`    BIGINT UNSIGNED     NULL,
+    `vehicle_name`  VARCHAR(128)    NOT NULL,
+    `is_enabled`    TINYINT         NOT NULL,
+    `created_at`    DATETIME        NOT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_vehicle_access_events_account` (`account_id`),
+    KEY `idx_vehicle_access_events_scope` (`scope`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  battles -- one row per started match

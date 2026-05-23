@@ -1,0 +1,195 @@
+<?php
+require_once 'db.php';
+
+$total_accounts = 0;
+$total_battles = 0;
+$total_wins = 0;
+
+try {
+    $stmt = $pdo->query("SELECT COUNT(*) FROM accounts");
+    $total_accounts = $stmt->fetchColumn();
+
+    $stmt = $pdo->query("SELECT COUNT(*) FROM battles");
+    $total_battles = $stmt->fetchColumn();
+
+    $stmt = $pdo->query("SELECT SUM(wins) FROM dossier");
+    $total_wins = intval($stmt->fetchColumn());
+} catch (Exception $e) {
+}
+
+$active_page = 'index';
+?>
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World of Tanks 0.6.5 - Головна</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="top-bar">
+    <div class="top-bar-content">
+        <div class="top-bar-links">
+            <a href="index.php">Портал</a>
+            <a href="download.php">Завантажити</a>
+        </div>
+        <div class="top-bar-auth">
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <span>Вітаємо, <a href="profile.php"><?php echo htmlspecialchars($_SESSION['username']); ?></a></span>
+                <?php if (isset($_SESSION['is_admin']) && $_SESSION['is_admin']): ?>
+                    | <a href="admin.php">Адмін-панель</a>
+                <?php endif; ?>
+                | <a href="logout.php" class="logout">Вийти</a>
+            <?php else: ?>
+                <a href="login.php">Увійти</a> або <a href="register.php">Створити акаунт</a>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<div class="header-banner">
+    <div class="logo-container">
+        <div class="logo-text">World of Tanks</div>
+        <div class="logo-subtext">Емулятор 0.6.5</div>
+    </div>
+</div>
+
+<div class="nav-container">
+    <ul class="nav-menu">
+        <li class="nav-item"><a href="index.php" class="nav-link active">Головна</a></li>
+        <li class="nav-item"><a href="download.php" class="nav-link">Грати</a></li>
+        <li class="nav-item"><a href="register.php" class="nav-link">Реєстрація</a></li>
+        <li class="nav-item"><a href="profile.php" class="nav-link">Особистий кабінет</a></li>
+        <?php if (isset($_SESSION['is_admin']) && $_SESSION['is_admin']): ?>
+            <li class="nav-item"><a href="admin.php" class="nav-link">Управління танками</a></li>
+        <?php endif; ?>
+    </ul>
+</div>
+
+<div class="main-layout">
+    <div class="content-area">
+        <div class="hero-slider">
+            <img src="images/wot_banner.png" alt="Світ Танків 0.6.5">
+            <div class="hero-overlay">
+                <div class="hero-title">Масштабні танкові битви 2011 року!</div>
+                <div class="hero-desc">Зберіть команду, оберіть легендарний Lowe, Т-34 чи Maus, та пориньте в атмосферу класичної фізики та геймплею 0.6.5!</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Новини серверу</div>
+            </div>
+            <div class="card-body">
+                <div class="news-list">
+                    <div class="news-item">
+                        <img src="images/wot_banner.png" class="news-img" alt="Новина 1">
+                        <div class="news-info">
+                            <a href="#" class="news-title">Запуск класичного серверу 0.6.5!</a>
+                            <div class="news-meta">
+                                <span>Сьогодні, 15:30</span>
+                                <span>Адміністрація</span>
+                            </div>
+                            <div class="news-text">
+                                Раді оголосити про успішне відкриття серверу класичної версії гри! Тут на вас чекають старі мапи, знайомий баланс та лампова атмосфера початку епохи танкових баталій. Завантажуйте клієнт у розділі "Грати"!
+                            </div>
+                        </div>
+                    </div>
+                    <div class="news-item">
+                        <img src="images/wot_banner.png" class="news-img" alt="Новина 2">
+                        <div class="news-info">
+                            <a href="#" class="news-title">Оновлена система керування танками в адмінці</a>
+                            <div class="news-meta">
+                                <span>Вчора, 12:45</span>
+                                <span>Технічний відділ</span>
+                            </div>
+                            <div class="news-text">
+                                Ми додали зручну панель для адміністраторів, яка дозволяє включати та відключати певні танки в грі в реальному часі. Це допоможе краще збалансувати ігрові сесії під час івентів.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar-area">
+        <a href="download.php" class="play-btn">Грати Безкоштовно</a>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Статистика серверу</div>
+            </div>
+            <div class="card-body">
+                <div class="stat-row">
+                    <span class="stat-label">Всього танкістів:</span>
+                    <span class="stat-value"><?php echo $total_accounts; ?></span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Зіграно боїв:</span>
+                    <span class="stat-value"><?php echo $total_battles; ?></span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Загальна кількість перемог:</span>
+                    <span class="stat-value"><?php echo $total_wins; ?></span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Статус серверу:</span>
+                    <span class="stat-value status-active">Онлайн</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Опитування</div>
+            </div>
+            <div class="card-body">
+                <div style="font-weight: 600; margin-bottom: 15px; color: #ffffff;">Чи подобається вам версія 0.6.5?</div>
+                
+                <div class="poll-option">
+                    <div class="poll-option-label">
+                        <span>Так, це найкращі часи!</span>
+                        <span>82.4%</span>
+                    </div>
+                    <div class="poll-bar-container">
+                        <div class="poll-bar" style="width: 82.4%;"></div>
+                    </div>
+                </div>
+
+                <div class="poll-option">
+                    <div class="poll-option-label">
+                        <span>Ні, сучасна гра краща.</span>
+                        <span>17.6%</span>
+                    </div>
+                    <div class="poll-bar-container">
+                        <div class="poll-bar" style="width: 17.6%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Ми в соцмережах</div>
+            </div>
+            <div class="card-body">
+                <div class="social-links">
+                    <a href="#" class="social-btn social-vk">Вконтакті</a>
+                    <a href="#" class="social-btn social-twitter">Twitter</a>
+                    <a href="#" class="social-btn social-youtube">YouTube</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    <p>&copy; 2026 World of Tanks 0.6.5 Emulator. Усі права захищені.</p>
+    <p>Цей сайт створений для демонстрації та тестування емулятора.</p>
+</div>
+
+</body>
+</html>
