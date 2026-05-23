@@ -2652,7 +2652,7 @@ def get_randomized_penetration(shell: dict, distance: float) -> float:
     base = get_shell_base_penetration(shell, distance)
     randomization = safe_float((shell or {}).get('piercingPowerRandomization', 0.25),
                                0.25, 0.0, 0.95)
-    return base * random.uniform(1.0 - randomization, 1.0 + randomization)
+    return base * random.uniform(1.0 - randomization, 1.0 + randomization) * SHOT_PENETRATION_FACTOR
 
 
 def vehicle_armor_model(vehicle: dict) -> dict:
@@ -4196,6 +4196,8 @@ SHOT_PENETRATION_NEAR_DISTANCE = float(get_value(
     CONFIG, 'combat.shot_penetration_near_distance', 100.0))
 SHOT_PENETRATION_FAR_DISTANCE = float(get_value(
     CONFIG, 'combat.shot_penetration_far_distance', 500.0))
+SHOT_PENETRATION_FACTOR = max(0.0, float(get_value(
+    CONFIG, 'combat.shot_penetration_factor', 1.0)))
 SHOT_HE_NONPEN_DAMAGE_FACTOR = float(get_value(
     CONFIG, 'combat.shot_he_nonpen_damage_factor', 0.18))
 SHOT_HE_MIN_SPLASH_DAMAGE = int(get_value(
