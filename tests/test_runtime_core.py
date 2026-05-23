@@ -33,8 +33,15 @@ class _FakeBattleModule:
     def build_battle_motion_tick(self, pos, yaw, speed, rspeed):
         return emulator.build_battle_motion_tick(pos, yaw, speed, rspeed)
 
+    def build_vehicle_motion_update(self, pos, yaw):
+        return emulator.build_vehicle_motion_update(pos, yaw)
+
     def build_vehicle_motion_update_for(self, vid, pos, yaw, pitch, roll):
         return emulator.build_vehicle_motion_update_for(vid, pos, yaw, pitch, roll)
+
+    def build_vehicle_motion_filter_update_for(self, vid, pos, yaw, pitch, roll):
+        return emulator.build_vehicle_motion_filter_update_for(
+            vid, pos, yaw, pitch, roll)
 
     def build_forced_position(self, entity_id, pos, yaw, space_id=1, vehicle_id=0):
         return emulator.build_forced_position(entity_id, pos, yaw,
@@ -300,6 +307,20 @@ def _detailed_position_entity_ids(messages):
             break
         out.append(struct.unpack_from("<I", messages, pos + 1)[0])
         pos += size
+    return out
+
+
+def _avatar_update_entity_ids(messages):
+    out = []
+    size = len(emulator.build_vehicle_motion_filter_update_for(
+        1, (0.0, 0.0, 0.0), 0.0))
+    pos = 0
+    while pos + size <= len(messages):
+        if messages[pos] == emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID:
+            out.append(struct.unpack_from("<I", messages, pos + 1)[0])
+            pos += size
+        else:
+            pos += 1
     return out
 
 
@@ -1100,20 +1121,25 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(sock.remaining, 5)
         self.assertFalse(runtime.outbound)
 
-    def test_battle_motion_tick_uses_detailed_position(self):
+    def test_battle_motion_tick_uses_avatar_update_for_vehicle_filter(self):
         pos = (-360.0, 100.0, -360.0)
         yaw = 0.5
         pkt = emulator.build_battle_motion_tick(pos, yaw, 5.0, 0.0)
-        self.assertEqual(pkt[0], emulator.CLIENT_DETAILED_POSITION_MSG_ID)
-        self.assertNotEqual(pkt[0], emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
-        eid, x, y, z, roll, pitch, yaw_out = struct.unpack("<I3f3f", pkt[1:])
+        self.assertEqual(pkt[0], emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
+        self.assertNotEqual(pkt[0], emulator.CLIENT_DETAILED_POSITION_MSG_ID)
+        eid = struct.unpack_from("<I", pkt, 1)[0]
         self.assertEqual(eid, emulator.PLAYER_VEHICLE_ID)
-        self.assertAlmostEqual(x, pos[0])
-        self.assertAlmostEqual(y, pos[1])
-        self.assertAlmostEqual(z, pos[2])
-        self.assertAlmostEqual(yaw_out, yaw)
 
-    def test_remote_vehicle_angles_use_terrain_body_orientation(self):
+    def test_battle_motion_tick_for_session_does_not_force_terrain_pitch_roll(self):
+        sess = _make_combat_session(33, 1, (10.0, 4.0, 20.0))
+        pkt = emulator.build_battle_motion_tick_for_session(
+            sess, (10.0, 4.0, 20.0), 0.75, 7.0, 0.0)
+
+        self.assertEqual(pkt[0], emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
+        eid = struct.unpack_from("<I", pkt, 1)[0]
+        self.assertEqual(eid, emulator.PLAYER_VEHICLE_ID)
+
+    def test_remote_vehicle_angles_do_not_use_turret_or_terrain_as_body_orientation(self):
         sess = _make_combat_session(32, 1, (10.0, 4.0, 20.0))
         sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
         sess["battle_yaw"] = 0.0
@@ -1126,7 +1152,7 @@ class RuntimeCoreTests(unittest.TestCase):
             yaw, pitch, roll = emulator.get_remote_vehicle_angles(sess)
 
         self.assertAlmostEqual(yaw, 0.0)
-        self.assertGreater(pitch, 0.0)
+        self.assertAlmostEqual(pitch, 0.0)
         self.assertAlmostEqual(roll, 0.0)
 
     def test_prebattle_session_emits_static_detailed_position(self):
@@ -1166,7 +1192,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(fake.base_capture_calls, [1])
         self.assertEqual(len(fake.avatar_sends), 1)
         self.assertEqual(fake.avatar_sends[0]["msgs"][0],
-                         emulator.CLIENT_DETAILED_POSITION_MSG_ID)
+                         emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
         self.assertIsNotNone(sess.get("battle_last_filter_reset_time"))
 
     def test_hidden_enemy_gets_no_intro_or_motion_packets(self):
@@ -1185,7 +1211,7 @@ class RuntimeCoreTests(unittest.TestCase):
         ids_to_observer = []
         for send in fake.avatar_sends:
             if send["addr"] == observer["addr"]:
-                ids_to_observer.extend(_detailed_position_entity_ids(send["msgs"]))
+                ids_to_observer.extend(_avatar_update_entity_ids(send["msgs"]))
         self.assertNotIn(remote_id, ids_to_observer)
 
     def test_visible_enemy_gets_intro_once_and_motion_packets_after(self):
@@ -1204,7 +1230,7 @@ class RuntimeCoreTests(unittest.TestCase):
         ids_to_observer = []
         for send in fake.avatar_sends:
             if send["addr"] == observer["addr"]:
-                ids_to_observer.extend(_detailed_position_entity_ids(send["msgs"]))
+                ids_to_observer.extend(_avatar_update_entity_ids(send["msgs"]))
         self.assertGreaterEqual(ids_to_observer.count(remote_id), 2)
 
     def test_losing_visibility_sends_leave_aoi_and_clears_known(self):
@@ -1228,7 +1254,7 @@ class RuntimeCoreTests(unittest.TestCase):
         ids_to_observer = []
         for send in fake.avatar_sends:
             if send["addr"] == observer["addr"]:
-                ids_to_observer.extend(_detailed_position_entity_ids(send["msgs"]))
+                ids_to_observer.extend(_avatar_update_entity_ids(send["msgs"]))
         self.assertNotIn(remote_id, ids_to_observer)
 
     def test_remote_vehicle_is_reintroduced_after_visibility_returns(self):
