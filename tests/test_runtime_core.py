@@ -2646,6 +2646,8 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertNotIn("battle_start_wall", s2)
         self.assertNotIn("battle_end_wall", s1)
         self.assertNotIn("battle_end_wall", s2)
+        self.assertEqual(s1["battle_roster_sessions"], [s1, s2])
+        self.assertEqual(s2["battle_roster_sessions"], [s1, s2])
 
     def test_matchmaker_launch_uses_warm_static_obstacle_cache(self):
         original_queue = list(emulator.matchmaking_queue)
@@ -2695,6 +2697,45 @@ class RuntimeCoreTests(unittest.TestCase):
             msgs, emulator.ARENA_UPDATE_VEHICLE_ADDED)
 
         self.assertEqual(veh_info[3], 1)
+
+    def test_initial_vehicle_list_contains_match_roster_before_visibility(self):
+        viewer = _make_combat_session(521, 1, (0.0, 0.0, 0.0))
+        enemy = _make_combat_session(522, 2, (500.0, 0.0, 500.0))
+        compact = emulator.get_vehicle_compact_descr()
+        for sess in (viewer, enemy):
+            sess["battle_match_id"] = 9001
+            sess["battle_period_active"] = False
+            sess["battle_client_ready"] = False
+            sess["battle_vehicle"]["compactDescr"] = compact
+            sess["battle_vehicle_compactDescr"] = compact
+
+        roster = emulator.build_match_vehicle_roster_for_viewer(
+            viewer, [viewer, enemy])
+        stats = emulator.build_match_vehicle_statistics_for_viewer(
+            viewer, [viewer, enemy])
+        msgs = emulator.build_avatar_player_bundle(
+            vehicle_compact_descr=compact,
+            vehicle_data=viewer["battle_vehicle"],
+            player_name=viewer["username"],
+            team=viewer["battle_team"],
+            vehicle_list=roster,
+            statistics_list=stats)
+
+        vehicle_list = _arena_update_values(
+            msgs, emulator.ARENA_UPDATE_VEHICLE_LIST)
+        statistics = _arena_update_values(
+            msgs, emulator.ARENA_UPDATE_STATISTICS)
+        enemy_id = emulator.get_remote_vehicle_id(enemy)
+        by_id = {info[0]: info for info in vehicle_list}
+
+        self.assertEqual({emulator.PLAYER_VEHICLE_ID, enemy_id},
+                         set(by_id.keys()))
+        self.assertEqual(by_id[emulator.PLAYER_VEHICLE_ID][2],
+                         viewer["username"])
+        self.assertEqual(by_id[enemy_id][2], enemy["username"])
+        self.assertEqual(by_id[enemy_id][3], 2)
+        self.assertEqual(set(statistics),
+                         {(emulator.PLAYER_VEHICLE_ID, 0), (enemy_id, 0)})
 
     def test_base_capture_updates_use_actual_base_team(self):
         viewer = _make_combat_session(503, 2, (0.0, 0.0, 0.0))
@@ -3953,6 +3994,69 @@ class RuntimeCoreTests(unittest.TestCase):
             if len(payload) == 21
         ]
         self.assertFalse(explosion_payloads)
+
+    def test_known_target_hit_feedback_survives_visibility_flicker(self):
+        shell = _make_shell(compact=9304, penetration=500.0,
+                            damage=100.0, speed=500.0, gravity=9.81)
+        source_vehicle = _make_combat_vehicle()
+        source_vehicle.update({
+            "vehicleClass": "heavyTank",
+            "circularVisionRadius": 50.0,
+            "defaultAmmo": [9304, 1],
+            "shells": [shell],
+        })
+        target_vehicle = _make_combat_vehicle(health=300)
+        target_vehicle.update({
+            "vehicleClass": "heavyTank",
+            "circularVisionRadius": 50.0,
+        })
+        source = _make_combat_session(197, 1, (0.0, 0.0, 0.0),
+                                      vehicle=source_vehicle)
+        target = _make_combat_session(198, 2, (0.0, 0.0, 300.0),
+                                      health=300, vehicle=target_vehicle)
+        source["known_remote_accounts"].add(target["account_id"])
+        source["arena_remote_accounts"] = {target["account_id"]}
+        source["battle_last_shot_target_pos"] = (0.0, 1.3, 300.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())), \
+                mock.patch.object(emulator, "ray_static_obstacle_hit",
+                                  return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages",
+                                  side_effect=capture_send):
+            self.assertFalse(emulator.is_vehicle_visible_to(source, target))
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell,
+                (0.0, 2.0, 0.0),
+                emulator.normalize_vec((0.0, -0.7, 300.0)))
+
+        self.assertIs(hit_target, target)
+        self.assertGreater(damage, 0)
+        self.assertIsNotNone(resolved)
+        self.assertLess(target["battle_vehicle_health"], 300)
+        self.assertIn(target["account_id"], source["known_remote_accounts"])
+        source_messages = b"".join(
+            msg for sess, msg, _reliable in sent if sess is source)
+        health_payloads = _message_payloads(
+            source_messages,
+            0x09)
+        remote_id = emulator.get_remote_vehicle_id(target)
+        remote_health = [
+            struct.unpack_from("<h", payload, 6)[0]
+            for payload in health_payloads
+            if len(payload) == 10 and
+            struct.unpack_from("<I", payload, 0)[0] == remote_id
+        ]
+
+        self.assertEqual(remote_health[-1], target["battle_vehicle_health"])
 
     def test_direct_shot_impact_is_scheduled_with_stop_and_explode(self):
         shell = _make_shell(compact=9104, penetration=200.0, damage=100.0,

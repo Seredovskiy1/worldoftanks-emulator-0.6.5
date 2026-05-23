@@ -4978,7 +4978,9 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                spawn_yaw: float = 0.0,
                                initial_period: int = ARENA_PERIOD_PREBATTLE,
                                period_end_time: int = PREBATTLE_TIMER_SECONDS,
-                               period_length: int = PREBATTLE_TIMER_SECONDS) -> bytes:
+                               period_length: int = PREBATTLE_TIMER_SECONDS,
+                               vehicle_list=None,
+                               statistics_list=None) -> bytes:
     """РџРµСЂРµС…С–Рґ Account в†’ Avatar РґР»СЏ РІС…РѕРґСѓ РІ Р±С–Р№.
 
     Bundle:
@@ -5076,9 +5078,13 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     veh_info = (
         PLAYER_VEHICLE_ID, vehicle_compact_descr or get_vehicle_compact_descr(),
         player_name, team, True, False, False, 1, '', 0, 0)
-    msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_LIST, [veh_info])
+    if vehicle_list is None:
+        vehicle_list = [veh_info]
+    if statistics_list is None:
+        statistics_list = [(PLAYER_VEHICLE_ID, 0)]
+    msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_LIST, vehicle_list)
     msgs += build_avatar_update_arena(ARENA_UPDATE_STATISTICS,
-                                      [(PLAYER_VEHICLE_ID, 0)])
+                                      statistics_list)
     msgs += build_avatar_update_arena(ARENA_UPDATE_PERIOD,
                                       (initial_period, period_end_time,
                                        period_length, None))
@@ -5205,6 +5211,94 @@ def get_display_team(observer_sess: dict, subject_sess: dict) -> int:
     if subject_team is None:
         return 1 if observer_sess is subject_sess else 2
     return max(1, min(2, int(subject_team)))
+
+
+def get_battle_account_dbid(sess: dict) -> int:
+    try:
+        return max(1, int(sess.get('account_id') or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def build_battle_vehicle_info_for_viewer(viewer_sess: dict,
+                                         subject_sess: dict):
+    vehicle = get_session_battle_vehicle(subject_sess)
+    veh_compact = (subject_sess.get('battle_vehicle_compactDescr') or
+                   (vehicle or {}).get('compactDescr'))
+    if not vehicle or not veh_compact:
+        return None
+    vehicle_id = (
+        PLAYER_VEHICLE_ID
+        if viewer_sess is subject_sess else get_remote_vehicle_id(subject_sess))
+    health = subject_sess.get('battle_vehicle_health')
+    if health is None:
+        health = get_vehicle_max_health(vehicle)
+    return (
+        vehicle_id,
+        veh_compact,
+        subject_sess.get('username') or 'player',
+        get_display_team(viewer_sess, subject_sess),
+        int(health or 0) > 0,
+        bool(subject_sess.get('battle_client_ready')),
+        False,
+        get_battle_account_dbid(subject_sess),
+        '',
+        0,
+        0)
+
+
+def get_viewer_roster_sessions(viewer_sess: dict):
+    roster = viewer_sess.get('battle_roster_sessions')
+    if roster:
+        return list(roster)
+    match_id = viewer_sess.get('battle_match_id')
+    if match_id is None:
+        return [viewer_sess]
+    sessions = [
+        sess for sess in active_battle_accounts.values()
+        if sess.get('battle_match_id') == match_id and
+        not sess.get('battle_ended')
+    ]
+    return sessions or [viewer_sess]
+
+
+def build_match_vehicle_roster_for_viewer(viewer_sess: dict, sessions):
+    match_id = viewer_sess.get('battle_match_id')
+    roster = []
+    seen = set()
+    for subject_sess in sessions:
+        if subject_sess is None:
+            continue
+        if match_id is not None and subject_sess.get('battle_match_id') != match_id:
+            continue
+        info = build_battle_vehicle_info_for_viewer(viewer_sess, subject_sess)
+        if info is None or info[0] in seen:
+            continue
+        seen.add(info[0])
+        roster.append(info)
+    roster.sort(key=lambda info: (info[3], info[0]))
+    return roster
+
+
+def build_match_vehicle_statistics_for_viewer(viewer_sess: dict, sessions):
+    stats = []
+    seen = set()
+    for info in build_match_vehicle_roster_for_viewer(viewer_sess, sessions):
+        if info[0] in seen:
+            continue
+        seen.add(info[0])
+        stats.append((info[0], 0))
+    return stats
+
+
+def remember_match_vehicle_roster(observer_sess: dict, sessions):
+    accounts = observer_sess.setdefault('arena_remote_accounts', set())
+    for subject_sess in sessions:
+        if subject_sess is observer_sess or subject_sess is None:
+            continue
+        account_id = subject_sess.get('account_id')
+        if account_id is not None:
+            accounts.add(account_id)
 
 
 def vehicle_spotting_class(vehicle: dict) -> str:
@@ -5789,10 +5883,12 @@ def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> byt
     display_team = get_display_team(observer_sess, remote_sess)
     veh_info = (
         remote_id, veh_compact, remote_name, display_team,
-        True, False, False, 1, '', 0, 0)
+        True, bool(remote_sess.get('battle_client_ready')), False,
+        get_battle_account_dbid(remote_sess), '', 0, 0)
     msgs = b''
-    msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_ADDED, veh_info)
-    msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_STATISTICS, (remote_id, 0))
+    if remote_sess.get('account_id') not in observer_sess.get('arena_remote_accounts', set()):
+        msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_ADDED, veh_info)
+        msgs += build_avatar_update_arena(ARENA_UPDATE_VEHICLE_STATISTICS, (remote_id, 0))
     msgs += msg_fixed(0x0A, struct.pack('<IB', remote_id, 0))
     msgs += build_vehicle_create_message(remote_id,
                                          VEHICLE_ENTITY_TYPE,
@@ -6950,6 +7046,9 @@ def send_avatar_player(sock, addr, sess):
     init_battle_state(sess, spawn_pos)
     spawn_yaw = sess.get('battle_yaw', 0.0)
     prebattle_left = 0
+    roster_sessions = get_viewer_roster_sessions(sess)
+    vehicle_list = build_match_vehicle_roster_for_viewer(sess, roster_sessions)
+    statistics_list = build_match_vehicle_statistics_for_viewer(sess, roster_sessions)
     msgs = build_avatar_player_bundle(arena_type_id=arena_type_id,
                                       vehicle_compact_descr=veh_compact,
                                       vehicle_data=battle_vehicle,
@@ -6959,7 +7058,9 @@ def send_avatar_player(sock, addr, sess):
                                       spawn_yaw=spawn_yaw,
                                       initial_period=ARENA_PERIOD_WAITING,
                                       period_end_time=0,
-                                      period_length=0)
+                                      period_length=0,
+                                      vehicle_list=vehicle_list,
+                                      statistics_list=statistics_list)
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
     try:
@@ -6968,6 +7069,7 @@ def send_avatar_player(sock, addr, sess):
         return
     sess['battle_bundle_sent'] = True
     sess['known_remote_accounts'] = set()
+    remember_match_vehicle_roster(sess, roster_sessions)
     announce_battle_player(sock, sess)
     print(f"    [>] battle-bundle: createBasePlayer(Avatar #{AVATAR_ENTITY_ID}) "
           f"+ spaceData(arenaType={arena_type_id}) "
@@ -7006,6 +7108,12 @@ def start_matchmaking_timer(sock):
         if not valid_batch:
             return
         assign_match_teams(valid_batch)
+        roster_sessions = [
+            queued.get('sess') for queued in valid_batch
+            if queued.get('sess') is not None
+        ]
+        for sess in roster_sessions:
+            sess['battle_roster_sessions'] = roster_sessions
         first_sess = (valid_batch[0].get('sess') or {})
         arena_type_id = normalize_arena_type_id(
             first_sess.get('battle_arena_type_id'))
@@ -9731,6 +9839,21 @@ def build_health_update_for_viewer(viewer_sess: dict, target_sess: dict) -> byte
                                                 health, is_crew_active)
 
 
+def viewer_has_known_remote_vehicle(viewer_sess: dict,
+                                    target_sess: dict) -> bool:
+    account_id = target_sess.get('account_id')
+    return account_id is not None and account_id in viewer_sess.get(
+        'known_remote_accounts', set())
+
+
+def force_shot_feedback_to_source(viewer_sess: dict, source_sess: dict,
+                                  target_sess: dict) -> bool:
+    return (
+        viewer_sess is source_sess and
+        viewer_sess is not target_sess and
+        viewer_has_known_remote_vehicle(viewer_sess, target_sess))
+
+
 def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
                              damage: int):
     match_id = target_sess.get('battle_match_id')
@@ -9744,10 +9867,13 @@ def broadcast_vehicle_health(sock, target_sess: dict, source_sess: dict,
             continue
         if viewer is not target_sess:
             known = viewer.setdefault('known_remote_accounts', set())
-            if not update_remote_vehicle_visibility(sock, viewer, target_sess):
-                continue
-            if target_account_id not in known:
-                send_remote_vehicle(sock, viewer, target_sess)
+            force_feedback = force_shot_feedback_to_source(
+                viewer, source_sess, target_sess)
+            if not force_feedback:
+                if not update_remote_vehicle_visibility(sock, viewer, target_sess):
+                    continue
+                if target_account_id not in known:
+                    send_remote_vehicle(sock, viewer, target_sess)
         send_avatar_messages(sock, addr, viewer,
                              build_health_update_for_viewer(viewer, target_sess),
                              '',
@@ -9992,10 +10118,13 @@ def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
             continue
         known = viewer.setdefault('known_remote_accounts', set())
         if viewer is not target_sess:
-            if not update_remote_vehicle_visibility(sock, viewer, target_sess):
-                continue
-            if target_account_id not in known:
-                send_remote_vehicle(sock, viewer, target_sess)
+            force_feedback = force_shot_feedback_to_source(
+                viewer, source_sess, target_sess)
+            if not force_feedback:
+                if not update_remote_vehicle_visibility(sock, viewer, target_sess):
+                    continue
+                if target_account_id not in known:
+                    send_remote_vehicle(sock, viewer, target_sess)
         source_visible = True
         if viewer is not source_sess:
             source_visible = update_remote_vehicle_visibility(
