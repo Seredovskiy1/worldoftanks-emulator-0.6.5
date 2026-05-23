@@ -4232,6 +4232,8 @@ DIRECT_PROJECTILE_IMPACT_MAX_DELAY = float(get_value(
     CONFIG, 'combat.direct_projectile_impact_max_delay', 0.35))
 REMOTE_SHOT_INTRO_DELAY = float(get_value(
     CONFIG, 'combat.remote_shot_intro_delay', 0.05))
+REMOTE_ENTITY_INTRO_GRACE_SECONDS = float(get_value(
+    CONFIG, 'combat.remote_entity_intro_grace_seconds', 0.5))
 REMOTE_SHOT_SOUND_DELAY = float(get_value(
     CONFIG, 'combat.remote_shot_sound_delay', 0.25))
 TARGET_HIT_RADIUS = float(get_value(CONFIG, 'combat.target_hit_radius', 8.0))
@@ -5488,6 +5490,34 @@ def remember_remote_vehicle_in_arena(observer_sess: dict, remote_sess: dict):
         observer_sess.setdefault('arena_remote_accounts', set()).add(account_id)
 
 
+def mark_remote_vehicle_intro_sent(observer_sess: dict, remote_sess: dict):
+    account_id = remote_sess.get('account_id')
+    if account_id is None:
+        return
+    observer_sess.setdefault('remote_vehicle_intro_times', {})[account_id] = time.time()
+
+
+def clear_remote_vehicle_intro(observer_sess: dict, remote_sess: dict):
+    account_id = remote_sess.get('account_id')
+    intro_times = observer_sess.get('remote_vehicle_intro_times')
+    if account_id is None or not isinstance(intro_times, dict):
+        return
+    intro_times.pop(account_id, None)
+
+
+def remote_vehicle_intro_remaining_delay(observer_sess: dict,
+                                         remote_sess: dict) -> float:
+    account_id = remote_sess.get('account_id')
+    intro_times = observer_sess.get('remote_vehicle_intro_times')
+    if account_id is None or not isinstance(intro_times, dict):
+        return 0.0
+    sent_at = intro_times.get(account_id)
+    if sent_at is None:
+        return 0.0
+    age = time.time() - safe_float(sent_at, 0.0)
+    return max(0.0, REMOTE_ENTITY_INTRO_GRACE_SECONDS - age)
+
+
 def client_arena_vehicle_ids(observer_sess: dict):
     vehicle_ids = {PLAYER_VEHICLE_ID}
     accounts = set(observer_sess.get('arena_remote_accounts', set()))
@@ -5591,6 +5621,8 @@ def hide_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
     known = observer_sess.setdefault('known_remote_accounts', set())
     if not remote_account_id or remote_account_id not in known:
         return False
+    if remote_vehicle_intro_remaining_delay(observer_sess, remote_sess) > 0.0:
+        return False
     observer_addr = observer_sess.get('addr')
     if observer_addr:
         remote_id = get_remote_vehicle_id(remote_sess)
@@ -5599,6 +5631,7 @@ def hide_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
                              f"leaveAoI(Vehicle#{remote_id})",
                              reliable=True)
     known.discard(remote_account_id)
+    clear_remote_vehicle_intro(observer_sess, remote_sess)
     return False
 
 
@@ -5800,6 +5833,7 @@ def send_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
                             f"fwd={fwd * 3.6:.1f}km/h)",
                             reliable=True):
         known.add(remote_account_id)
+        mark_remote_vehicle_intro_sent(observer_sess, remote_sess)
         remember_remote_vehicle_in_arena(observer_sess, remote_sess)
         mark_remote_vehicle_spotted(observer_sess, remote_sess)
 
@@ -7540,6 +7574,28 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
         hidden_msg = build_remote_vehicle_shot_messages(
             source_sess, shot_id, shot_pos, velocity, gravity, effects_index,
             0, include_shooting=False)
+
+    def _send_visible_remote_shot(viewer, generation):
+        if generation != viewer.get('battle_generation', 0):
+            return
+        if viewer.get('battle_match_id') != source_sess.get('battle_match_id'):
+            return
+        viewer_addr = viewer.get('addr')
+        if not viewer_addr:
+            return
+        delay = remote_vehicle_intro_remaining_delay(viewer, source_sess)
+        if delay > 0.0:
+            runtime_call_later(delay,
+                               lambda v=viewer, g=generation:
+                                   _send_visible_remote_shot(v, g))
+            return
+        if not is_vehicle_visible_to(viewer, source_sess):
+            return
+        if send_avatar_messages(sock, viewer_addr, viewer,
+                                visible_msg,
+                                '', reliable=True):
+            remember_shot_visual_viewer(source_sess, shot_id, viewer)
+
     for observer in observers:
         if not observer.get('addr'):
             continue
@@ -7547,6 +7603,7 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
         visible = is_vehicle_visible_to(observer, source_sess)
         if not visible and (
                 shot_visibility_grace_active(observer, source_sess) or
+                remote_vehicle_intro_remaining_delay(observer, source_sess) > 0.0 or
                 keep_remote_entity_on_visibility_loss(observer, source_sess)):
             continue
         if not visible:
@@ -7557,39 +7614,34 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
                 remember_shot_visual_viewer(source_sess, shot_id, observer)
             continue
         was_known = source_account_id in known
-        outbound = b''
         if not was_known:
-            outbound += build_remote_vehicle_messages(observer, source_sess)
-        if was_known:
-            outbound += visible_msg
-        if send_avatar_messages(sock, observer.get('addr'), observer,
-                                outbound, '', reliable=True):
-            known.add(source_account_id)
-            remember_remote_vehicle_in_arena(observer, source_sess)
-            mark_remote_vehicle_spotted(observer, source_sess)
-            if not was_known:
+            outbound = build_remote_vehicle_messages(observer, source_sess)
+            if not outbound:
+                continue
+            if send_avatar_messages(sock, observer.get('addr'), observer,
+                                    outbound, '', reliable=True):
+                known.add(source_account_id)
+                mark_remote_vehicle_intro_sent(observer, source_sess)
+                remember_remote_vehicle_in_arena(observer, source_sess)
+                mark_remote_vehicle_spotted(observer, source_sess)
                 generation = observer.get('battle_generation', 0)
-
-                def _remote_shot_after_intro(viewer=observer, gen=generation):
-                    if gen != viewer.get('battle_generation', 0):
-                        return
-                    if viewer.get('battle_match_id') != source_sess.get('battle_match_id'):
-                        return
-                    viewer_addr = viewer.get('addr')
-                    if not viewer_addr:
-                        return
-                    if not is_vehicle_visible_to(viewer, source_sess):
-                        return
-                    if send_avatar_messages(sock, viewer_addr, viewer,
-                                            visible_msg,
-                                            '', reliable=True):
-                        remember_shot_visual_viewer(source_sess, shot_id,
-                                                    viewer)
-
-                runtime_call_later(REMOTE_SHOT_INTRO_DELAY,
-                                   _remote_shot_after_intro)
-            else:
-                remember_shot_visual_viewer(source_sess, shot_id, observer)
+                delay = max(REMOTE_SHOT_INTRO_DELAY,
+                            remote_vehicle_intro_remaining_delay(observer,
+                                                                 source_sess))
+                runtime_call_later(delay,
+                                   lambda v=observer, g=generation:
+                                       _send_visible_remote_shot(v, g))
+            continue
+        intro_delay = remote_vehicle_intro_remaining_delay(observer, source_sess)
+        if intro_delay > 0.0:
+            generation = observer.get('battle_generation', 0)
+            runtime_call_later(intro_delay,
+                               lambda v=observer, g=generation:
+                                   _send_visible_remote_shot(v, g))
+            continue
+        if send_avatar_messages(sock, observer.get('addr'), observer,
+                                visible_msg, '', reliable=True):
+            remember_shot_visual_viewer(source_sess, shot_id, observer)
 
 
 def build_projectile_impact_messages(shot_id: int, effects_index: int,

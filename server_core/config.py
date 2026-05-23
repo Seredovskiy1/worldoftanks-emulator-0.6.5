@@ -184,6 +184,7 @@ DEFAULT_CONFIG = {
         "direct_projectile_impact_min_delay": 0.08,
         "direct_projectile_impact_max_delay": 0.35,
         "remote_shot_intro_delay": 0.05,
+        "remote_entity_intro_grace_seconds": 0.5,
         "remote_shot_sound_delay": 0.25,
         "target_hit_radius": 8.0,
         "target_aim_radius": 8.0,

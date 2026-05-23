@@ -3628,13 +3628,54 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIn(source["account_id"], observer["known_remote_accounts"])
         self.assertIn(source["account_id"], observer["arena_remote_accounts"])
         self.assertEqual(len(scheduled), 1)
-        self.assertAlmostEqual(scheduled[0][0], emulator.REMOTE_SHOT_INTRO_DELAY)
+        self.assertAlmostEqual(scheduled[0][0],
+                               emulator.REMOTE_ENTITY_INTRO_GRACE_SECONDS,
+                               places=2)
 
         before_callback = len(sent)
+        observer["remote_vehicle_intro_times"][source["account_id"]] = (
+            time.time() - emulator.REMOTE_ENTITY_INTRO_GRACE_SECONDS - 0.01)
         with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send):
             scheduled[0][1]()
         self.assertEqual(len(sent), before_callback + 1)
         self.assertEqual(_message_ids(sent[-1][1]),
+                         [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID,
+                          emulator.AVATAR_SHOW_TRACER_MSG_ID])
+
+    def test_fresh_known_remote_shot_waits_for_intro_grace(self):
+        source = _make_combat_session(185, 1, (0.0, 0.0, 40.0))
+        observer = _make_combat_session(186, 2, (0.0, 0.0, 20.0))
+        observer["known_remote_accounts"].add(source["account_id"])
+        emulator.mark_remote_vehicle_intro_sent(observer, source)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+        scheduled = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append((_sess, bytes(msgs), reliable))
+            return True
+
+        def capture_later(delay, callback):
+            scheduled.append((delay, callback))
+            return None
+
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=capture_later):
+            emulator.broadcast_remote_vehicle_shot(
+                object(), source, 124.0, (0.0, 2.0, 40.0),
+                (0.0, 0.0, -100.0), 9.81, 0)
+
+        self.assertEqual(sent, [])
+        self.assertEqual(len(scheduled), 1)
+        self.assertGreater(scheduled[0][0], 0.0)
+
+        observer["remote_vehicle_intro_times"][source["account_id"]] = (
+            time.time() - emulator.REMOTE_ENTITY_INTRO_GRACE_SECONDS - 0.01)
+        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send):
+            scheduled[0][1]()
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(_message_ids(sent[0][1]),
                          [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID,
                           emulator.AVATAR_SHOW_TRACER_MSG_ID])
 
@@ -3776,6 +3817,32 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertNotIn(source["account_id"], observer["known_remote_accounts"])
         self.assertTrue(sent)
         self.assertIn(emulator.CLIENT_LEAVE_AOI_MSG_ID, _message_ids(sent[0]))
+
+    def test_fresh_intro_visibility_loss_keeps_remote_in_aoi(self):
+        source = _make_combat_session(
+            199, 2, (0.0, 0.0, 1000.0),
+            vehicle={"vehicleClass": "lightTank"})
+        observer = _make_combat_session(
+            200, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank", "circularVisionRadius": 50.0})
+        observer["known_remote_accounts"].add(source["account_id"])
+        emulator.mark_remote_vehicle_intro_sent(observer, source)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               side_effect=capture_send):
+            visible = emulator.update_remote_vehicle_visibility(
+                object(), observer, source)
+
+        self.assertFalse(visible)
+        self.assertIn(source["account_id"], observer["known_remote_accounts"])
+        self.assertEqual(sent, [])
 
     def test_known_hidden_remote_shot_does_not_leave_aoi_or_send_tracer(self):
         source = _make_combat_session(
