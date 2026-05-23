@@ -4101,6 +4101,8 @@ SPOTTING_STATIONARY_SPEED = float(get_value(
     CONFIG, 'combat.spotting_stationary_speed', 0.5))
 SPOTTING_SHOT_CAMO_PENALTY_SECONDS = float(get_value(
     CONFIG, 'combat.spotting_shot_camo_penalty_seconds', 5.0))
+SHOT_VISIBILITY_GRACE_SECONDS = float(get_value(
+    CONFIG, 'combat.shot_visibility_grace_seconds', 1.0))
 SPOTTING_CAMO_SCALE = float(get_value(
     CONFIG, 'combat.spotting_camo_scale', 2.0))
 SPOTTING_CAMO_CLASS_MULTIPLIERS = dict(get_value(
@@ -5523,6 +5525,18 @@ def mark_vehicle_shot_visibility_penalty(sess: dict):
     sess['battle_last_spotting_shot_time'] = now
 
 
+def shot_visibility_grace_active(observer_sess: dict, source_sess: dict) -> bool:
+    if observer_sess is source_sess:
+        return False
+    if SHOT_VISIBILITY_GRACE_SECONDS <= 0.0:
+        return False
+    account_id = source_sess.get('account_id')
+    if account_id not in observer_sess.setdefault('known_remote_accounts', set()):
+        return False
+    last = safe_float(source_sess.get('battle_last_shot_time'), 0.0)
+    return last > 0.0 and time.time() - last <= SHOT_VISIBILITY_GRACE_SECONDS
+
+
 def remember_shot_visual_viewer(source_sess: dict, shot_id: int,
                                 viewer_sess: dict):
     account_id = viewer_sess.get('account_id')
@@ -5564,6 +5578,8 @@ def update_remote_vehicle_visibility(sock, observer_sess: dict,
     if observer_sess is remote_sess:
         return True
     if not is_vehicle_visible_to(observer_sess, remote_sess):
+        if shot_visibility_grace_active(observer_sess, remote_sess):
+            return True
         hide_remote_vehicle(sock, observer_sess, remote_sess)
         return False
     known = observer_sess.setdefault('known_remote_accounts', set())
@@ -7468,12 +7484,15 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
         if not observer.get('addr'):
             continue
         known = observer.setdefault('known_remote_accounts', set())
-        if not is_vehicle_visible_to(observer, source_sess):
+        visible = is_vehicle_visible_to(observer, source_sess)
+        if not visible and not shot_visibility_grace_active(observer, source_sess):
             hide_remote_vehicle(sock, observer, source_sess)
             if hidden_msg and send_avatar_messages(
                     sock, observer.get('addr'), observer,
                     hidden_msg, '', reliable=True):
                 remember_shot_visual_viewer(source_sess, shot_id, observer)
+            continue
+        if not visible and source_account_id not in known:
             continue
         was_known = source_account_id in known
         outbound = b''
@@ -9864,8 +9883,13 @@ def broadcast_vehicle_shot_feedback(sock, target_sess: dict, source_sess: dict,
                 send_remote_vehicle(sock, viewer, source_sess)
         target_id = viewer_vehicle_id(viewer, target_sess)
         attacker_id = viewer_vehicle_id(viewer, source_sess) if source_visible else 0
-        msg = build_vehicle_damage_from_explosion(
-            target_id, attacker_id, center, effects_index)
+        if info.get('artillerySplash') and not info.get('artilleryDirectHit'):
+            msg = build_vehicle_damage_from_explosion(
+                target_id, attacker_id, center, effects_index)
+        else:
+            msg = build_vehicle_damage_from_shot(
+                target_id, attacker_id, [pack_damage_segment(info)],
+                effects_index)
         if damage > 0:
             msg += build_health_update_for_viewer(viewer, target_sess)
         send_avatar_messages(sock, addr, viewer, msg, '', reliable=True)

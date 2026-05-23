@@ -108,6 +108,7 @@ DEFAULT_CONFIG = {
         "spotting_max_range": 445.0,
         "spotting_stationary_speed": 0.5,
         "spotting_shot_camo_penalty_seconds": 5.0,
+        "shot_visibility_grace_seconds": 1.0,
         "spotting_camo_scale": 2.0,
         "spotting_camo_class_multipliers": {
             "lightTank": 1.35,

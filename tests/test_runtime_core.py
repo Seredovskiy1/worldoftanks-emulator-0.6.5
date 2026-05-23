@@ -3638,6 +3638,69 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertNotIn(source["account_id"], observer["known_remote_accounts"])
         build_intro.assert_not_called()
 
+    def test_recent_shot_keeps_known_remote_from_leaving_aoi_immediately(self):
+        source = _make_combat_session(
+            191, 2, (0.0, 0.0, 1000.0),
+            vehicle={"vehicleClass": "lightTank"})
+        observer = _make_combat_session(
+            192, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank", "circularVisionRadius": 50.0})
+        observer["known_remote_accounts"].add(source["account_id"])
+        source["battle_last_shot_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               side_effect=capture_send):
+            visible = emulator.update_remote_vehicle_visibility(
+                object(), observer, source)
+
+        self.assertTrue(visible)
+        self.assertIn(source["account_id"], observer["known_remote_accounts"])
+        self.assertEqual(sent, [])
+
+    def test_known_hidden_remote_shot_does_not_leave_aoi_during_shot(self):
+        source = _make_combat_session(
+            195, 2, (0.0, 0.0, 300.0),
+            vehicle={
+                "vehicleClass": "lightTank",
+                "invisibilityMoving": 0.95,
+                "invisibilityStill": 0.95,
+                "gunInvisibilityFactorAtShot": 1.0,
+            })
+        observer = _make_combat_session(
+            196, 1, (0.0, 0.0, 0.0),
+            vehicle={
+                "vehicleClass": "heavyTank",
+                "circularVisionRadius": 300.0,
+            })
+        observer["known_remote_accounts"].add(source["account_id"])
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "iter_spotting_bushes_near_segment",
+                               side_effect=lambda *args, **kwargs: iter(())), \
+                mock.patch.object(emulator, "send_avatar_messages",
+                                  side_effect=capture_send):
+            emulator.broadcast_remote_vehicle_shot(
+                object(), source, 655.0, (0.0, 2.0, 300.0),
+                (0.0, 0.0, -100.0), 9.81, 0)
+
+        self.assertIn(source["account_id"], observer["known_remote_accounts"])
+        self.assertTrue(sent)
+        self.assertNotIn(bytes([emulator.CLIENT_LEAVE_AOI_MSG_ID]),
+                         [msg[:1] for msg in sent])
+
     def test_hidden_direct_shot_still_applies_damage_without_target_tracer(self):
         shell = _make_shell(compact=9303, penetration=500.0,
                             damage=100.0, speed=500.0, gravity=9.81)
@@ -3696,10 +3759,17 @@ class RuntimeCoreTests(unittest.TestCase):
                          target_ids)
         damage_payloads = _message_payloads(
             target_messages,
-            emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID)
+            emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID)
         self.assertTrue(damage_payloads)
         self.assertEqual(struct.unpack_from("<I", damage_payloads[0], 4)[0],
                          0)
+        explosion_payloads = [
+            payload for payload in _message_payloads(
+                target_messages,
+                emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID)
+            if len(payload) == 21
+        ]
+        self.assertFalse(explosion_payloads)
 
     def test_direct_shot_impact_is_scheduled_with_stop_and_explode(self):
         shell = _make_shell(compact=9104, penetration=200.0, damage=100.0,
@@ -3787,8 +3857,10 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIn(102, source["battle_damaged_vehicle_ids"])
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
         self.assertTrue(sent_messages)
-        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
                       [msg[:1] for msg in sent_messages])
+        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+                         [msg[:1] for msg in sent_messages])
 
     def test_direct_marker_hit_prevents_false_side_ricochet(self):
         source = _make_combat_session(
@@ -3954,8 +4026,10 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(target["battle_vehicle_health"], 300)
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
         self.assertTrue(sent_messages)
-        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
                       [msg[:1] for msg in sent_messages])
+        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+                         [msg[:1] for msg in sent_messages])
 
     def test_he_non_penetration_deals_reduced_damage(self):
         source = _make_combat_session(131, 1, (0.0, 0.0, 0.0))
@@ -4104,7 +4178,7 @@ class RuntimeCoreTests(unittest.TestCase):
             self.assertGreaterEqual(value, 0)
             self.assertLessEqual(value, 0xffffffffffffffff)
 
-    def test_client_damage_effects_always_uses_explosion_message(self):
+    def test_direct_client_damage_effects_uses_shot_message(self):
         source = _make_combat_session(161, 1, (0.0, 0.0, 0.0))
         target = _make_combat_session(162, 2, (0.0, 0.0, 20.0), health=300)
         emulator.active_battle_accounts[source["account_id"]] = source
@@ -4136,9 +4210,9 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertTrue(sent_messages)
         msg_ids = [msg[:1] for msg in sent_messages]
-        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
                       msg_ids)
-        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
                          msg_ids)
 
     def test_unspotted_direct_shot_does_not_send_anonymous_tracer(self):
@@ -4222,7 +4296,7 @@ class RuntimeCoreTests(unittest.TestCase):
             bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
             msg_ids)
 
-    def test_ap_direct_hit_uses_damage_from_explosion_message(self):
+    def test_ap_direct_hit_uses_damage_from_shot_message(self):
         source = _make_combat_session(183, 1, (0.0, 0.0, 0.0))
         target = _make_combat_session(184, 2, (0.0, 0.0, 20.0), health=300)
         emulator.active_battle_accounts[source["account_id"]] = source
@@ -4258,13 +4332,13 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(sent_messages)
         msg_ids = [msg[:1] for msg in sent_messages]
         self.assertIn(
-            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
-            msg_ids)
-        self.assertNotIn(
             bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
             msg_ids)
+        self.assertNotIn(
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+            msg_ids)
 
-    def test_he_direct_hit_uses_damage_from_explosion_message(self):
+    def test_he_direct_hit_uses_damage_from_shot_message(self):
         source = _make_combat_session(185, 1, (0.0, 0.0, 0.0))
         target = _make_combat_session(186, 2, (0.0, 0.0, 20.0), health=300)
         emulator.active_battle_accounts[source["account_id"]] = source
@@ -4301,10 +4375,10 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(sent_messages)
         msg_ids = [msg[:1] for msg in sent_messages]
         self.assertIn(
-            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
             msg_ids)
         self.assertNotIn(
-            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
+            bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
             msg_ids)
 
 
