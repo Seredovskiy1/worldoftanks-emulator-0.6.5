@@ -524,7 +524,8 @@ def count_account_tankmen(account_id: int) -> int:
 
 def seed_default_account_inventory(account_id: int):
     account_id = int(account_id)
-    veh_list = load_all_vehicles()
+    disabled_names = get_disabled_vehicles_for_account(account_id)
+    veh_list = [v for v in load_all_vehicles() if v['name'] not in disabled_names]
     if not veh_list:
         return
     now = datetime.datetime.now()
@@ -3172,6 +3173,32 @@ def ballistic_shot_vec(shot_pos, target_pos, speed: float, gravity: float,
     ))
 
 
+def get_disabled_vehicles_for_account(account_id: int) -> set:
+    disabled = set()
+    conn = db_connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT vehicle_name FROM disabled_vehicles")
+            for (name,) in cur.fetchall() or []:
+                disabled.add(name)
+            if account_id:
+                cur.execute(
+                    "SELECT vehicle_name, is_enabled FROM account_vehicle_overrides "
+                    "WHERE account_id = %s",
+                    (int(account_id),)
+                )
+                for name, is_enabled in cur.fetchall() or []:
+                    if is_enabled:
+                        disabled.discard(name)
+                    else:
+                        disabled.add(name)
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return disabled
+
+
 def make_full_sync_pickle(account_id: int = 0) -> bytes:
     """РџРѕРІРЅРёР№ (full-sync) diff РґР»СЏ Account._update. Р‘РµР· 'prevRev' в†’
     isFullSync=True в†’ РєР»С–С”РЅС‚ С‡РёСЃС‚РёС‚СЊ __cache С– Р·Р°СЃС‚РѕСЃРѕРІСѓС” РЅР°С€ diff.
@@ -3184,7 +3211,8 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
       5=vehicleEngine, 6=vehicleFuelTank, 7=vehicleRadio, 8=tankman,
       9=optionalDevice, 10=shell, 11=equipment.
     """
-    veh_list = load_all_vehicles()
+    disabled_names = get_disabled_vehicles_for_account(account_id)
+    veh_list = [v for v in load_all_vehicles() if v['name'] not in disabled_names]
     server_stats = get_server_stats()
     if account_id:
         try:
@@ -3242,6 +3270,8 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
     for tm in tankmen_rows:
         tm_inv = int(tm['inv_id'])
         veh_inv = int(tm['vehicle_inv_id'] or 0)
+        if veh_inv and veh_inv not in veh_by_inv:
+            veh_inv = 0
         nation_id = int(tm['nation_id'])
         vehicle_type_id = int(tm['vehicle_type_id'])
         first_name_id = int(tm['first_name_id'] or 0)
@@ -3509,7 +3539,8 @@ def build_vehicle_inventory_diff(account_id: int, veh_inv_id: int) -> dict:
 def build_crew_inventory_diff(account_id: int, veh_inv_id: int,
                               dismissed_tankman: int = 0) -> dict:
     veh_inv_id = int(veh_inv_id)
-    veh_list = load_all_vehicles()
+    disabled_names = get_disabled_vehicles_for_account(account_id)
+    veh_list = [v for v in load_all_vehicles() if v['name'] not in disabled_names]
     veh_by_inv = {int(v['inv_id']): v for v in veh_list}
     vehicle = veh_by_inv.get(veh_inv_id)
     crew_size = int(vehicle.get('crewSize') or 4) if vehicle else 0
