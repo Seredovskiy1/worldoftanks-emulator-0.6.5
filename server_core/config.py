@@ -53,7 +53,7 @@ DEFAULT_CONFIG = {
         "base_capture_client_position_max_age": 5.0
     },
     "combat": {
-        "client_shot_damage_effects": True,
+        "client_shot_damage_effects": False,
         "vehicle_speed_multiplier": 1.0,
         "vehicle_rotation_multiplier": 1.5,
         "vehicle_max_health_overrides": {
@@ -109,7 +109,7 @@ DEFAULT_CONFIG = {
         "spotting_stationary_speed": 0.5,
         "spotting_shot_camo_penalty_seconds": 5.0,
         "shot_visibility_grace_seconds": 1.0,
-        "keep_remote_entities_on_visibility_loss": True,
+        "keep_remote_entities_on_visibility_loss": False,
         "spotting_camo_scale": 2.0,
         "spotting_camo_class_multipliers": {
             "lightTank": 1.35,
@@ -157,8 +157,9 @@ DEFAULT_CONFIG = {
         "shot_tank_half_width": 2.4,
         "shot_tank_min_height": 0.15,
         "shot_tank_max_height": 3.8,
-        "shot_tank_hit_radius_h": 6.5,
-        "shot_tank_hit_radius_v": 4.0,
+        "shot_tank_hit_radius_h": 7.0,
+        "shot_tank_hit_radius_v": 6.0,
+        "shot_gun_alignment_tolerance_degrees": 35.0,
         "shot_tank_marker_vert_above": 25.0,
         "shot_armor_min_cos": 0.12,
         "shot_armor_autoricochet_degrees": 70.0,
@@ -182,6 +183,7 @@ DEFAULT_CONFIG = {
         "artillery_visible_tracer_min_vx": 8.0,
         "direct_projectile_impact_min_delay": 0.08,
         "direct_projectile_impact_max_delay": 0.35,
+        "remote_shot_intro_delay": 0.05,
         "remote_shot_sound_delay": 0.25,
         "target_hit_radius": 8.0,
         "target_aim_radius": 8.0,

@@ -20,7 +20,7 @@
     "base_capture_client_position_max_age": 5.0
   },
   "combat": {
-    "client_shot_damage_effects": true,
+    "client_shot_damage_effects": false,
     "vehicle_speed_multiplier": 1.0,
     "vehicle_rotation_multiplier": 1.5,
     "vehicle_max_health_overrides": {
@@ -41,8 +41,9 @@
     "shot_dispersion_min_radius": 0.25,
     "shot_dispersion_max_radius": 30.0,
     "shot_damage_randomization": 0.25,
-    "shot_tank_hit_radius_h": 6.5,
-    "shot_tank_hit_radius_v": 4.0,
+    "shot_tank_hit_radius_h": 7.0,
+    "shot_tank_hit_radius_v": 6.0,
+    "shot_gun_alignment_tolerance_degrees": 35.0,
     "target_hit_radius": 8.0,
     "target_aim_radius": 8.0,
     "artillery_splash_radius_factor": 2.0,
@@ -71,7 +72,8 @@
     "spotting_stationary_speed": 0.5,
     "spotting_shot_camo_penalty_seconds": 5.0,
     "shot_visibility_grace_seconds": 1.0,
-    "keep_remote_entities_on_visibility_loss": true,
+    "remote_shot_intro_delay": 0.05,
+    "keep_remote_entities_on_visibility_loss": false,
     "spotting_camo_scale": 2.0,
     "spotting_camo_class_multipliers": {
       "lightTank": 1.35,

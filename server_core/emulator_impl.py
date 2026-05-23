@@ -1656,7 +1656,7 @@ VEHICLE_SHOW_SHOOTING_MSG_ID        = 0x81
 VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID = 0x82
 VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID = 0x83
 ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = bool(get_value(
-    CONFIG, 'combat.client_shot_damage_effects', True))
+    CONFIG, 'combat.client_shot_damage_effects', False))
 CLIENT_LEAVE_AOI_MSG_ID = 0x0c
 CLIENT_DETAILED_POSITION_MSG_ID     = 0x31
 CLIENT_FORCED_POSITION_MSG_ID       = 0x32
@@ -4104,7 +4104,7 @@ SPOTTING_SHOT_CAMO_PENALTY_SECONDS = float(get_value(
 SHOT_VISIBILITY_GRACE_SECONDS = float(get_value(
     CONFIG, 'combat.shot_visibility_grace_seconds', 1.0))
 KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS = bool(get_value(
-    CONFIG, 'combat.keep_remote_entities_on_visibility_loss', True))
+    CONFIG, 'combat.keep_remote_entities_on_visibility_loss', False))
 SPOTTING_CAMO_SCALE = float(get_value(
     CONFIG, 'combat.spotting_camo_scale', 2.0))
 SPOTTING_CAMO_CLASS_MULTIPLIERS = dict(get_value(
@@ -4147,11 +4147,13 @@ SHOT_TANK_MIN_HEIGHT = float(get_value(
 SHOT_TANK_MAX_HEIGHT = float(get_value(
     CONFIG, 'combat.shot_tank_max_height', 3.8))
 SHOT_TANK_HIT_RADIUS_H = float(get_value(
-    CONFIG, 'combat.shot_tank_hit_radius_h', 6.5))
+    CONFIG, 'combat.shot_tank_hit_radius_h', 7.0))
 SHOT_TANK_HIT_RADIUS_V = float(get_value(
-    CONFIG, 'combat.shot_tank_hit_radius_v', 4.0))
+    CONFIG, 'combat.shot_tank_hit_radius_v', 6.0))
 SHOT_TANK_MARKER_VERT_ABOVE = float(get_value(
     CONFIG, 'combat.shot_tank_marker_vert_above', 25.0))
+SHOT_GUN_ALIGNMENT_TOLERANCE_COS = math.cos(math.radians(float(get_value(
+    CONFIG, 'combat.shot_gun_alignment_tolerance_degrees', 35.0))))
 SHOT_DISPERSION_ENABLED = bool(get_value(
     CONFIG, 'combat.shot_dispersion_enabled', True))
 SHOT_HIT_CHANCE_PERCENT = float(get_value(
@@ -4228,6 +4230,8 @@ DIRECT_PROJECTILE_IMPACT_MIN_DELAY = float(get_value(
     CONFIG, 'combat.direct_projectile_impact_min_delay', 0.08))
 DIRECT_PROJECTILE_IMPACT_MAX_DELAY = float(get_value(
     CONFIG, 'combat.direct_projectile_impact_max_delay', 0.35))
+REMOTE_SHOT_INTRO_DELAY = float(get_value(
+    CONFIG, 'combat.remote_shot_intro_delay', 0.05))
 REMOTE_SHOT_SOUND_DELAY = float(get_value(
     CONFIG, 'combat.remote_shot_sound_delay', 0.25))
 TARGET_HIT_RADIUS = float(get_value(CONFIG, 'combat.target_hit_radius', 8.0))
@@ -5410,12 +5414,17 @@ def is_vehicle_directly_visible_to(observer_sess: dict, source_sess: dict) -> bo
         return True
     if observer_sess.get('battle_match_id') != source_sess.get('battle_match_id'):
         return False
-    if not spotting_applies(observer_sess, source_sess):
+    if not SPOTTING_ENABLED:
         return True
+    if is_same_battle_team(observer_sess, source_sess):
+        return True
+    if (not observer_sess.get('battle_period_active') or
+            not source_sess.get('battle_period_active')):
+        return False
     observer_pos = safe_vec3(get_effective_vehicle_pos(observer_sess, None), None)
     source_pos = safe_vec3(get_effective_vehicle_pos(source_sess, None), None)
     if observer_pos is None or source_pos is None:
-        return True
+        return False
     dx = float(source_pos[0]) - float(observer_pos[0])
     dz = float(source_pos[2]) - float(observer_pos[2])
     distance = math.sqrt(dx * dx + dz * dz)
@@ -7246,6 +7255,25 @@ def direct_fire_target_point_from_gun(shot_pos, marker_pos, shot_vec):
     )
 
 
+def direct_fire_marker_vec(shot_pos, marker_pos):
+    marker_pos = safe_vec3(marker_pos, None)
+    if marker_pos is None:
+        return None
+    dx = float(marker_pos[0]) - float(shot_pos[0])
+    dy = float(marker_pos[1]) - float(shot_pos[1])
+    dz = float(marker_pos[2]) - float(shot_pos[2])
+    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if distance <= 0.001:
+        return None
+    return (dx / distance, dy / distance, dz / distance)
+
+
+def shot_vec_alignment_cosine(a, b):
+    a = normalize_vec(a)
+    b = normalize_vec(b)
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
 def shot_vec_from_angles(turret_yaw, gun_pitch):
     turret_yaw = safe_float(turret_yaw, 0.0)
     gun_pitch = safe_float(gun_pitch, 0.0)
@@ -7407,9 +7435,20 @@ def build_vehicle_shot_messages(sess: dict):
         sess['battle_last_shot_target_pos_time'] = now
     else:
         base_shot_vec = get_session_current_gun_direction(sess)
-        gun_target_pos = direct_fire_target_point_from_gun(
-            shot_pos, sess.get('battle_target_pos'), base_shot_vec)
-        target_pos = apply_shot_dispersion(sess, shot_pos, gun_target_pos)
+        marker_time = sess.get('battle_target_pos_time', 0.0)
+        marker_pos = sess.get('battle_target_pos')
+        marker_shot_vec = (
+            direct_fire_marker_vec(shot_pos, marker_pos)
+            if is_target_marker_fresh(sess, marker_time)
+            else None)
+        if (marker_shot_vec is not None and
+                shot_vec_alignment_cosine(base_shot_vec, marker_shot_vec) >=
+                SHOT_GUN_ALIGNMENT_TOLERANCE_COS):
+            aim_target_pos = safe_vec3(marker_pos, None)
+        else:
+            aim_target_pos = direct_fire_target_point_from_gun(
+                shot_pos, marker_pos, base_shot_vec)
+        target_pos = apply_shot_dispersion(sess, shot_pos, aim_target_pos)
         sess['battle_last_shot_target_pos'] = (
             tuple(float(v) for v in target_pos)
             if target_pos is not None else None)
@@ -7501,7 +7540,6 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
         hidden_msg = build_remote_vehicle_shot_messages(
             source_sess, shot_id, shot_pos, velocity, gravity, effects_index,
             0, include_shooting=False)
-    remote_id = get_remote_vehicle_id(source_sess)
     for observer in observers:
         if not observer.get('addr'):
             continue
@@ -7522,17 +7560,17 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
         outbound = b''
         if not was_known:
             outbound += build_remote_vehicle_messages(observer, source_sess)
-        outbound += visible_msg
+        if was_known:
+            outbound += visible_msg
         if send_avatar_messages(sock, observer.get('addr'), observer,
                                 outbound, '', reliable=True):
-            remember_shot_visual_viewer(source_sess, shot_id, observer)
             known.add(source_account_id)
             remember_remote_vehicle_in_arena(observer, source_sess)
             mark_remote_vehicle_spotted(observer, source_sess)
             if not was_known:
                 generation = observer.get('battle_generation', 0)
 
-                def _remote_shot_sound(viewer=observer, gen=generation):
+                def _remote_shot_after_intro(viewer=observer, gen=generation):
                     if gen != viewer.get('battle_generation', 0):
                         return
                     if viewer.get('battle_match_id') != source_sess.get('battle_match_id'):
@@ -7540,11 +7578,18 @@ def broadcast_remote_vehicle_shot(sock, source_sess: dict, shot_id: int,
                     viewer_addr = viewer.get('addr')
                     if not viewer_addr:
                         return
-                    send_avatar_messages(sock, viewer_addr, viewer,
-                                         build_vehicle_show_shooting(remote_id),
-                                         '', reliable=True)
+                    if not is_vehicle_visible_to(viewer, source_sess):
+                        return
+                    if send_avatar_messages(sock, viewer_addr, viewer,
+                                            visible_msg,
+                                            '', reliable=True):
+                        remember_shot_visual_viewer(source_sess, shot_id,
+                                                    viewer)
 
-                runtime_call_later(REMOTE_SHOT_SOUND_DELAY, _remote_shot_sound)
+                runtime_call_later(REMOTE_SHOT_INTRO_DELAY,
+                                   _remote_shot_after_intro)
+            else:
+                remember_shot_visual_viewer(source_sess, shot_id, observer)
 
 
 def build_projectile_impact_messages(shot_id: int, effects_index: int,

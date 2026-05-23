@@ -344,12 +344,14 @@ class RuntimeCoreTests(unittest.TestCase):
     def setUp(self):
         self._active_battle_accounts = dict(emulator.active_battle_accounts)
         self._enable_client_shot_damage_effects = emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS
+        self._keep_remote_entities_on_visibility_loss = emulator.KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS
         self._shot_dispersion_enabled = emulator.SHOT_DISPERSION_ENABLED
         self._shot_dispersion_server_radius_scale = emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE
         self._shot_dispersion_center_bias = emulator.SHOT_DISPERSION_CENTER_BIAS
         self._shot_damage_randomization = emulator.SHOT_DAMAGE_RANDOMIZATION
         emulator.active_battle_accounts.clear()
-        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = True
+        emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
+        emulator.KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS = False
         emulator.SHOT_DISPERSION_ENABLED = False
         emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = 0.45
         emulator.SHOT_DISPERSION_CENTER_BIAS = 2.5
@@ -359,6 +361,7 @@ class RuntimeCoreTests(unittest.TestCase):
         emulator.active_battle_accounts.clear()
         emulator.active_battle_accounts.update(self._active_battle_accounts)
         emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = self._enable_client_shot_damage_effects
+        emulator.KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS = self._keep_remote_entities_on_visibility_loss
         emulator.SHOT_DISPERSION_ENABLED = self._shot_dispersion_enabled
         emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = self._shot_dispersion_server_radius_scale
         emulator.SHOT_DISPERSION_CENTER_BIAS = self._shot_dispersion_center_bias
@@ -666,6 +669,41 @@ class RuntimeCoreTests(unittest.TestCase):
                 "invisibilityMoving": 0.95,
                 "invisibilityStill": 0.95,
             })
+
+        self.assertTrue(emulator.is_vehicle_visible_to(observer, target))
+
+    def test_enemy_is_hidden_before_battle_period(self):
+        observer = _make_combat_session(
+            57, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank"})
+        target = _make_combat_session(
+            58, 2, (0.0, 0.0, 100.0),
+            vehicle={"vehicleClass": "lightTank"})
+        observer["battle_period_active"] = False
+        target["battle_period_active"] = False
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               side_effect=capture_send):
+            emulator.send_remote_vehicle(object(), observer, target)
+
+        self.assertFalse(emulator.is_vehicle_visible_to(observer, target))
+        self.assertNotIn(target["account_id"], observer["known_remote_accounts"])
+        self.assertEqual(sent, [])
+
+    def test_ally_is_visible_before_battle_period(self):
+        observer = _make_combat_session(
+            59, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank"})
+        target = _make_combat_session(
+            60, 1, (0.0, 0.0, 1000.0),
+            vehicle={"vehicleClass": "lightTank"})
+        observer["battle_period_active"] = False
+        target["battle_period_active"] = False
 
         self.assertTrue(emulator.is_vehicle_visible_to(observer, target))
 
@@ -3445,6 +3483,56 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIsNone(resolved)
         self.assertEqual(target["battle_vehicle_health"], 300)
 
+    def test_direct_shot_uses_marker_when_gun_is_nearly_aligned(self):
+        shell = _make_shell(compact=9105, speed=500.0, gravity=9.81)
+        tank = _make_combat_vehicle()
+        tank.update({
+            "defaultAmmo": [9105, 1],
+            "shells": [shell],
+        })
+        source = _make_combat_session(177, 1, (0.0, 0.0, 0.0),
+                                      vehicle=tank)
+        source["battle_current_shell"] = 9105
+        source["battle_ammo_stock"] = {9105: 1}
+        source["battle_turret_yaw"] = math.radians(20.0)
+        source["battle_gun_pitch"] = 0.0
+        source["battle_target_pos"] = (0.0, 2.0, 100.0)
+        source["battle_target_pos_time"] = time.time()
+
+        _msgs, _reload_time, _shell_cd, fired = (
+            emulator.build_vehicle_shot_messages(source))
+        shot_vec = source["battle_last_server_shot_vec"]
+        marker = source["battle_last_shot_target_pos"]
+
+        self.assertTrue(fired)
+        self.assertAlmostEqual(shot_vec[0], 0.0, places=5)
+        self.assertAlmostEqual(shot_vec[1], 0.0, places=5)
+        self.assertAlmostEqual(shot_vec[2], 1.0, places=5)
+        self.assertAlmostEqual(marker[0], 0.0, places=5)
+        self.assertAlmostEqual(marker[2], 100.0, places=5)
+
+    def test_direct_marker_vertical_slop_accepts_client_marker_above_tank(self):
+        source = _make_combat_session(178, 1, (0.0, 0.0, 40.0))
+        target = _make_combat_session(179, 2, (0.0, 15.0, 0.0), health=300)
+        marker = (6.85, 20.86, 0.0)
+        source["battle_last_shot_target_pos"] = marker
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+        shot_pos = (0.0, 17.0, 40.0)
+        shot_vec = emulator.normalize_vec((
+            marker[0] - shot_pos[0],
+            marker[1] - shot_pos[1],
+            marker[2] - shot_pos[2],
+        ))
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit",
+                               return_value=None):
+            hit_info = emulator.find_shot_target(source, shot_pos, shot_vec)
+
+        self.assertIsNotNone(hit_info)
+        self.assertIs(hit_info["target"], target)
+
     def test_visual_shot_ids_are_unique_across_players(self):
         shell = _make_shell(compact=9103, speed=120.0, gravity=9.81)
         tank = _make_combat_vehicle()
@@ -3511,7 +3599,7 @@ class RuntimeCoreTests(unittest.TestCase):
              emulator.AVATAR_SHOW_TRACER_MSG_ID])
         self.assertEqual(scheduled, [])
 
-    def test_unknown_remote_shot_retries_shooting_after_intro(self):
+    def test_unknown_remote_shot_delays_visuals_after_intro(self):
         source = _make_combat_session(175, 1, (0.0, 0.0, 40.0))
         observer = _make_combat_session(176, 2, (0.0, 0.0, 20.0))
         emulator.active_battle_accounts[source["account_id"]] = source
@@ -3536,22 +3624,19 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertEqual(len(sent), 1)
         self.assertIs(sent[0][0], observer)
-        self.assertTrue(sent[0][1].startswith(b"INTRO"))
-        self.assertEqual(
-            _message_ids(sent[0][1][len(b"INTRO"):]),
-            [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID,
-             emulator.AVATAR_SHOW_TRACER_MSG_ID])
+        self.assertEqual(sent[0][1], b"INTRO")
         self.assertIn(source["account_id"], observer["known_remote_accounts"])
         self.assertIn(source["account_id"], observer["arena_remote_accounts"])
         self.assertEqual(len(scheduled), 1)
-        self.assertAlmostEqual(scheduled[0][0], emulator.REMOTE_SHOT_SOUND_DELAY)
+        self.assertAlmostEqual(scheduled[0][0], emulator.REMOTE_SHOT_INTRO_DELAY)
 
         before_callback = len(sent)
         with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send):
             scheduled[0][1]()
         self.assertEqual(len(sent), before_callback + 1)
         self.assertEqual(_message_ids(sent[-1][1]),
-                         [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID])
+                         [emulator.VEHICLE_SHOW_SHOOTING_MSG_ID,
+                          emulator.AVATAR_SHOW_TRACER_MSG_ID])
 
     def test_firing_can_reduce_camo_and_reveal_shooter(self):
         source = _make_combat_session(
@@ -3664,6 +3749,34 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIn(source["account_id"], observer["known_remote_accounts"])
         self.assertEqual(sent, [])
 
+    def test_visibility_loss_sends_leave_aoi_after_shot_grace(self):
+        source = _make_combat_session(
+            197, 2, (0.0, 0.0, 1000.0),
+            vehicle={"vehicleClass": "lightTank"})
+        observer = _make_combat_session(
+            198, 1, (0.0, 0.0, 0.0),
+            vehicle={"vehicleClass": "heavyTank", "circularVisionRadius": 50.0})
+        observer["known_remote_accounts"].add(source["account_id"])
+        source["battle_last_shot_time"] = (
+            time.time() - emulator.SHOT_VISIBILITY_GRACE_SECONDS - 1.0)
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[observer["account_id"]] = observer
+        sent = []
+
+        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
+            sent.append(bytes(msgs))
+            return True
+
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               side_effect=capture_send):
+            visible = emulator.update_remote_vehicle_visibility(
+                object(), observer, source)
+
+        self.assertFalse(visible)
+        self.assertNotIn(source["account_id"], observer["known_remote_accounts"])
+        self.assertTrue(sent)
+        self.assertIn(emulator.CLIENT_LEAVE_AOI_MSG_ID, _message_ids(sent[0]))
+
     def test_known_hidden_remote_shot_does_not_leave_aoi_or_send_tracer(self):
         source = _make_combat_session(
             195, 2, (0.0, 0.0, 300.0),
@@ -3758,9 +3871,14 @@ class RuntimeCoreTests(unittest.TestCase):
         damage_payloads = _message_payloads(
             target_messages,
             emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID)
-        self.assertTrue(damage_payloads)
-        self.assertEqual(struct.unpack_from("<I", damage_payloads[0], 4)[0],
-                         0)
+        self.assertFalse(damage_payloads)
+        health_payloads = [
+            payload for payload in _message_payloads(
+                target_messages,
+                emulator.AVATAR_UPDATE_VEHICLE_HEALTH_MSG_ID)
+            if len(payload) == 7
+        ]
+        self.assertTrue(health_payloads)
         explosion_payloads = [
             payload for payload in _message_payloads(
                 target_messages,
@@ -3855,10 +3973,14 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIn(102, source["battle_damaged_vehicle_ids"])
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
         self.assertTrue(sent_messages)
-        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
-                      [msg[:1] for msg in sent_messages])
-        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
-                         [msg[:1] for msg in sent_messages])
+        joined = b"".join(sent_messages)
+        self.assertFalse(_message_payloads(
+            joined, emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID))
+        self.assertFalse([
+            payload for payload in _message_payloads(
+                joined, emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID)
+            if len(payload) == 21
+        ])
 
     def test_direct_marker_hit_prevents_false_side_ricochet(self):
         source = _make_combat_session(
@@ -4023,11 +4145,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(damage, 0)
         self.assertEqual(target["battle_vehicle_health"], 300)
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
-        self.assertTrue(sent_messages)
-        self.assertIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_SHOT_MSG_ID]),
-                      [msg[:1] for msg in sent_messages])
-        self.assertNotIn(bytes([emulator.VEHICLE_SHOW_DAMAGE_FROM_EXPLOSION_MSG_ID]),
-                         [msg[:1] for msg in sent_messages])
+        self.assertEqual(sent_messages, [])
 
     def test_he_non_penetration_deals_reduced_damage(self):
         source = _make_combat_session(131, 1, (0.0, 0.0, 0.0))
