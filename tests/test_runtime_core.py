@@ -2482,6 +2482,55 @@ class RuntimeCoreTests(unittest.TestCase):
             {"cache": {"vehsLock": {7: None}}},
         )
 
+    def test_account_revision_bump_invalidates_full_sync_cache(self):
+        account_id = 0
+        old_rev = dict(emulator._ACCOUNT_SYNC_REV)
+        old_pickle = dict(emulator._CACHED_SYNC_PICKLE)
+        old_blob = dict(emulator._CACHED_SYNC_BLOB)
+        try:
+            emulator._ACCOUNT_SYNC_REV[account_id] = 0
+            emulator._CACHED_SYNC_PICKLE.pop(account_id, None)
+            emulator._CACHED_SYNC_BLOB.pop(account_id, None)
+
+            first = pickle.loads(emulator.get_sync_pickle(account_id))
+            emulator.bump_account_sync_revision(account_id)
+            second = pickle.loads(emulator.get_sync_pickle(account_id))
+
+            self.assertEqual(first["rev"], 0)
+            self.assertEqual(second["rev"], 1)
+        finally:
+            emulator._ACCOUNT_SYNC_REV.clear()
+            emulator._ACCOUNT_SYNC_REV.update(old_rev)
+            emulator._CACHED_SYNC_PICKLE.clear()
+            emulator._CACHED_SYNC_PICKLE.update(old_pickle)
+            emulator._CACHED_SYNC_BLOB.clear()
+            emulator._CACHED_SYNC_BLOB.update(old_blob)
+
+    def test_stale_sync_request_replays_full_stream(self):
+        account_id = 987655
+        old_rev = dict(emulator._ACCOUNT_SYNC_REV)
+        try:
+            emulator._ACCOUNT_SYNC_REV[account_id] = 2
+            sess = {
+                "account_id": account_id,
+                "sync_data_stream_sent": True,
+            }
+            payload = struct.pack(
+                "<hhiii", 17, emulator.CMD_SYNC_DATA, 0, 0, 0)
+
+            with mock.patch.object(emulator, "send_sync_stream",
+                                   return_value=None) as stream, \
+                    mock.patch.object(emulator, "send_avatar_messages",
+                                      return_value=True) as send:
+                emulator.handle_account_doCmd(object(), ("127.0.0.1", 1),
+                                              sess, 0xc4, payload)
+
+            stream.assert_called_once()
+            send.assert_not_called()
+        finally:
+            emulator._ACCOUNT_SYNC_REV.clear()
+            emulator._ACCOUNT_SYNC_REV.update(old_rev)
+
     def test_enqueue_pushes_vehicle_queue_lock(self):
         sess = {
             "account_id": 771,

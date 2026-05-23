@@ -3391,6 +3391,8 @@ def bump_account_sync_revision(account_id: int = 0) -> int:
     with _sync_cache_lock:
         rev = int(_ACCOUNT_SYNC_REV.get(key, 0)) + 1
         _ACCOUNT_SYNC_REV[key] = rev
+        _CACHED_SYNC_PICKLE.pop(key, None)
+        _CACHED_SYNC_BLOB.pop(key, None)
         return rev
 
 
@@ -3423,6 +3425,14 @@ def invalidate_sync_cache(account_id: int = 0):
 
 def make_empty_sync_pickle(prev_rev=0) -> bytes:
     return pickle.dumps({'rev': prev_rev, 'prevRev': prev_rev}, protocol=2)
+
+
+def parse_sync_requested_revision(payload: bytes) -> int:
+    args = parse_doCmd_int3(payload)
+    if args is None:
+        return 0
+    first, second, _third = args
+    return ((int(first) & 0xffffffff) << 32) | (int(second) & 0xffffffff)
 
 
 def push_account_diff(sock, addr, sess, partial_diff: dict) -> bool:
@@ -11099,6 +11109,12 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         if sess.get('sync_data_stream_sent'):
             account_id = int(sess.get('account_id') or 0)
             current_rev = get_account_sync_revision(account_id)
+            requested_rev = parse_sync_requested_revision(payload)
+            if requested_rev != current_rev:
+                send_sync_stream(sock, addr, sess, req_id)
+                print(f"    [>] syncData STREAM: req={req_id}, "
+                      f"clientRev={requested_rev}, serverRev={current_rev}")
+                return
             msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_sync_pickle(current_rev))
             if not send_avatar_messages(sock, addr, sess, msg, '', reliable=True):
                 return
