@@ -103,6 +103,8 @@ DEFAULT_CONFIG = {
         "shot_dispersion_min_radius": 0.25,
         "shot_dispersion_max_radius": 30.0,
         "shot_damage_randomization": 0.25,
+        "shot_ap_nonpen_damage_factor": 0.0,
+        "shot_ricochet_damage_factor": 0.0,
         "spotting_enabled": True,
         "spotting_auto_reveal_distance": 50.0,
         "spotting_max_range": 445.0,

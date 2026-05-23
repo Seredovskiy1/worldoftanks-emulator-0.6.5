@@ -349,6 +349,8 @@ class RuntimeCoreTests(unittest.TestCase):
         self._shot_dispersion_server_radius_scale = emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE
         self._shot_dispersion_center_bias = emulator.SHOT_DISPERSION_CENTER_BIAS
         self._shot_damage_randomization = emulator.SHOT_DAMAGE_RANDOMIZATION
+        self._shot_ap_nonpen_damage_factor = emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR
+        self._shot_ricochet_damage_factor = emulator.SHOT_RICOCHET_DAMAGE_FACTOR
         emulator.active_battle_accounts.clear()
         emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
         emulator.KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS = False
@@ -356,6 +358,8 @@ class RuntimeCoreTests(unittest.TestCase):
         emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = 0.45
         emulator.SHOT_DISPERSION_CENTER_BIAS = 2.5
         emulator.SHOT_DAMAGE_RANDOMIZATION = 0.0
+        emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR = 0.0
+        emulator.SHOT_RICOCHET_DAMAGE_FACTOR = 0.0
 
     def tearDown(self):
         emulator.active_battle_accounts.clear()
@@ -366,6 +370,8 @@ class RuntimeCoreTests(unittest.TestCase):
         emulator.SHOT_DISPERSION_SERVER_RADIUS_SCALE = self._shot_dispersion_server_radius_scale
         emulator.SHOT_DISPERSION_CENTER_BIAS = self._shot_dispersion_center_bias
         emulator.SHOT_DAMAGE_RANDOMIZATION = self._shot_damage_randomization
+        emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR = self._shot_ap_nonpen_damage_factor
+        emulator.SHOT_RICOCHET_DAMAGE_FACTOR = self._shot_ricochet_damage_factor
 
     def test_a20_speed_limits_are_xml_values(self):
         vehicle = next(v for v in emulator.load_all_vehicles() if v["name"] == "A-20")
@@ -4366,6 +4372,74 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(target["battle_vehicle_health"], 300)
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
         self.assertEqual(sent_messages, [])
+
+    def test_configured_ap_nonpenetration_can_still_deal_damage(self):
+        source = _make_combat_session(123, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(124, 2, (0.0, 0.0, 20.0), health=300)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 300.0,
+            "impactCos": 1.0,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+        old_factor = emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR
+        try:
+            emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR = 1.0
+            with mock.patch.object(emulator, "find_shot_target",
+                                   return_value=hit_info), \
+                    mock.patch.object(emulator, "send_avatar_messages",
+                                      return_value=True), \
+                    mock.patch.object(emulator, "send_remote_vehicle",
+                                      return_value=None):
+                _target, damage, resolved = emulator.apply_shot_damage(
+                    object(), source,
+                    _make_shell(penetration=100.0, damage=100.0),
+                    (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+        finally:
+            emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR = old_factor
+
+        self.assertEqual(damage, 100)
+        self.assertEqual(target["battle_vehicle_health"], 200)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_NOT_PIERCED)
+
+    def test_configured_ricochet_can_still_deal_damage(self):
+        source = _make_combat_session(125, 1, (0.0, 0.0, 0.0))
+        target = _make_combat_session(126, 2, (0.0, 0.0, 20.0), health=300)
+        hit_info = {
+            "target": target,
+            "distance": 100.0,
+            "armor": 50.0,
+            "impactCos": 0.2,
+            "component": "hull",
+            "zone": "front",
+            "hitLocal": (0.0, 1.0, 5.2),
+            "dimensions": emulator.armor_dimensions({}),
+            "localShotDir": (0.0, 0.0, -1.0),
+        }
+        old_factor = emulator.SHOT_RICOCHET_DAMAGE_FACTOR
+        try:
+            emulator.SHOT_RICOCHET_DAMAGE_FACTOR = 1.0
+            with mock.patch.object(emulator, "find_shot_target",
+                                   return_value=hit_info), \
+                    mock.patch.object(emulator, "send_avatar_messages",
+                                      return_value=True), \
+                    mock.patch.object(emulator, "send_remote_vehicle",
+                                      return_value=None):
+                _target, damage, resolved = emulator.apply_shot_damage(
+                    object(), source,
+                    _make_shell(penetration=200.0, damage=100.0),
+                    (0.0, 0.0, 0.0), (0.0, 0.0, -1.0))
+        finally:
+            emulator.SHOT_RICOCHET_DAMAGE_FACTOR = old_factor
+
+        self.assertEqual(damage, 100)
+        self.assertEqual(target["battle_vehicle_health"], 200)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_RICOCHET)
 
     def test_he_non_penetration_deals_reduced_damage(self):
         source = _make_combat_session(131, 1, (0.0, 0.0, 0.0))

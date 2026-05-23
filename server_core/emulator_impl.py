@@ -3052,7 +3052,7 @@ def resolve_shot_armor(shell: dict, hit_info: dict) -> dict:
     can_ricochet = is_armor_piercing_shell(shell) or is_hollow_charge_shell(shell)
     if can_ricochet and cos_value <= ricochet_cos:
         result = SHOT_RESULT_RICOCHET
-        damage = 0
+        damage = int(round(get_shell_damage(shell) * SHOT_RICOCHET_DAMAGE_FACTOR))
         penetration = get_shell_base_penetration(shell, distance)
     else:
         penetration = get_randomized_penetration(shell, distance)
@@ -3069,7 +3069,7 @@ def resolve_shot_armor(shell: dict, hit_info: dict) -> dict:
                              int(round(get_shell_damage(shell) * SHOT_HE_NONPEN_DAMAGE_FACTOR)))
         else:
             result = SHOT_RESULT_ARMOR_NOT_PIERCED
-            damage = 0
+            damage = int(round(get_shell_damage(shell) * SHOT_AP_NONPEN_DAMAGE_FACTOR))
     out = dict(hit_info)
     out.update({
         'result': result,
@@ -4180,6 +4180,10 @@ SHOT_DISPERSION_MAX_RADIUS = float(get_value(
     CONFIG, 'combat.shot_dispersion_max_radius', 30.0))
 SHOT_DAMAGE_RANDOMIZATION = max(0.0, min(0.95, float(get_value(
     CONFIG, 'combat.shot_damage_randomization', 0.25))))
+SHOT_AP_NONPEN_DAMAGE_FACTOR = max(0.0, min(1.0, float(get_value(
+    CONFIG, 'combat.shot_ap_nonpen_damage_factor', 0.0))))
+SHOT_RICOCHET_DAMAGE_FACTOR = max(0.0, min(1.0, float(get_value(
+    CONFIG, 'combat.shot_ricochet_damage_factor', 0.0))))
 SHOT_RESULT_RICOCHET = 0
 SHOT_RESULT_ARMOR_NOT_PIERCED = 1
 SHOT_RESULT_ARMOR_PIERCED_NO_DAMAGE = 2
