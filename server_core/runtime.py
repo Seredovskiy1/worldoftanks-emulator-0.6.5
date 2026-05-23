@@ -205,14 +205,14 @@ class EventLoopRuntime:
                     process_collision(sock, sess)
             source_account_id = sess.get("account_id")
             remote_id = mod.get_remote_vehicle_id(sess)
-            _yaw, gun_pitch, turret_yaw = mod.get_remote_vehicle_angles(sess)
+            _yaw, pitch, roll = mod.get_remote_vehicle_angles(sess)
             remote_pos = mod.get_effective_vehicle_pos(sess, pos)
             if (not in_prebattle and
                     not sess.get("server_vehicle_authoritative", True) and
                     mod.is_recent_client_vehicle_position(sess)):
                 yaw = float(sess.get("client_vehicle_yaw", yaw))
             remote_msg = mod.build_vehicle_motion_update_for(
-                remote_id, remote_pos, yaw, gun_pitch, turret_yaw)
+                remote_id, remote_pos, yaw, pitch, roll)
             for observer in sessions:
                 if observer is sess or not observer.get("addr"):
                     continue
