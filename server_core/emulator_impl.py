@@ -4996,7 +4996,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                period_end_time: int = PREBATTLE_TIMER_SECONDS,
                                period_length: int = PREBATTLE_TIMER_SECONDS,
                                vehicle_list=None,
-                               statistics_list=None) -> bytes:
+                               statistics_list=None,
+                               battle_id: int = 1) -> bytes:
     """РџРµСЂРµС…С–Рґ Account в†’ Avatar РґР»СЏ РІС…РѕРґСѓ РІ Р±С–Р№.
 
     Bundle:
@@ -5061,7 +5062,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     mapping_data = build_geometry_mapping_data(geometry_path)
     # РЈРЅС–РєР°Р»СЊРЅРёР№ SpaceEntryID (Mercury::Address) вЂ” С‰РѕР± GeometryMapping РЅРµ
     # РґРµРґСѓРїР»С–РєСѓРІР°РІСЃСЏ РїСЂРё reuse. РўСЂРёРјР°С”РјРѕ РґРµС‚РµСЂРјС–РЅРѕРІР°РЅРѕ РЅР° РѕСЃРЅРѕРІС– space_id+key.
-    entry_id = struct.pack('<IHH', SPACE_ID, 0, random.randint(1, 65535))
+    entry_id = struct.pack('<IHH', SPACE_ID, 0, int(battle_id or 1) & 0xffff)
     msgs += build_space_data_message(SPACE_ID,
                                      SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
                                      mapping_data,
@@ -7076,7 +7077,8 @@ def send_avatar_player(sock, addr, sess):
                                       period_end_time=0,
                                       period_length=0,
                                       vehicle_list=vehicle_list,
-                                      statistics_list=statistics_list)
+                                      statistics_list=statistics_list,
+                                      battle_id=int(sess.get('battle_match_id') or 1))
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
     try:
