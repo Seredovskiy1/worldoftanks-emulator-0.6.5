@@ -147,6 +147,8 @@ def parse_logon_params(data):
 
 def normalize_login_name(username: str) -> str:
     username = (username or '').strip()
+    if '@' in username:
+        username = username.split('@')[0]
     username = ''.join(ch for ch in username if ch.isalnum() or ch in ('_', '-', '.'))
     return username[:24] or 'player'
 
