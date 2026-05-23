@@ -2015,6 +2015,10 @@ def is_hull_aim_autorotation_vehicle(vehicle: dict) -> bool:
     return is_artillery_vehicle(vehicle) or is_at_spg_vehicle(vehicle)
 
 
+def is_hull_locked_gun_vehicle(vehicle: dict) -> bool:
+    return is_at_spg_vehicle(vehicle) and not is_artillery_vehicle(vehicle)
+
+
 _MOTION_WARNED = False
 
 
@@ -5595,10 +5599,20 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
     now = time.time()
     motion_prev = prev if prev is not None else sess.get('battle_pos')
     if motion_prev is not None:
+        prev_x = float(motion_prev[0])
+        prev_z = float(motion_prev[2])
         new_x, new_z, blocked = resolve_motion_against_vehicles(
-            sess, float(motion_prev[0]), float(motion_prev[2]),
+            sess, prev_x, prev_z,
             float(pos[0]), float(pos[2]), yaw=yaw)
-        if blocked:
+        arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
+        new_x, new_z, static_blocked = resolve_motion_against_obstacles(
+            arena_type_id, prev_x, prev_z, new_x, new_z)
+        if static_blocked:
+            resolved_y, _normal = sample_terrain(
+                arena_type_id, new_x, new_z, float(pos[1]))
+            sess['battle_motion_force_position'] = True
+            pos = (new_x, resolved_y, new_z)
+        elif blocked:
             pos = (new_x, float(pos[1]), new_z)
     if prev is None:
         print(f"    [client_pos] FIRST set client_vehicle_pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) yaw={yaw:.2f}")
@@ -5640,6 +5654,8 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
         sess['battle_yaw'] = yaw
         sess['battle_speed'] = float(sess.get('client_vehicle_observed_speed', 0.0))
         sess['battle_rspeed'] = float(sess.get('client_vehicle_observed_rspeed', 0.0))
+    if is_hull_locked_gun_vehicle(get_session_battle_vehicle(sess)):
+        sess['battle_turret_yaw'] = yaw
     sess['client_vehicle_pos'] = pos
     sess['client_vehicle_yaw'] = yaw
     sess['client_vehicle_last_update_time'] = now
@@ -5661,7 +5677,10 @@ def get_remote_vehicle_angles(remote_sess: dict):
         yaw = float(remote_sess.get('client_vehicle_yaw', remote_sess.get('battle_yaw', 0.0)))
     else:
         yaw = float(remote_sess.get('battle_yaw', 0.0))
-    turret_yaw = float(remote_sess.get('battle_turret_yaw', yaw))
+    vehicle = get_session_battle_vehicle(remote_sess)
+    turret_yaw = (
+        yaw if is_hull_locked_gun_vehicle(vehicle)
+        else float(remote_sess.get('battle_turret_yaw', yaw)))
     gun_pitch = -float(remote_sess.get('battle_gun_pitch', 0.0))
     gun_pitch = clamp(gun_pitch * REMOTE_GUN_PITCH_SCALE,
                       -REMOTE_GUN_PITCH_LIMIT,
@@ -6428,6 +6447,8 @@ def advance_battle_motion(sess: dict, flags: int = None):
     sess['battle_prev_pos'] = prev_pos
     sess['battle_pos'] = (x, y, z)
     sess['battle_yaw'] = yaw
+    if is_hull_locked_gun_vehicle(vehicle):
+        sess['battle_turret_yaw'] = yaw
     sess['battle_speed'] = speed
     sess['battle_rspeed'] = rspeed
     sess['battle_target_speed'] = target_speed
@@ -6650,13 +6671,19 @@ def build_targeting_for_point(sess: dict, target_pos):
     sess['battle_targeting_state_time'] = now
     turret_speed = float(vehicle.get('turretRotationSpeed', 0.5235987755982988))
     gun_speed = float(vehicle.get('gunRotationSpeed', 0.5235987755982988))
-    current_turret_yaw = float(sess.get('battle_turret_yaw', sess.get('battle_yaw', 0.0)))
+    hull_yaw = float(sess.get('battle_yaw', 0.0))
+    hull_locked = is_hull_locked_gun_vehicle(vehicle)
+    if hull_locked:
+        desired_turret_yaw = hull_yaw
+    current_turret_yaw = float(sess.get('battle_turret_yaw', hull_yaw))
+    if hull_locked:
+        current_turret_yaw = hull_yaw
     current_gun_pitch = float(sess.get('battle_gun_pitch', 0.0))
     turret_delta = normalize_angle(desired_turret_yaw - current_turret_yaw)
     gun_delta = desired_gun_pitch - current_gun_pitch
     turret_step = clamp(turret_delta, -turret_speed * dt, turret_speed * dt)
     gun_step = clamp(gun_delta, -gun_speed * dt, gun_speed * dt)
-    turret_yaw = normalize_angle(current_turret_yaw + turret_step)
+    turret_yaw = hull_yaw if hull_locked else normalize_angle(current_turret_yaw + turret_step)
     gun_pitch = current_gun_pitch + gun_step
     sess['battle_turret_yaw'] = turret_yaw
     sess['battle_gun_pitch'] = gun_pitch
@@ -6664,7 +6691,7 @@ def build_targeting_for_point(sess: dict, target_pos):
     sess['battle_target_pos_time'] = now
     sess['battle_shot_pos'] = shot_pos
     current_shot_vec = shot_vec_from_angles(turret_yaw, gun_pitch)
-    marker_shot_vec = current_shot_vec if high_arc else shot_vec
+    marker_shot_vec = current_shot_vec
     sess['battle_shot_vec'] = marker_shot_vec
     dispersion_angle = (shot_dispersion_angle(shot_pos, target_pos)
                         if SHOT_DISPERSION_ENABLED and not high_arc
@@ -7163,6 +7190,24 @@ def apply_shot_dispersion(sess: dict, shot_pos, target_pos):
     )
 
 
+def direct_fire_target_point_from_gun(shot_pos, marker_pos, shot_vec):
+    marker_pos = safe_vec3(marker_pos, None)
+    shot_vec = normalize_vec(shot_vec)
+    if marker_pos is not None:
+        dx = float(marker_pos[0]) - float(shot_pos[0])
+        dy = float(marker_pos[1]) - float(shot_pos[1])
+        dz = float(marker_pos[2]) - float(shot_pos[2])
+        distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    else:
+        distance = SHOT_TRACE_DISTANCE
+    distance = clamp(distance, 1.0, SHOT_TRACE_DISTANCE)
+    return (
+        float(shot_pos[0]) + shot_vec[0] * distance,
+        float(shot_pos[1]) + shot_vec[1] * distance,
+        float(shot_pos[2]) + shot_vec[2] * distance,
+    )
+
+
 def shot_vec_from_angles(turret_yaw, gun_pitch):
     turret_yaw = safe_float(turret_yaw, 0.0)
     gun_pitch = safe_float(gun_pitch, 0.0)
@@ -7174,8 +7219,13 @@ def shot_vec_from_angles(turret_yaw, gun_pitch):
 
 
 def get_session_current_gun_direction(sess: dict):
+    vehicle = get_session_battle_vehicle(sess)
+    turret_yaw = (
+        sess.get('battle_yaw', 0.0)
+        if is_hull_locked_gun_vehicle(vehicle)
+        else sess.get('battle_turret_yaw', sess.get('battle_yaw', 0.0)))
     return shot_vec_from_angles(
-        sess.get('battle_turret_yaw', sess.get('battle_yaw', 0.0)),
+        turret_yaw,
         sess.get('battle_gun_pitch', 0.0))
 
 
@@ -7318,18 +7368,22 @@ def build_vehicle_shot_messages(sess: dict):
             if target_pos is not None else None)
         sess['battle_last_shot_target_pos_time'] = now
     else:
-        target_pos = apply_shot_dispersion(
-            sess, shot_pos, sess.get('battle_target_pos'))
+        base_shot_vec = get_session_current_gun_direction(sess)
+        gun_target_pos = direct_fire_target_point_from_gun(
+            shot_pos, sess.get('battle_target_pos'), base_shot_vec)
+        target_pos = apply_shot_dispersion(sess, shot_pos, gun_target_pos)
         sess['battle_last_shot_target_pos'] = (
             tuple(float(v) for v in target_pos)
             if target_pos is not None else None)
-        sess['battle_last_shot_target_pos_time'] = sess.get(
-            'battle_target_pos_time', 0.0)
+        sess['battle_last_shot_target_pos_time'] = now
         if target_pos is not None:
-            server_shot_vec = ballistic_shot_vec(
-                shot_pos, target_pos, speed, gravity, high_arc=False)
+            server_shot_vec = normalize_vec((
+                float(target_pos[0]) - shot_pos[0],
+                float(target_pos[1]) - shot_pos[1],
+                float(target_pos[2]) - shot_pos[2],
+            ))
         else:
-            server_shot_vec = get_session_shot_direction(sess)
+            server_shot_vec = base_shot_vec
     server_velocity = (
         server_shot_vec[0] * speed,
         server_shot_vec[1] * speed,
@@ -9380,11 +9434,26 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                     best_center = center
                     best_pos = pos
 
-    ray_candidate = None
-    if best_target is None:
-        ray_candidate = find_direct_ray_shot_candidate(
-            source_sess, shot_pos, shot_vec, candidates)
-        if ray_candidate is not None:
+    ray_candidate = find_direct_ray_shot_candidate(
+        source_sess, shot_pos, shot_vec, candidates)
+    chosen_ray_candidate = None
+    if ray_candidate is not None:
+        use_ray_candidate = best_target is None
+        if best_target is not None:
+            vehicle = get_session_battle_vehicle(best_target)
+            armor_model = vehicle_armor_model(vehicle)
+            dims = armor_dimensions(armor_model)
+            yaw = vehicle_hit_yaw(best_target)
+            marker_ray_hit = ray_vehicle_box_hit(
+                shot_pos, shot_vec, best_pos, yaw, dims)
+            marker_distance = (
+                float(marker_ray_hit[3]) if marker_ray_hit is not None
+                else None)
+            if (marker_distance is None or
+                    ray_candidate['distance'] + 0.001 < marker_distance):
+                use_ray_candidate = True
+        if use_ray_candidate:
+            chosen_ray_candidate = ray_candidate
             best_target = ray_candidate['target']
             best_pos = ray_candidate['pos']
             best_center = ray_candidate['center']
@@ -9422,12 +9491,12 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v_signed={vertical_signed:+.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V_below={SHOT_TANK_HIT_RADIUS_V} V_above={SHOT_TANK_MARKER_VERT_ABOVE})")
         return None
 
-    if ray_candidate is not None:
-        vehicle = ray_candidate['vehicle']
-        armor_model = ray_candidate['armorModel']
-        dims = ray_candidate['dims']
-        yaw = ray_candidate['yaw']
-        ray_hit = ray_candidate['rayHit']
+    if chosen_ray_candidate is not None:
+        vehicle = chosen_ray_candidate['vehicle']
+        armor_model = chosen_ray_candidate['armorModel']
+        dims = chosen_ray_candidate['dims']
+        yaw = chosen_ray_candidate['yaw']
+        ray_hit = chosen_ray_candidate['rayHit']
     else:
         vehicle = get_session_battle_vehicle(best_target)
         armor_model = vehicle_armor_model(vehicle)

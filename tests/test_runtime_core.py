@@ -1435,6 +1435,38 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(was_blocked)
         self.assertEqual((new_x, new_z), (10.5, 0.0))
 
+    def test_client_vehicle_position_blocks_static_obstacle(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        original_index = dict(emulator.STATIC_OBSTACLE_INDEX_CACHE)
+        arena_type_id = 2
+        sess = _make_combat_session(405, 1, (-5.0, 0.0, 0.0))
+        sess["battle_arena_type_id"] = arena_type_id
+        sess["server_vehicle_authoritative"] = False
+        sess["client_vehicle_pos"] = (-5.0, 0.0, 0.0)
+        sess["client_vehicle_last_update_time"] = time.time() - 0.1
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[arena_type_id] = [
+                (0.0, 0.0, 0.0, 2.0, 4.0,
+                 b"content/Buildings/testHouse.model",
+                 ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)))
+            ]
+
+            with mock.patch.object(emulator, "sample_terrain",
+                                   return_value=(0.0, (0.0, 1.0, 0.0))):
+                emulator.record_client_vehicle_position(
+                    sess, (5.0, 0.0, 0.0), 0.0)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
+            emulator.STATIC_OBSTACLE_INDEX_CACHE.update(original_index)
+
+        self.assertEqual(sess["client_vehicle_pos"], (-5.0, 0.0, 0.0))
+        self.assertEqual(sess["battle_pos"], (-5.0, 0.0, 0.0))
+        self.assertTrue(sess["battle_motion_force_position"])
+
     def test_vehicle_collision_blocks_tank_overlap(self):
         source = _make_combat_session(401, 1, (0.0, 0.0, 0.0))
         blocker = _make_combat_session(402, 2, (0.0, 0.0, 4.0))
@@ -1581,6 +1613,39 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertLess(rspeed, 0.0,
                         "AT-SPG hull should rotate left toward the aim point")
         self.assertLess(yaw, 0.0)
+
+    def test_at_spg_targeting_keeps_turret_yaw_locked_to_hull(self):
+        td = _make_combat_vehicle()
+        td.update({
+            "vehicleClass": "AT-SPG",
+            "isATSPG": True,
+            "tags": frozenset(("AT-SPG",)),
+            "turretRotationSpeed": math.radians(90.0),
+            "gunRotationSpeed": math.radians(90.0),
+        })
+        sess = _make_combat_session(806, 1, (0.0, 0.0, 0.0), vehicle=td)
+        sess["battle_yaw"] = math.radians(15.0)
+        sess["battle_turret_yaw"] = math.radians(15.0)
+        sess["battle_targeting_state_time"] = time.time() - 0.2
+
+        emulator.build_targeting_for_point(sess, (-50.0, 1.3, 50.0))
+
+        self.assertAlmostEqual(sess["battle_turret_yaw"], sess["battle_yaw"])
+        self.assertAlmostEqual(
+            emulator.normalize_angle(
+                math.atan2(sess["battle_shot_vec"][0],
+                           sess["battle_shot_vec"][2]) -
+                sess["battle_yaw"]),
+            0.0)
+        sess["battle_turret_yaw"] = math.radians(-80.0)
+        shot_vec = emulator.get_session_current_gun_direction(sess)
+        _yaw, _pitch, remote_turret_yaw = emulator.get_remote_vehicle_angles(sess)
+        self.assertAlmostEqual(
+            emulator.normalize_angle(
+                math.atan2(shot_vec[0], shot_vec[2]) -
+                sess["battle_yaw"]),
+            0.0)
+        self.assertAlmostEqual(remote_turret_yaw, 0.0)
 
     def test_spg_hull_does_not_rotate_when_aim_point_aligned(self):
         artillery = _make_combat_vehicle()
@@ -2732,6 +2797,7 @@ class RuntimeCoreTests(unittest.TestCase):
         source["battle_ammo_stock"] = {9202: 1}
         source["battle_target_pos"] = (0.0, 1.3, 20.0)
         source["battle_target_pos_time"] = time.time()
+        _set_gun_direction(source, (0.0, -0.7, -20.0))
         old_enabled = emulator.SHOT_DISPERSION_ENABLED
         old_chance = emulator.SHOT_HIT_CHANCE_PERCENT
         try:
@@ -2746,8 +2812,12 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator.SHOT_HIT_CHANCE_PERCENT = old_chance
 
         self.assertTrue(fired)
-        self.assertEqual(source["battle_last_shot_target_pos"],
-                         (0.0, 1.3, 20.0))
+        self.assertAlmostEqual(source["battle_last_shot_target_pos"][0],
+                               0.0)
+        self.assertAlmostEqual(source["battle_last_shot_target_pos"][1],
+                               1.3)
+        self.assertAlmostEqual(source["battle_last_shot_target_pos"][2],
+                               20.0)
 
     def test_damage_randomization_uses_configured_percent(self):
         old_randomization = emulator.SHOT_DAMAGE_RANDOMIZATION
@@ -3334,6 +3404,47 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(tracer_velocity[0], 0.0, places=5)
         self.assertIsNone(source["battle_last_visual_flight_time"])
 
+    def test_direct_shot_uses_current_barrel_direction_when_marker_is_sideways(self):
+        shell = _make_shell(compact=9104, speed=500.0, gravity=9.81)
+        tank = _make_combat_vehicle()
+        tank.update({
+            "defaultAmmo": [9104, 1],
+            "shells": [shell],
+        })
+        source = _make_combat_session(175, 1, (0.0, 0.0, 0.0),
+                                      vehicle=tank)
+        target = _make_combat_session(176, 2, (8.0, 0.0, 0.0), health=300)
+        source["battle_current_shell"] = 9104
+        source["battle_ammo_stock"] = {9104: 1}
+        source["battle_turret_yaw"] = 0.0
+        source["battle_gun_pitch"] = 0.0
+        source["battle_target_pos"] = (8.0, 1.3, 0.0)
+        source["battle_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[target["account_id"]] = target
+
+        _msgs, _reload_time, _shell_cd, fired = (
+            emulator.build_vehicle_shot_messages(source))
+        shot_vec = source["battle_last_server_shot_vec"]
+        marker = source["battle_last_shot_target_pos"]
+
+        self.assertTrue(fired)
+        self.assertAlmostEqual(shot_vec[0], 0.0, places=5)
+        self.assertAlmostEqual(shot_vec[1], 0.0, places=5)
+        self.assertAlmostEqual(shot_vec[2], 1.0, places=5)
+        self.assertAlmostEqual(marker[0], 0.0, places=5)
+        self.assertGreater(marker[2], 0.0)
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit",
+                               return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, shell, (0.0, 2.0, 0.0), shot_vec)
+
+        self.assertIsNone(hit_target)
+        self.assertEqual(damage, 0)
+        self.assertIsNone(resolved)
+        self.assertEqual(target["battle_vehicle_health"], 300)
+
     def test_visual_shot_ids_are_unique_across_players(self):
         shell = _make_shell(compact=9103, speed=120.0, gravity=9.81)
         tank = _make_combat_vehicle()
@@ -3553,6 +3664,7 @@ class RuntimeCoreTests(unittest.TestCase):
         source["battle_ammo_stock"] = {9303: 1}
         source["battle_target_pos"] = (0.0, 1.3, 20.0)
         source["battle_target_pos_time"] = time.time()
+        _set_gun_direction(source, (0.0, -0.7, -280.0))
         emulator.active_battle_accounts[source["account_id"]] = source
         emulator.active_battle_accounts[target["account_id"]] = target
         sent = []
@@ -3733,6 +3845,32 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertIs(hit_target, target)
         self.assertEqual(damage, 100)
         self.assertEqual(target["battle_vehicle_health"], 200)
+        self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
+
+    def test_direct_ray_hit_prefers_close_tank_before_marker_target(self):
+        source = _make_combat_session(188, 1, (0.0, 0.0, 0.0))
+        close = _make_combat_session(189, 2, (0.0, 0.0, 20.0), health=300)
+        far = _make_combat_session(190, 2, (0.0, 0.0, 80.0), health=300)
+        source["battle_last_shot_target_pos"] = (0.0, 1.3, 80.0)
+        source["battle_last_shot_target_pos_time"] = time.time()
+        emulator.active_battle_accounts[source["account_id"]] = source
+        emulator.active_battle_accounts[close["account_id"]] = close
+        emulator.active_battle_accounts[far["account_id"]] = far
+
+        with mock.patch.object(emulator, "ray_static_obstacle_hit",
+                               return_value=None), \
+                mock.patch.object(emulator, "send_avatar_messages",
+                                  return_value=True), \
+                mock.patch.object(emulator, "send_remote_vehicle",
+                                  return_value=None):
+            hit_target, damage, resolved = emulator.apply_shot_damage(
+                object(), source, _make_shell(penetration=500.0, damage=100.0),
+                (0.0, 1.3, 0.0), (0.0, 0.0, 1.0))
+
+        self.assertIs(hit_target, close)
+        self.assertEqual(damage, 100)
+        self.assertEqual(close["battle_vehicle_health"], 200)
+        self.assertEqual(far["battle_vehicle_health"], 300)
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_ARMOR_PIERCED)
 
     def test_direct_marker_fix_ignores_off_silhouette_marker(self):
