@@ -26,6 +26,25 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__
 CONFIG = load_config(ROOT_DIR)
 
 
+def get_client_roots():
+    roots = []
+    configured = get_value(CONFIG, 'paths.client_root')
+    if configured:
+        roots.append(configured)
+    try:
+        roots.append(os.path.abspath(os.path.join(ROOT_DIR, os.pardir, 'World_of_Tanks')))
+        roots.append(os.path.abspath(os.path.join(ROOT_DIR, os.pardir, os.pardir, 'World_of_Tanks')))
+    except Exception:
+        pass
+    try:
+        roots.append(os.path.expanduser('~/Desktop/World_of_Tanks'))
+    except Exception:
+        pass
+    roots.append(r'C:\Users\qwerty\Desktop\World_of_Tanks')
+    return [r for r in roots if r]
+
+
+
 def _fix_mojibake_text(value):
     if not isinstance(value, str):
         return value
@@ -3743,7 +3762,11 @@ def make_shop_pickle() -> bytes:
                         shell_price = shell.get('price', [0, 0])
                         items[shell_nation][10][0][shell_descr] = tuple(shell_price)
 
-    client_root = get_value(CONFIG, 'paths.client_root') or r'C:\Users\qwerty\Desktop\World_of_Tanks'
+    client_root = r'C:\Users\qwerty\Desktop\World_of_Tanks'
+    for r in get_client_roots():
+        if os.path.exists(r):
+            client_root = r
+            break
     base_dir = os.path.join(client_root, 'res', 'scripts', 'item_defs', 'vehicles')
     nations_map = {'ussr': 0, 'germany': 1, 'usa': 2}
     for nation_name, nation_id in nations_map.items():
@@ -8083,10 +8106,7 @@ def find_client_space_dir(arena_type_id: int):
     if not geometry:
         return None
     relative = geometry.decode('ascii', 'ignore').strip('/').replace('/', os.sep)
-    roots = [
-        get_value(CONFIG, 'paths.client_root'),
-        r'C:\Users\qwerty\Desktop\World_of_Tanks',
-    ]
+    roots = get_client_roots()
     for root in roots:
         if not root:
             continue
@@ -8100,10 +8120,7 @@ def find_client_res_file(resource_path: bytes):
     relative = resource_path.decode('ascii', 'ignore').strip('/').replace('/', os.sep)
     if relative.endswith('.modelx'):
         relative = relative[:-1]
-    roots = [
-        get_value(CONFIG, 'paths.client_root'),
-        r'C:\Users\qwerty\Desktop\World_of_Tanks',
-    ]
+    roots = get_client_roots()
     for root in roots:
         if not root:
             continue
@@ -8632,7 +8649,6 @@ def validate_static_obstacle_instance(arena_type_id: int, chunk_x: int,
     if find_client_res_file(model_path) is None:
         if ignored is not None:
             ignored['missing_model'] = int(ignored.get('missing_model', 0)) + 1
-        return None
     local_x, local_y, local_z = transform[9], transform[10], transform[11]
     margin = STATIC_OBSTACLE_CHUNK_MARGIN
     if not (-margin <= local_x <= BATTLE_TERRAIN_CHUNK_SIZE + margin and
