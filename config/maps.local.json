@@ -1,7 +1,7 @@
 {
   "maps": {
     "fallback_arena_type_id": 1,
-    "enabled_arena_type_ids": [1, 2],
+    "enabled_arena_type_ids": [1],
     "static_obstacle_exclusions": {
       "1": [
         {
