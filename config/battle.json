@@ -102,7 +102,6 @@
       "juniper",
       "shrub",
       "pampas"
-    ],
-    "terrain_orientation_max_degrees": 35.0
+    ]
   }
 }

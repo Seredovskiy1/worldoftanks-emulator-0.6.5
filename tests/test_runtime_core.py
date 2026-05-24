@@ -1113,22 +1113,6 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(z, pos[2])
         self.assertAlmostEqual(yaw_out, yaw)
 
-    def test_remote_vehicle_angles_use_terrain_body_orientation(self):
-        sess = _make_combat_session(32, 1, (10.0, 4.0, 20.0))
-        sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
-        sess["battle_yaw"] = 0.0
-        sess["battle_turret_yaw"] = 1.2
-        sess["battle_gun_pitch"] = 0.4
-
-        with mock.patch.object(
-                emulator, "sample_terrain",
-                return_value=(4.0, (0.0, 0.70710678, -0.70710678))):
-            yaw, pitch, roll = emulator.get_remote_vehicle_angles(sess)
-
-        self.assertAlmostEqual(yaw, 0.0)
-        self.assertGreater(pitch, 0.0)
-        self.assertAlmostEqual(roll, 0.0)
-
     def test_prebattle_session_emits_static_detailed_position(self):
         fake = _FakeBattleModule()
         sess = _make_session(account_id=1, period_active=False)
@@ -1699,15 +1683,13 @@ class RuntimeCoreTests(unittest.TestCase):
             0.0)
         sess["battle_turret_yaw"] = math.radians(-80.0)
         shot_vec = emulator.get_session_current_gun_direction(sess)
+        _yaw, _pitch, remote_turret_yaw = emulator.get_remote_vehicle_angles(sess)
         self.assertAlmostEqual(
             emulator.normalize_angle(
                 math.atan2(shot_vec[0], shot_vec[2]) -
                 sess["battle_yaw"]),
             0.0)
-        with mock.patch.object(emulator, "sample_terrain",
-                               return_value=(0.0, (0.0, 1.0, 0.0))):
-            _yaw, _pitch, remote_roll = emulator.get_remote_vehicle_angles(sess)
-        self.assertAlmostEqual(remote_roll, 0.0)
+        self.assertAlmostEqual(remote_turret_yaw, 0.0)
 
     def test_spg_hull_does_not_rotate_when_aim_point_aligned(self):
         artillery = _make_combat_vehicle()
@@ -3185,52 +3167,6 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_CRITICAL_HIT)
         self.assertTrue(resolved["artilleryDirectHit"])
         self.assertEqual(target["battle_vehicle_health"], 2650)
-
-    def test_artillery_direct_hit_ignores_splash_obstacle_line(self):
-        artillery = _make_combat_vehicle()
-        artillery.update({
-            "vehicleClass": "SPG",
-            "isSPG": True,
-            "tags": frozenset(("SPG",)),
-        })
-        source = _make_combat_session(709, 1, (0.0, 0.0, 40.0),
-                                      vehicle=artillery)
-        target = _make_combat_session(712, 2, (0.0, 0.0, 20.0), health=300)
-        source["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
-        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=300.0,
-                            damage=120.0, explosion_radius=6.0)
-        source["battle_last_shot_shell"] = shell
-        source["battle_last_shot_target_pos"] = (3.2, 1.3, 20.0)
-        source["battle_last_shot_target_pos_time"] = time.time()
-        emulator.active_battle_accounts[source["account_id"]] = source
-        emulator.active_battle_accounts[target["account_id"]] = target
-
-        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
-        original_index = dict(emulator.STATIC_OBSTACLE_INDEX_CACHE)
-        try:
-            emulator.STATIC_OBSTACLE_CACHE.clear()
-            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
-            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
-                (1.6, 1.3, 20.0, 0.2, 0.5,
-                 b"content/Environment/Rocks/blockingStone.model"),
-            ]
-            with mock.patch.object(emulator, "send_avatar_messages",
-                                   return_value=True), \
-                    mock.patch.object(emulator, "send_remote_vehicle",
-                                      return_value=None):
-                hit_target, damage, resolved = emulator.apply_shot_damage(
-                    object(), source, shell, (0.0, 2.0, 40.0),
-                    emulator.normalize_vec((0.0, -0.2, -1.0)))
-        finally:
-            emulator.STATIC_OBSTACLE_CACHE.clear()
-            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
-            emulator.STATIC_OBSTACLE_INDEX_CACHE.clear()
-            emulator.STATIC_OBSTACLE_INDEX_CACHE.update(original_index)
-
-        self.assertIs(hit_target, target)
-        self.assertGreater(damage, 0)
-        self.assertTrue(resolved["artilleryDirectHit"])
-        self.assertLess(target["battle_vehicle_health"], 300)
 
     def test_artillery_he_splash_deals_scaled_damage_near_marker(self):
         artillery = _make_combat_vehicle()

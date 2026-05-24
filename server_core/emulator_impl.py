@@ -209,33 +209,6 @@ SCHEMA_STATEMENTS = (
     " PRIMARY KEY (account_id, vehicle_compact_descr)"
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-    "CREATE TABLE IF NOT EXISTS disabled_vehicles ("
-    " vehicle_name VARCHAR(128) NOT NULL,"
-    " updated_at DATETIME NOT NULL,"
-    " PRIMARY KEY (vehicle_name)"
-    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-
-    "CREATE TABLE IF NOT EXISTS account_vehicle_overrides ("
-    " account_id BIGINT UNSIGNED NOT NULL,"
-    " vehicle_name VARCHAR(128) NOT NULL,"
-    " is_enabled TINYINT NOT NULL,"
-    " updated_at DATETIME NOT NULL,"
-    " PRIMARY KEY (account_id, vehicle_name),"
-    " KEY idx_account_vehicle_overrides_vehicle (vehicle_name)"
-    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-
-    "CREATE TABLE IF NOT EXISTS vehicle_access_events ("
-    " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
-    " scope VARCHAR(16) NOT NULL,"
-    " account_id BIGINT UNSIGNED NULL,"
-    " vehicle_name VARCHAR(128) NOT NULL,"
-    " is_enabled TINYINT NOT NULL,"
-    " created_at DATETIME NOT NULL,"
-    " PRIMARY KEY (id),"
-    " KEY idx_vehicle_access_events_account (account_id),"
-    " KEY idx_vehicle_access_events_scope (scope)"
-    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-
     "CREATE TABLE IF NOT EXISTS battles ("
     " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
     " arena_type_id INT NOT NULL,"
@@ -396,26 +369,6 @@ def migrate_database_schema(cur):
     cur.execute(
         "SELECT COUNT(*) FROM information_schema.COLUMNS "
         "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='accounts' "
-        "AND COLUMN_NAME='is_admin'",
-        (DB_NAME,))
-    row = cur.fetchone()
-    if not row or int(row[0]) == 0:
-        cur.execute(
-            "ALTER TABLE accounts ADD COLUMN is_admin "
-            "TINYINT NOT NULL DEFAULT 0 AFTER clan_db_id")
-    cur.execute(
-        "SELECT COUNT(*) FROM information_schema.COLUMNS "
-        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='disabled_vehicles' "
-        "AND COLUMN_NAME='updated_at'",
-        (DB_NAME,))
-    row = cur.fetchone()
-    if not row or int(row[0]) == 0:
-        cur.execute(
-            "ALTER TABLE disabled_vehicles ADD COLUMN updated_at "
-            "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
-    cur.execute(
-        "SELECT COUNT(*) FROM information_schema.COLUMNS "
-        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='accounts' "
         "AND COLUMN_NAME='email'",
         (DB_NAME,))
     row = cur.fetchone()
@@ -571,7 +524,8 @@ def count_account_tankmen(account_id: int) -> int:
 
 def seed_default_account_inventory(account_id: int):
     account_id = int(account_id)
-    veh_list = load_all_vehicles(account_id)
+    disabled_names = get_disabled_vehicles_for_account(account_id)
+    veh_list = [v for v in load_all_vehicles() if v['name'] not in disabled_names]
     if not veh_list:
         return
     now = datetime.datetime.now()
@@ -1929,7 +1883,7 @@ def get_matchmaking_queue_stats():
                     level, vclass = info
                     if 1 <= level <= 10:
                         levels[level] += 1
-                    class_idx = VEHICLE_CLASS_QUEUE_INDICES.get(vclass, 0)
+                    class_idx = {'heavyTank': 0, 'mediumTank': 1, 'lightTank': 2, 'AT-SPG': 3, 'SPG': 4}.get(vclass, 2)
                     classes[class_idx] += 1
                     length += 1
     if MATCHMAKING_QUEUE_FAKE_FILLERS > 0 and length > 0:
@@ -1939,19 +1893,13 @@ def get_matchmaking_queue_stats():
                 user_level = lvl
                 break
         fake_pool = [
-            (user_level, 'lightTank'), (user_level, 'lightTank'),
-            (user_level, 'lightTank'), (user_level, 'lightTank'),
-            (user_level, 'mediumTank'), (user_level, 'mediumTank'),
-            (user_level, 'mediumTank'), (user_level, 'mediumTank'),
-            (max(1, user_level - 1), 'heavyTank'),
-            (max(1, user_level - 1), 'heavyTank'),
-            (max(1, user_level - 1), 'heavyTank'),
-            (max(1, user_level - 1), 'AT-SPG'),
-            (min(10, user_level + 1), 'AT-SPG'),
-            (min(10, user_level + 1), 'SPG'),
+            (user_level, 2), (user_level, 2), (user_level, 2), (user_level, 2),
+            (user_level, 1), (user_level, 1), (user_level, 1), (user_level, 1),
+            (max(1, user_level - 1), 0), (max(1, user_level - 1), 0),
+            (max(1, user_level - 1), 0), (max(1, user_level - 1), 3),
+            (min(10, user_level + 1), 3), (min(10, user_level + 1), 4),
         ]
-        for level, vclass in fake_pool[:MATCHMAKING_QUEUE_FAKE_FILLERS]:
-            class_idx = VEHICLE_CLASS_QUEUE_INDICES.get(vclass, 0)
+        for level, class_idx in fake_pool[:MATCHMAKING_QUEUE_FAKE_FILLERS]:
             levels[level] += 1
             classes[class_idx] += 1
             length += 1
@@ -2012,9 +1960,6 @@ def parse_doCmd_int_arr(payload: bytes):
 
 MAX_VEHICLES_INLINE = get_value(CONFIG, 'data.max_vehicles_inline', None)
 VEHICLE_CLASS_TAGS = ('lightTank', 'mediumTank', 'heavyTank', 'SPG', 'AT-SPG')
-VEHICLE_CLASS_QUEUE_INDICES = {
-    name: idx for idx, name in enumerate(VEHICLE_CLASS_TAGS)
-}
 
 VEHICLE_MAX_HEALTH_OVERRIDES = dict(get_value(
     CONFIG, 'combat.vehicle_max_health_overrides', {'Lowe': 1650}) or {})
@@ -2098,10 +2043,9 @@ def is_hull_locked_gun_vehicle(vehicle: dict) -> bool:
 
 
 _MOTION_WARNED = False
-_VEHICLE_ACCESS_WARNED = False
 
 
-def load_all_vehicles(account_id: int = None, include_disabled: bool = False):
+def load_all_vehicles():
     """Р§РёС‚Р°С” _vehicles.json (РіРµРЅРµСЂСѓС”С‚СЊСЃСЏ _dump_vehicles.py) С– РїРѕРІРµСЂС‚Р°С”
     СЃРїРёСЃРѕРє (invID, compactDescr_bytes, name) РґР»СЏ СѓСЃС–С… С‚Р°РЅРєС–РІ РіСЂРё.
     РћР±РјРµР¶СѓС” РґРѕ MAX_VEHICLES_INLINE С‰РѕР± pickle РІРјС–СЃС‚РёРІСЃСЏ РІ РѕРґРёРЅ UDP packet."""
@@ -2118,13 +2062,7 @@ def load_all_vehicles(account_id: int = None, include_disabled: bool = False):
     vehicles_data = data['vehicles']
     if MAX_VEHICLES_INLINE is not None:
         vehicles_data = vehicles_data[:MAX_VEHICLES_INLINE]
-    disabled_names = (
-        set() if include_disabled
-        else get_disabled_vehicles_for_account(account_id))
-    for original_id, v in enumerate(vehicles_data, start=1):
-        if not include_disabled and v['name'] in disabled_names:
-            continue
-        inv_id = original_id
+    for inv_id, v in enumerate(vehicles_data, start=1):
         cd = bytes.fromhex(v['compactDescr_hex'])
         crew_size = v.get('crewSize', 4)
         shells = list(v.get('shells', []))
@@ -2344,13 +2282,11 @@ def load_artefacts_config():
 
 
 def reset_data_caches():
-    global _TANKMEN_CONFIG_CACHE, _ARTEFACTS_CONFIG_CACHE, _MOTION_WARNED, _ALL_UNLOCK_DESCRIPTORS_CACHE, _VEHICLE_ACCESS_WARNED
+    global _TANKMEN_CONFIG_CACHE, _ARTEFACTS_CONFIG_CACHE, _MOTION_WARNED, _ALL_UNLOCK_DESCRIPTORS_CACHE
     _TANKMEN_CONFIG_CACHE = None
     _ARTEFACTS_CONFIG_CACHE = None
     _ALL_UNLOCK_DESCRIPTORS_CACHE = None
     _MOTION_WARNED = False
-    _VEHICLE_ACCESS_WARNED = False
-    _EXTERNAL_SYNC_REV_CACHE.clear()
     STATIC_OBSTACLE_CACHE.clear()
     STATIC_OBSTACLE_INDEX_CACHE.clear()
     STATIC_MODEL_RADIUS_CACHE.clear()
@@ -2435,19 +2371,18 @@ def pick_random_passport(nation_name: str, is_premium: bool = False):
     }
 
 
-def get_vehicle_by_inventory_id(inv_id: int, account_id: int = None,
-                                include_disabled: bool = False):
-    for vehicle in load_all_vehicles(account_id, include_disabled):
+def get_vehicle_by_inventory_id(inv_id: int):
+    for vehicle in load_all_vehicles():
         if vehicle['inv_id'] == inv_id:
             return vehicle
     return None
 
 
-def get_vehicle_compact_descr(inv_id: int = None, account_id: int = None) -> bytes:
-    vehicle = get_vehicle_by_inventory_id(inv_id, account_id) if inv_id else None
+def get_vehicle_compact_descr(inv_id: int = None) -> bytes:
+    vehicle = get_vehicle_by_inventory_id(inv_id) if inv_id else None
     if vehicle is not None:
         return vehicle['compactDescr']
-    veh_list = load_all_vehicles(account_id)
+    veh_list = load_all_vehicles()
     if veh_list:
         return veh_list[0]['compactDescr']
     return b'\x00' * 22
@@ -2473,8 +2408,7 @@ def get_session_battle_vehicle(sess: dict) -> dict:
     if vehicle:
         return vehicle
     requested_inv_id = int(sess.get('battle_vehicle_inv_id') or 1)
-    vehicle = get_vehicle_by_inventory_id(
-        requested_inv_id, sess.get('account_id'))
+    vehicle = get_vehicle_by_inventory_id(requested_inv_id)
     if vehicle is None:
         print(f"    [!] missing battle vehicle invID={requested_inv_id} "
               f"for {sess.get('username') or 'player'}")
@@ -3241,10 +3175,8 @@ def ballistic_shot_vec(shot_pos, target_pos, speed: float, gravity: float,
 
 def get_disabled_vehicles_for_account(account_id: int) -> set:
     disabled = set()
-    global _VEHICLE_ACCESS_WARNED
-    conn = None
+    conn = db_connect()
     try:
-        conn = db_connect()
         with conn.cursor() as cur:
             cur.execute("SELECT vehicle_name FROM disabled_vehicles")
             for (name,) in cur.fetchall() or []:
@@ -3260,13 +3192,10 @@ def get_disabled_vehicles_for_account(account_id: int) -> set:
                         disabled.discard(name)
                     else:
                         disabled.add(name)
-    except Exception as exc:
-        if not _VEHICLE_ACCESS_WARNED:
-            print(f"[!] failed to load vehicle access rules: {exc}")
-            _VEHICLE_ACCESS_WARNED = True
+    except Exception:
+        pass
     finally:
-        if conn is not None:
-            conn.close()
+        conn.close()
     return disabled
 
 
@@ -3282,7 +3211,8 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
       5=vehicleEngine, 6=vehicleFuelTank, 7=vehicleRadio, 8=tankman,
       9=optionalDevice, 10=shell, 11=equipment.
     """
-    veh_list = load_all_vehicles(account_id)
+    disabled_names = get_disabled_vehicles_for_account(account_id)
+    veh_list = [v for v in load_all_vehicles() if v['name'] not in disabled_names]
     server_stats = get_server_stats()
     if account_id:
         try:
@@ -3499,56 +3429,13 @@ _CACHED_SYNC_PICKLE = {}
 _CACHED_SYNC_BLOB = {}
 _CACHED_SHOP_BLOB = None
 _ACCOUNT_SYNC_REV = {}
-_EXTERNAL_SYNC_REV_CACHE = {}
 _sync_cache_lock = threading.RLock()
-
-
-def get_external_account_sync_revision(account_id: int = 0) -> int:
-    key = int(account_id or 0)
-    now = time.time()
-    cached = _EXTERNAL_SYNC_REV_CACHE.get(key)
-    if cached and now - cached[0] < 1.0:
-        return int(cached[1])
-    revision = 0
-    try:
-        with db_lock:
-            conn = db_connect()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT COALESCE(MAX(id), 0) "
-                        "FROM vehicle_access_events "
-                        "WHERE scope='global' OR account_id=%s",
-                        (key,))
-                    row = cur.fetchone()
-                    if row:
-                        revision = int(row[0] or 0)
-            finally:
-                conn.close()
-    except Exception:
-        revision = 0
-    _EXTERNAL_SYNC_REV_CACHE[key] = (now, revision)
-    return revision
 
 
 def get_account_sync_revision(account_id: int = 0) -> int:
     key = int(account_id or 0)
     with _sync_cache_lock:
-        current = int(_ACCOUNT_SYNC_REV.get(key, 0))
-    external = get_external_account_sync_revision(key)
-    if external > current:
-        with _sync_cache_lock:
-            if external > int(_ACCOUNT_SYNC_REV.get(key, 0)):
-                _ACCOUNT_SYNC_REV[key] = external
-                _CACHED_SYNC_PICKLE.pop(key, None)
-                _CACHED_SYNC_BLOB.pop(key, None)
-        return external
-    return current
-
-
-def clear_external_sync_revision_cache(account_id: int = 0):
-    key = int(account_id or 0)
-    _EXTERNAL_SYNC_REV_CACHE.pop(key, None)
+        return int(_ACCOUNT_SYNC_REV.get(key, 0))
 
 
 def bump_account_sync_revision(account_id: int = 0) -> int:
@@ -3558,7 +3445,6 @@ def bump_account_sync_revision(account_id: int = 0) -> int:
         _ACCOUNT_SYNC_REV[key] = rev
         _CACHED_SYNC_PICKLE.pop(key, None)
         _CACHED_SYNC_BLOB.pop(key, None)
-        clear_external_sync_revision_cache(key)
         return rev
 
 
@@ -3587,7 +3473,6 @@ def invalidate_sync_cache(account_id: int = 0):
     with _sync_cache_lock:
         _CACHED_SYNC_PICKLE.pop(key, None)
         _CACHED_SYNC_BLOB.pop(key, None)
-        clear_external_sync_revision_cache(key)
 
 
 def make_empty_sync_pickle(prev_rev=0) -> bytes:
@@ -3621,7 +3506,7 @@ def push_account_diff(sock, addr, sess, partial_diff: dict) -> bool:
 
 def build_vehicle_inventory_diff(account_id: int, veh_inv_id: int) -> dict:
     veh_inv_id = int(veh_inv_id)
-    vehicle = get_vehicle_by_inventory_id(veh_inv_id, account_id)
+    vehicle = get_vehicle_by_inventory_id(veh_inv_id)
     if vehicle is None:
         return {}
     veh_eq_slots     = load_vehicle_consumable_slots(account_id)
@@ -3654,7 +3539,8 @@ def build_vehicle_inventory_diff(account_id: int, veh_inv_id: int) -> dict:
 def build_crew_inventory_diff(account_id: int, veh_inv_id: int,
                               dismissed_tankman: int = 0) -> dict:
     veh_inv_id = int(veh_inv_id)
-    veh_list = load_all_vehicles(account_id)
+    disabled_names = get_disabled_vehicles_for_account(account_id)
+    veh_list = [v for v in load_all_vehicles() if v['name'] not in disabled_names]
     veh_by_inv = {int(v['inv_id']): v for v in veh_list}
     vehicle = veh_by_inv.get(veh_inv_id)
     crew_size = int(vehicle.get('crewSize') or 4) if vehicle else 0
@@ -4495,8 +4381,6 @@ BATTLE_TERRAIN_VISIBLE_OFFSET = int(get_value(
     CONFIG, 'combat.battle_terrain_visible_offset', 2))
 BATTLE_TERRAIN_NORMAL_STEP = float(get_value(
     CONFIG, 'combat.battle_terrain_normal_step', 1.5))
-TERRAIN_ORIENTATION_MAX_ANGLE = math.radians(float(get_value(
-    CONFIG, 'combat.terrain_orientation_max_degrees', 35.0)))
 BATTLE_ENGINE_ACCEL_FACTOR = float(get_value(
     CONFIG, 'combat.battle_engine_accel_factor', 0.18))
 BATTLE_BRAKE_FORCE_FACTOR = float(get_value(
@@ -4707,15 +4591,6 @@ def normalize_arena_type_id(arena_type_id) -> int:
         return ARENA_TYPE_FALLBACK
     return arena_type_id
 
-
-def select_match_arena_type() -> int:
-    choices = sorted(
-        arena_id for arena_id in ENABLED_ARENA_TYPE_IDS
-        if arena_id in ARENA_GEOMETRY_PATH)
-    if not choices:
-        return ARENA_TYPE_FALLBACK
-    return int(random.choice(choices))
-
 # spaceData keys (Р· common/space_data_types.hpp)
 SPACE_DATA_TOD_KEY                  = 0    # SpaceData_ToDData (8B: 2 floats)
 SPACE_DATA_MAPPING_KEY_CLIENT_SERVER = 1   # 4x4 matrix + path в†’ addMapping
@@ -4821,9 +4696,7 @@ def build_avatar_vehicle_bind(pos, yaw: float) -> bytes:
 def build_battle_motion_sync(pos, yaw: float,
                              speed: float = 0.0,
                              rspeed: float = 0.0,
-                             bind_avatar: bool = False,
-                             pitch: float = 0.0,
-                             roll: float = 0.0) -> bytes:
+                             bind_avatar: bool = False) -> bytes:
     msgs = b''
     if bind_avatar:
         msgs += build_set_vehicle(AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID)
@@ -4832,24 +4705,21 @@ def build_battle_motion_sync(pos, yaw: float,
                               space_id=SPACE_ID,
                               vehicle_id=PLAYER_VEHICLE_ID) +
         build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
-        build_vehicle_motion_update(pos, yaw, pitch, roll)
+        build_vehicle_motion_update(pos, yaw)
     )
     return msgs
 
 
 def build_battle_motion_tick(pos, yaw: float,
                              speed: float = 0.0,
-                             rspeed: float = 0.0,
-                             pitch: float = 0.0,
-                             roll: float = 0.0) -> bytes:
-    return build_vehicle_motion_update(pos, yaw, pitch, roll)
+                             rspeed: float = 0.0) -> bytes:
+    return build_vehicle_motion_update(pos, yaw)
 
 
 def build_battle_motion_tick_for_session(sess: dict, pos, yaw: float,
                                          speed: float = 0.0,
                                          rspeed: float = 0.0) -> bytes:
-    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
-    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed, pitch, roll)
+    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed)
     if sess.pop('battle_motion_force_position', False):
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
                                       space_id=SPACE_ID, vehicle_id=0)
@@ -4944,10 +4814,8 @@ def build_vehicle_avatar_update(entity_id: int, pos, yaw: float) -> bytes:
     return msg_fixed(CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID, payload)
 
 
-def build_vehicle_motion_update(pos, yaw: float,
-                                pitch: float = 0.0,
-                                roll: float = 0.0) -> bytes:
-    return build_detailed_position(PLAYER_VEHICLE_ID, pos, yaw, pitch, roll)
+def build_vehicle_motion_update(pos, yaw: float) -> bytes:
+    return build_detailed_position(PLAYER_VEHICLE_ID, pos, yaw)
 
 def build_vehicle_motion_update_for(vehicle_id: int, pos, yaw: float,
                                     pitch: float = 0.0,
@@ -4971,9 +4839,7 @@ def decode_client_coord_ypr(payload: bytes, offset: int = 0):
 def build_own_vehicle_motion_update(pos, yaw: float,
                                     speed: float = 0.0,
                                     rspeed: float = 0.0,
-                                    force: bool = False,
-                                    pitch: float = 0.0,
-                                    roll: float = 0.0) -> bytes:
+                                    force: bool = False) -> bytes:
     """Hard-sync the own camera matrix and the actual Vehicle entity.
 
     This is not used for every motion tick. updateOwnVehiclePosition resets the
@@ -4982,7 +4848,7 @@ def build_own_vehicle_motion_update(pos, yaw: float,
     """
     msgs = (
         build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
-        build_vehicle_motion_update(pos, yaw, pitch, roll)
+        build_vehicle_motion_update(pos, yaw)
     )
     if force:
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
@@ -6059,10 +5925,19 @@ def get_remote_vehicle_angles(remote_sess: dict):
         yaw = float(remote_sess.get('client_vehicle_yaw', remote_sess.get('battle_yaw', 0.0)))
     else:
         yaw = float(remote_sess.get('battle_yaw', 0.0))
-    pos = get_effective_vehicle_pos(
-        remote_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
-    pitch, roll = vehicle_body_pitch_roll_for_session(remote_sess, pos, yaw)
-    return yaw, pitch, roll
+    vehicle = get_session_battle_vehicle(remote_sess)
+    turret_yaw = (
+        yaw if is_hull_locked_gun_vehicle(vehicle)
+        else float(remote_sess.get('battle_turret_yaw', yaw)))
+    gun_pitch = -float(remote_sess.get('battle_gun_pitch', 0.0))
+    gun_pitch = clamp(gun_pitch * REMOTE_GUN_PITCH_SCALE,
+                      -REMOTE_GUN_PITCH_LIMIT,
+                      REMOTE_GUN_PITCH_LIMIT)
+    return (
+        yaw,
+        gun_pitch,
+        normalize_angle(turret_yaw - yaw),
+    )
 
 
 def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> bytes:
@@ -6078,7 +5953,7 @@ def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> byt
     remote_name = remote_sess.get('username') or 'player'
     remote_pos = get_effective_vehicle_pos(
         remote_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
-    remote_yaw, remote_pitch, remote_roll = get_remote_vehicle_angles(remote_sess)
+    remote_yaw, remote_gun_pitch, remote_turret_yaw = get_remote_vehicle_angles(remote_sess)
     display_team = get_display_team(observer_sess, remote_sess)
     veh_info = (
         remote_id, veh_compact, remote_name, display_team,
@@ -6098,7 +5973,7 @@ def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> byt
                                          team=display_team,
                                          player_name=remote_name)
     msgs += build_vehicle_motion_update_for(remote_id, remote_pos, remote_yaw,
-                                            remote_pitch, remote_roll)
+                                            remote_gun_pitch, remote_turret_yaw)
     return msgs
 
 def send_remote_vehicle(sock, observer_sess: dict, remote_sess: dict):
@@ -6154,9 +6029,9 @@ def broadcast_remote_vehicle_position(sock, source_sess: dict, force: bool = Fal
     remote_id = get_remote_vehicle_id(source_sess)
     pos = get_effective_vehicle_pos(
         source_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
-    yaw, pitch, roll = get_remote_vehicle_angles(source_sess)
+    yaw, gun_pitch, turret_yaw = get_remote_vehicle_angles(source_sess)
     update_msg = build_vehicle_motion_update_for(remote_id, pos, yaw,
-                                                 pitch, roll)
+                                                 gun_pitch, turret_yaw)
     with battle_lock:
         observers = [other for account_id, other in active_battle_accounts.items()
                      if account_id != source_account_id and
@@ -6251,13 +6126,13 @@ def start_battle_tick_loop(sock):
                     process_pending_vehicle_collision(sock, sess)
                     source_account_id = sess.get('account_id')
                     remote_id = get_remote_vehicle_id(sess)
-                    _yaw, pitch, roll = get_remote_vehicle_angles(sess)
+                    _yaw, gun_pitch, turret_yaw = get_remote_vehicle_angles(sess)
                     remote_pos = get_effective_vehicle_pos(sess, pos)
                     if (not sess.get('server_vehicle_authoritative', True) and
                             is_recent_client_vehicle_position(sess)):
                         yaw = float(sess.get('client_vehicle_yaw', yaw))
                     remote_msg = build_vehicle_motion_update_for(remote_id, remote_pos, yaw,
-                                                                 pitch, roll)
+                                                                 gun_pitch, turret_yaw)
                     for observer in sessions:
                         if observer is sess or not observer.get('addr'):
                             continue
@@ -6838,11 +6713,9 @@ def send_own_vehicle_position(sock, addr, sess, label: str = '',
     yaw = sess.get('battle_yaw', 0.0)
     speed = sess.get('battle_speed', 0.0)
     rspeed = sess.get('battle_rspeed', 0.0)
-    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
     return send_avatar_messages(
         sock, addr, sess,
-        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force,
-                                        pitch=pitch, roll=roll),
+        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force),
         label,
         reliable=reliable)
 
@@ -7107,16 +6980,11 @@ def build_battle_period_start_messages(sess: dict):
     msgs = build_avatar_update_arena(
         ARENA_UPDATE_PERIOD,
         (ARENA_PERIOD_BATTLE, end_time, BATTLE_TIMER_SECONDS, None))
-    pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
-    yaw = sess.get('battle_yaw', 0.0)
-    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
     msgs += build_battle_motion_sync(
-        pos,
-        yaw,
+        sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
+        sess.get('battle_yaw', 0.0),
         0.0, 0.0,
-        bind_avatar=True,
-        pitch=pitch,
-        roll=roll)
+        bind_avatar=True)
     if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
         msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
     else:
@@ -7322,9 +7190,8 @@ def start_matchmaking_timer(sock):
         for sess in roster_sessions:
             sess['battle_roster_sessions'] = roster_sessions
         first_sess = (valid_batch[0].get('sess') or {})
-        arena_type_id = select_match_arena_type()
-        for sess in roster_sessions:
-            sess['battle_arena_type_id'] = arena_type_id
+        arena_type_id = normalize_arena_type_id(
+            first_sess.get('battle_arena_type_id'))
         capture_state = build_battle_capture_state(
             arena_type_id, first_sess.get('battle_base_assignment') or {1: 1, 2: 2})
         for queued in valid_batch:
@@ -7350,7 +7217,7 @@ def start_matchmaking_timer(sock):
               f"{len(valid_batch)} player(s), prebattle after ready "
               f"{PREBATTLE_TIMER_SECONDS}s, teams="
               f"{team_counts.get(1, 0)}:{team_counts.get(2, 0)}, "
-              f"arenaType={arena_type_id}, bases={base_assignment}")
+              f"bases={base_assignment}")
         for queued in valid_batch:
             sess = queued.get('sess')
             addr = queued.get('addr')
@@ -7409,15 +7276,12 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     sess['battle_client_ready'] = True
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = sess.get('battle_yaw', 0.0)
-    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
     initial_target = (pos[0] + math.sin(yaw) * 100.0,
                       pos[1] + 2.0,
                       pos[2] + math.cos(yaw) * 100.0)
     msgs = b''
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
-                                     bind_avatar=True,
-                                     pitch=pitch,
-                                     roll=roll)
+                                     bind_avatar=True)
     msgs += build_battle_vehicle_state_messages(sess)
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
@@ -8269,30 +8133,6 @@ def sample_terrain(arena_type_id: int, x: float, z: float, fallback_y=None):
     nx, ny, nz = -dhdx, 1.0, -dhdz
     length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
     return height, (nx / length, ny / length, nz / length)
-
-
-def terrain_pitch_roll_from_normal(normal, yaw: float):
-    nx, ny, nz = normal
-    if abs(ny) <= 0.001:
-        return 0.0, 0.0
-    dhdx = -float(nx) / float(ny)
-    dhdz = -float(nz) / float(ny)
-    forward_slope = dhdx * math.sin(yaw) + dhdz * math.cos(yaw)
-    right_slope = dhdx * math.cos(yaw) - dhdz * math.sin(yaw)
-    pitch = clamp(math.atan(forward_slope),
-                  -TERRAIN_ORIENTATION_MAX_ANGLE,
-                  TERRAIN_ORIENTATION_MAX_ANGLE)
-    roll = clamp(math.atan(right_slope),
-                 -TERRAIN_ORIENTATION_MAX_ANGLE,
-                 TERRAIN_ORIENTATION_MAX_ANGLE)
-    return pitch, roll
-
-
-def vehicle_body_pitch_roll_for_session(sess: dict, pos, yaw: float):
-    arena_type_id = normalize_arena_type_id(
-        sess.get('battle_arena_type_id') or ARENA_TYPE_KARELIA)
-    _height, normal = sample_terrain(arena_type_id, pos[0], pos[2], pos[1])
-    return terrain_pitch_roll_from_normal(normal, yaw)
 
 
 def find_client_space_dir(arena_type_id: int):
@@ -9775,11 +9615,8 @@ def find_artillery_shot_target(source_sess: dict, shot_pos, shot_vec):
             in_splash = (radius > 0.0 and ground_distance <= radius)
             if not in_direct and not in_splash:
                 continue
-            splash_blocked = (
-                in_splash and not in_direct and
-                static_obstacle_blocks_artillery_splash(
-                    source_sess, marker_pos, pos))
-            if splash_blocked:
+            if static_obstacle_blocks_artillery_splash(
+                    source_sess, marker_pos, pos):
                 print(f"    [shot] artillery splash to "
                       f"{target.get('username') or 'bot'} "
                       f"blocked by static obstacle dist={ground_distance:.2f}m")
@@ -11383,7 +11220,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         if arr:
             veh_inv_id = arr[0]
             ammo_pairs = arr[1:]
-            vehicle = get_vehicle_by_inventory_id(veh_inv_id, account_id)
+            vehicle = get_vehicle_by_inventory_id(veh_inv_id)
             if vehicle is not None:
                 vehicle['defaultAmmo'] = list(ammo_pairs)
             if account_id:
@@ -11578,18 +11415,12 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
     if cmd == CMD_ENQUEUE_FOR_ARENA:
         args = parse_doCmd_int3(payload) or (1, 0, 0)
         veh_inv_id, arena_type_id, queue_type = args
-        account_id = int(sess.get('account_id') or 0)
-        vehicle = get_vehicle_by_inventory_id(veh_inv_id, account_id)
+        vehicle = get_vehicle_by_inventory_id(veh_inv_id)
         if vehicle is None:
             print(f"    [!] requested battle vehicle invID={veh_inv_id} not found; "
-                  f"using first available vehicle")
-            available = load_all_vehicles(account_id)
-            if available:
-                vehicle = available[0]
-                veh_inv_id = int(vehicle['inv_id'])
-            else:
-                vehicle = get_vehicle_by_inventory_id(1, include_disabled=True)
-                veh_inv_id = 1
+                  f"using invID=1")
+            vehicle = get_vehicle_by_inventory_id(1)
+            veh_inv_id = 1
         set_session_battle_vehicle_snapshot(sess, vehicle, veh_inv_id)
         sess['battle_arena_type_id'] = normalize_arena_type_id(arena_type_id)
         sess['battle_queue_type'] = queue_type
