@@ -288,6 +288,17 @@ def _bw_read_int(data, pos):
     return value, pos
 
 
+def _space_data_entries(messages):
+    out = []
+    for payload in _message_payloads(messages, 0x07):
+        if len(payload) < 14:
+            continue
+        key = struct.unpack_from("<H", payload, 12)[0]
+        data = payload[14:]
+        out.append((key, data))
+    return out
+
+
 def _arena_update_values(messages, update_type):
     for payload in _message_payloads(messages, emulator.AVATAR_UPDATEARENA_MSG_ID):
         if payload[4] != update_type:
@@ -2923,6 +2934,20 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(by_id[enemy_id][3], 2)
         self.assertEqual(set(statistics),
                          {(emulator.PLAYER_VEHICLE_ID, 0), (enemy_id, 0)})
+
+    def test_avatar_player_bundle_includes_space_items_visibility_mask(self):
+        compact = emulator.get_vehicle_compact_descr()
+        msgs = emulator.build_avatar_player_bundle(
+            vehicle_compact_descr=compact,
+            player_name="tester",
+            team=1)
+
+        visibility_entries = [
+            data for key, data in _space_data_entries(msgs)
+            if key == emulator.SPACE_DATA_ITEMS_VISIBILITY_MASK]
+        self.assertEqual(len(visibility_entries), 1)
+        mask = struct.unpack("<I", visibility_entries[0])[0]
+        self.assertEqual(mask, emulator.SPACE_ITEMS_VISIBILITY_SERVER_MASK)
 
     def test_base_capture_updates_use_actual_base_team(self):
         viewer = _make_combat_session(503, 2, (0.0, 0.0, 0.0))
