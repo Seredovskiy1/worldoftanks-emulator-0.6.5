@@ -4722,8 +4722,6 @@ def select_match_arena_type() -> int:
 SPACE_DATA_TOD_KEY                  = 0    # SpaceData_ToDData (8B: 2 floats)
 SPACE_DATA_MAPPING_KEY_CLIENT_SERVER = 1   # 4x4 matrix + path в†’ addMapping
 SPACE_DATA_MAPPING_KEY_CLIENT_ONLY   = 2
-SPACE_DATA_ITEMS_VISIBILITY_MASK     = 300
-SPACE_ITEMS_VISIBILITY_SERVER_MASK   = 0x000FFFFF
 
 
 def build_space_data_message(space_id: int, key: int, data: bytes,
@@ -4738,12 +4736,6 @@ def build_space_data_message(space_id: int, key: int, data: bytes,
     payload += struct.pack('<H', key)
     payload += data
     return msg_varlen(0x07, payload)
-
-
-def build_space_items_visibility_data(mask: int = None) -> bytes:
-    if mask is None:
-        mask = SPACE_ITEMS_VISIBILITY_SERVER_MASK
-    return struct.pack('<I', int(mask) & SPACE_ITEMS_VISIBILITY_SERVER_MASK)
 
 
 def build_geometry_mapping_data(path: bytes,
@@ -5281,14 +5273,6 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                      SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
                                      mapping_data,
                                      entry_id=entry_id)
-
-    visibility_entry_id = struct.pack(
-        '<IHH', SPACE_ID, 1, int(battle_id or 1) & 0xffff)
-    msgs += build_space_data_message(
-        SPACE_ID,
-        SPACE_DATA_ITEMS_VISIBILITY_MASK,
-        build_space_items_visibility_data(),
-        entry_id=visibility_entry_id)
 
     # 3. createCellPlayer(Avatar) вЂ” С‰РѕР± РєР»С–С”РЅС‚ РїРµСЂРµР№С€РѕРІ Р· Р·Р°СЃС‚Р°РІРєРё
     # Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РІ СЂРµР°Р»СЊРЅРёР№ Р±С–Р№ (Avatar.onEnterWorld в†’ onEnterWorld).

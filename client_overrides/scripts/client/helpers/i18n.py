@@ -22,7 +22,7 @@ def makeString(key, *args, **kargs):
                 return key
             translator = g_translators.get(moName)
             if translator is None:
-                path = convert(BigWorld.wg_resolveFileName('')[:-1])
+                path = 'res'
                 translator = gettext.translation(moName, path, languages=['text'])
                 g_translators[moName] = translator
             text = translator.gettext(subkey)
