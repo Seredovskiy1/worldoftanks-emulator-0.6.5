@@ -998,6 +998,20 @@ class RuntimeCoreTests(unittest.TestCase):
 
         self.assertEqual(updates, [(1, 1, 0), (2, 2, 0)])
 
+    def test_battle_period_defaults_to_server_authoritative_motion(self):
+        sess = _make_loading_session(7)
+        sess["battle_period_active"] = False
+
+        with mock.patch.object(emulator, "send_avatar_messages",
+                               return_value=True):
+            started = emulator.start_battle_period_for_session(
+                object(), sess)
+
+        self.assertTrue(started)
+        self.assertTrue(sess["battle_period_active"])
+        self.assertTrue(sess["server_vehicle_authoritative"])
+        self.assertFalse(sess["battle_client_control_enabled"])
+
     def test_late_ready_player_enters_running_match(self):
         s1 = _make_loading_session(1, ready=True)
         s2 = _make_loading_session(2)
@@ -1437,6 +1451,16 @@ class RuntimeCoreTests(unittest.TestCase):
         forced = [entry for entry in sent
                   if entry[0][:1] == bytes([emulator.CLIENT_FORCED_POSITION_MSG_ID])]
         self.assertEqual(forced, [])
+
+    def test_vehicle_move_exposed_zero_updates_flags(self):
+        sess = _make_combat_session(32, 1, emulator.ARENA_SPAWN_POS[emulator.ARENA_TYPE_KARELIA])
+        payload = b"\x00\x00\x00\x00\x01"
+
+        handled = emulator.handle_avatar_base_method(
+            object(), sess["addr"], sess, 0xc0, payload)
+
+        self.assertTrue(handled)
+        self.assertEqual(sess["battle_motion_flags"], 1)
 
     def test_static_obstacle_chunk_transform_creates_world_obstacle(self):
         ignored = {}

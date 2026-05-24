@@ -154,7 +154,7 @@ DEFAULT_CONFIG = {
         ],
         "client_position_max_age": 0.75,
         "client_avatar_vehicle_pos_max_delta": 80.0,
-        "client_authoritative_vehicle_control": True,
+        "client_authoritative_vehicle_control": False,
         "own_vehicle_sync_interval": 0.0,
         "shot_tank_center_height": 1.3,
         "shot_tank_half_length": 5.2,

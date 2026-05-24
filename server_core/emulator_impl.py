@@ -4175,7 +4175,7 @@ CLIENT_POSITION_MAX_AGE = float(get_value(
 CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = float(get_value(
     CONFIG, 'combat.client_avatar_vehicle_pos_max_delta', 80.0))
 CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = bool(get_value(
-    CONFIG, 'combat.client_authoritative_vehicle_control', True))
+    CONFIG, 'combat.client_authoritative_vehicle_control', False))
 OWN_VEHICLE_SYNC_INTERVAL = max(0.0, float(get_value(
     CONFIG, 'combat.own_vehicle_sync_interval', 0.0)))
 FORCED_POSITION_BROADCAST_INTERVAL = float(get_value(
@@ -7429,7 +7429,7 @@ def broadcast_account_server_counters(sock):
             send_account_server_counters(sock, addr, sess, '')
 
 
-AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS = {0xc3, 0xcc}
+AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS = {0xc0, 0xc3, 0xcc}
 AVATAR_BASE_METHOD_VEHICLE_SHOOT_IDS = {0xc1, 0xc4, 0xcd}
 AVATAR_BASE_METHOD_TRACK_POINT_WITH_GUN_IDS = {0x81, 0xce}
 AVATAR_BASE_METHOD_STOP_TRACKING_WITH_GUN_IDS = {0xc2, 0xcf}
