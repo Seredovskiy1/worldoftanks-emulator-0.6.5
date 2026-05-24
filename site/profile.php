@@ -19,8 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         $error = 'Пожалуйста, заполните все поля.';
     } elseif (strlen($new_password) < 6) {
         $error = 'Новый пароль должен быть не менее 6 символов.';
+    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $new_password)) {
+        $error = 'Новый пароль может состоять только из латинских букв, цифр и символа подчеркивания (_).';
     } elseif ($new_password !== $new_password_confirm) {
         $error = 'Новые пароли не совпадают.';
+
     } else {
         try {
             $stmt = $pdo->prepare("SELECT password_hash FROM accounts WHERE id = ?");
@@ -245,11 +248,11 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
                     </div>
                     <div class="form-group">
                         <label for="new_password">Новый пароль</label>
-                        <input type="password" name="new_password" id="new_password" class="form-control" required minlength="6">
+                        <input type="password" name="new_password" id="new_password" class="form-control" required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
                     </div>
                     <div class="form-group">
                         <label for="new_password_confirm">Подтвердите пароль</label>
-                        <input type="password" name="new_password_confirm" id="new_password_confirm" class="form-control" required minlength="6">
+                        <input type="password" name="new_password_confirm" id="new_password_confirm" class="form-control" required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
                     </div>
                     <button type="submit" name="change_password" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Обновить пароль</button>
                 </form>

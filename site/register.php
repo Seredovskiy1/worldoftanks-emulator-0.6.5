@@ -42,8 +42,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Пожалуйста, введите корректный адрес электронной почты.';
     } elseif (strlen($password) < 6) {
         $error = 'Пароль должен быть не менее 6 символов.';
+    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $password)) {
+        $error = 'Пароль может состоять только из латинских букв, цифр и символа подчеркивания (_).';
     } elseif ($password !== $password_confirm) {
         $error = 'Пароли не совпадают.';
+
     } else {
         $normalized = normalize_login_name($username);
 
@@ -149,11 +152,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div class="form-group">
                             <label for="password">Пароль</label>
-                            <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required minlength="6">
+                            <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
                         </div>
                         <div class="form-group">
                             <label for="password_confirm">Подтвердите пароль</label>
-                            <input type="password" name="password_confirm" id="password_confirm" class="form-control" placeholder="Повторите пароль..." required minlength="6">
+                            <input type="password" name="password_confirm" id="password_confirm" class="form-control" placeholder="Повторите пароль..." required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
                         </div>
                         <div style="margin-top: 25px; display: flex; justify-content: space-between; align-items: center;">
                             <a href="login.php" style="font-size: 13px;">Уже зарегистрированы? Войти</a>
