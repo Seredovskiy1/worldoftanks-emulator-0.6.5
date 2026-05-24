@@ -4094,6 +4094,8 @@ PREBATTLE_TIMER_SECONDS = int(get_value(
 BATTLE_TIMER_SECONDS = int(get_value(CONFIG, 'battle.battle_timer_seconds', 900))
 BATTLE_READY_GUARD_SECONDS = float(get_value(
     CONFIG, 'battle.ready_guard_seconds', 1.0))
+BATTLE_AUTO_READY_FALLBACK_SECONDS = float(get_value(
+    CONFIG, 'battle.auto_ready_fallback_seconds', 6.0))
 BATTLE_PERIOD_TIME_OFFSET_SECONDS = float(get_value(
     CONFIG, 'battle.period_time_offset_seconds', 3.0))
 MATCHMAKING_MIN_SECONDS = float(get_value(
@@ -5220,6 +5222,15 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
         arena_extra_data = build_arena_extra_data(arena_type_id)
     arena_extra = pickle.dumps(arena_extra_data, protocol=0)
 
+    geometry_path = ARENA_GEOMETRY_PATH.get(
+        arena_type_id, b'spaces/01_karelia/')
+    mapping_data = build_geometry_mapping_data(geometry_path)
+    entry_id = struct.pack('<IHH', SPACE_ID, 0, int(battle_id or 1) & 0xffff)
+    msgs += build_space_data_message(SPACE_ID,
+                                     SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
+                                     mapping_data,
+                                     entry_id=entry_id)
+
     props = b''
     player_name_bytes = player_name.encode('utf-8', 'ignore') or b'player'
     props += bw_pack_string(player_name_bytes)          # name (STRING)
@@ -5240,17 +5251,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     #     Р·Р°СЃС‚СЂСЏРіР°С” РЅР° 1 С– loading screen РЅРµ Р·Р°РєСЂРёРІР°С”С‚СЊСЃСЏ.
     #     РњР°С” Р№С‚Рё Р”Рћ createCellPlayer Р±Рѕ Avatar.onBecomePlayer РѕРґСЂР°Р·Сѓ С‡РёС‚Р°С”
     #     arena.typeDescriptor С– РїРѕС‡РёРЅР°С” prefetchSpaceZip.
-    geometry_path = ARENA_GEOMETRY_PATH.get(
-        arena_type_id, b'spaces/01_karelia/')
-    mapping_data = build_geometry_mapping_data(geometry_path)
     # РЈРЅС–РєР°Р»СЊРЅРёР№ SpaceEntryID (Mercury::Address) вЂ” С‰РѕР± GeometryMapping РЅРµ
     # РґРµРґСѓРїР»С–РєСѓРІР°РІСЃСЏ РїСЂРё reuse. РўСЂРёРјР°С”РјРѕ РґРµС‚РµСЂРјС–РЅРѕРІР°РЅРѕ РЅР° РѕСЃРЅРѕРІС– space_id+key.
-    entry_id = struct.pack('<IHH', SPACE_ID, 0, int(battle_id or 1) & 0xffff)
-    msgs += build_space_data_message(SPACE_ID,
-                                     SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
-                                     mapping_data,
-                                     entry_id=entry_id)
-
     # 3. createCellPlayer(Avatar) вЂ” С‰РѕР± РєР»С–С”РЅС‚ РїРµСЂРµР№С€РѕРІ Р· Р·Р°СЃС‚Р°РІРєРё
     # Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РІ СЂРµР°Р»СЊРЅРёР№ Р±С–Р№ (Avatar.onEnterWorld в†’ onEnterWorld).
     # Р¤РѕСЂРјР°С‚ (server_connection.cpp:1810):
@@ -6679,6 +6681,7 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_ended'] = False
     sess['avatar_ready_sent'] = False
     sess['battle_client_ready'] = False
+    sess['battle_ready_fallback_scheduled'] = False
     sess['battle_period_timer_started'] = False
     sess['battle_late_period_timer_started'] = False
     sess['battle_forced_position_sent_for_motion'] = False
@@ -7350,6 +7353,7 @@ def send_avatar_player(sock, addr, sess):
     sess['known_remote_accounts'] = set()
     remember_match_vehicle_roster(sess, roster_sessions)
     announce_battle_player(sock, sess)
+    schedule_avatar_ready_fallback(sock, addr, sess)
     print(f"    [>] battle-bundle: createBasePlayer(Avatar #{AVATAR_ENTITY_ID}) "
           f"+ spaceData(arenaType={arena_type_id}) "
           f"+ createCellPlayer(playerVeh=#{PLAYER_VEHICLE_ID}) + "
@@ -7485,9 +7489,37 @@ def dequeue_from_matchmaking(sess):
         timer_to_cancel.cancel()
 
 
+def schedule_avatar_ready_fallback(sock, addr, sess):
+    delay = max(0.0, float(BATTLE_AUTO_READY_FALLBACK_SECONDS))
+    if delay <= 0.0:
+        return
+    if sess.get('battle_ready_fallback_scheduled'):
+        return
+    generation = sess.get('battle_generation', 0)
+    sess['battle_ready_fallback_scheduled'] = True
+
+    def _fallback():
+        sess['battle_ready_fallback_scheduled'] = False
+        if generation != sess.get('battle_generation', 0):
+            return
+        if sess.get('battle_client_ready'):
+            return
+        if sess.get('battle_ended') or not sess.get('battle_bundle_sent'):
+            return
+        fallback_addr = sess.get('addr') or addr
+        if not fallback_addr:
+            return
+        print(f"    [battle] auto-ready fallback for "
+              f"{sess.get('username') or 'player'}")
+        send_avatar_ready_and_prebattle(sock, fallback_addr, sess)
+
+    runtime_call_later(delay, _fallback)
+
+
 def send_avatar_ready_and_prebattle(sock, addr, sess):
     if sess.get('avatar_ready_sent'):
         return
+    sess['battle_ready_fallback_scheduled'] = False
     sess['avatar_ready_sent'] = True
     sess['battle_client_ready'] = True
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
@@ -11216,6 +11248,7 @@ def send_player_back_to_hangar(sock, addr, sess: dict):
     sess['battle_match_id'] = None
     sess['avatar_ready_sent'] = False
     sess['battle_client_ready'] = False
+    sess['battle_ready_fallback_scheduled'] = False
     sess['battle_motion_flags'] = 0
     sess['battle_speed'] = 0.0
     sess['battle_rspeed'] = 0.0

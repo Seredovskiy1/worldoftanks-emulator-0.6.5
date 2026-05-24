@@ -3062,6 +3062,54 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(arena_extra["opponents"][2]["name"], "Team 2")
         self.assertEqual(arena_extra["opponents"]["2"]["name"], "Team 2")
 
+    def test_avatar_player_bundle_sends_space_data_before_avatar_player(self):
+        compact = emulator.get_vehicle_compact_descr()
+        vehicle = _make_combat_vehicle()
+
+        msgs = emulator.build_avatar_player_bundle(
+            vehicle_compact_descr=compact,
+            vehicle_data=vehicle,
+            player_name="tester",
+            battle_id=42)
+        ids = _message_ids(msgs)
+
+        self.assertLess(ids.index(0x07), ids.index(0x05))
+
+    def test_avatar_ready_fallback_sends_ready_when_client_sticks_loading(self):
+        sess = _make_loading_session(44)
+        sess["battle_client_ready"] = False
+        sess["avatar_ready_sent"] = False
+        scheduled = []
+        sock = object()
+
+        with mock.patch.object(emulator, "runtime_call_later",
+                               side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "send_avatar_ready_and_prebattle",
+                                  return_value=None) as ready:
+            emulator.schedule_avatar_ready_fallback(sock, sess["addr"], sess)
+
+            self.assertEqual(len(scheduled), 1)
+            self.assertEqual(
+                scheduled[0][0],
+                emulator.BATTLE_AUTO_READY_FALLBACK_SECONDS)
+            scheduled[0][1]()
+
+        ready.assert_called_once_with(sock, sess["addr"], sess)
+
+    def test_avatar_ready_fallback_ignores_stale_battle_generation(self):
+        sess = _make_loading_session(45)
+        scheduled = []
+
+        with mock.patch.object(emulator, "runtime_call_later",
+                               side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "send_avatar_ready_and_prebattle",
+                                  return_value=None) as ready:
+            emulator.schedule_avatar_ready_fallback(object(), sess["addr"], sess)
+            sess["battle_generation"] += 1
+            scheduled[0][1]()
+
+        ready.assert_not_called()
+
     def test_base_capture_updates_use_actual_base_team(self):
         viewer = _make_combat_session(503, 2, (0.0, 0.0, 0.0))
         sent = []
