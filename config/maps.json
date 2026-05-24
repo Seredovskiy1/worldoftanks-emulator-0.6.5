@@ -51,6 +51,42 @@
         "1": [-405.14, -398.27],
         "2": [396.27, 402.37]
       }
+    },
+    "arena_extra_data": {
+      "localized_data": {
+        "en": {
+          "event_name": "Random Battle",
+          "session_name": "Standard"
+        },
+        "EN": {
+          "event_name": "Random Battle",
+          "session_name": "Standard"
+        },
+        "ru": {
+          "event_name": "Random Battle",
+          "session_name": "Standard"
+        },
+        "RU": {
+          "event_name": "Random Battle",
+          "session_name": "Standard"
+        },
+        "uk": {
+          "event_name": "Random Battle",
+          "session_name": "Standard"
+        },
+        "UA": {
+          "event_name": "Random Battle",
+          "session_name": "Standard"
+        }
+      },
+      "opponents": {
+        "1": {
+          "name": "Team 1"
+        },
+        "2": {
+          "name": "Team 2"
+        }
+      }
     }
   }
 }

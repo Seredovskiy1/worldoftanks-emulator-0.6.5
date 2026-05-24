@@ -1882,7 +1882,7 @@ def get_matchmaking_queue_stats():
                     level, vclass = info
                     if 1 <= level <= 10:
                         levels[level] += 1
-                    class_idx = {'heavyTank': 0, 'mediumTank': 1, 'lightTank': 2, 'AT-SPG': 3, 'SPG': 4}.get(vclass, 2)
+                    class_idx = {'heavyTank': 0, 'mediumTank': 1, 'lightTank': 2, 'SPG': 3, 'AT-SPG': 4}.get(vclass, 2)
                     classes[class_idx] += 1
                     length += 1
     if MATCHMAKING_QUEUE_FAKE_FILLERS > 0 and length > 0:
@@ -2044,7 +2044,7 @@ def is_hull_locked_gun_vehicle(vehicle: dict) -> bool:
 _MOTION_WARNED = False
 
 
-def load_all_vehicles():
+def load_all_vehicles(include_disabled: bool = False):
     """Р§РёС‚Р°С” _vehicles.json (РіРµРЅРµСЂСѓС”С‚СЊСЃСЏ _dump_vehicles.py) С– РїРѕРІРµСЂС‚Р°С”
     СЃРїРёСЃРѕРє (invID, compactDescr_bytes, name) РґР»СЏ СѓСЃС–С… С‚Р°РЅРєС–РІ РіСЂРё.
     РћР±РјРµР¶СѓС” РґРѕ MAX_VEHICLES_INLINE С‰РѕР± pickle РІРјС–СЃС‚РёРІСЃСЏ РІ РѕРґРёРЅ UDP packet."""
@@ -2059,6 +2059,11 @@ def load_all_vehicles():
         data = json.load(f)
     out = []
     vehicles_data = data['vehicles']
+    if not include_disabled:
+        vehicles_data = [
+            vehicle for vehicle in vehicles_data
+            if vehicle.get('enabled', True) and not vehicle.get('disabled', False)
+        ]
     if MAX_VEHICLES_INLINE is not None:
         vehicles_data = vehicles_data[:MAX_VEHICLES_INLINE]
     for inv_id, v in enumerate(vehicles_data, start=1):
@@ -3399,6 +3404,7 @@ _CACHED_SYNC_PICKLE = {}
 _CACHED_SYNC_BLOB = {}
 _CACHED_SHOP_BLOB = None
 _ACCOUNT_SYNC_REV = {}
+_EXTERNAL_SYNC_REV_CACHE = {}
 _sync_cache_lock = threading.RLock()
 
 
@@ -3415,6 +3421,7 @@ def bump_account_sync_revision(account_id: int = 0) -> int:
         _ACCOUNT_SYNC_REV[key] = rev
         _CACHED_SYNC_PICKLE.pop(key, None)
         _CACHED_SYNC_BLOB.pop(key, None)
+        _EXTERNAL_SYNC_REV_CACHE.pop(key, None)
         return rev
 
 
@@ -3443,6 +3450,7 @@ def invalidate_sync_cache(account_id: int = 0):
     with _sync_cache_lock:
         _CACHED_SYNC_PICKLE.pop(key, None)
         _CACHED_SYNC_BLOB.pop(key, None)
+        _EXTERNAL_SYNC_REV_CACHE.pop(key, None)
 
 
 def make_empty_sync_pickle(prev_rev=0) -> bytes:
@@ -4168,6 +4176,8 @@ CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = float(get_value(
     CONFIG, 'combat.client_avatar_vehicle_pos_max_delta', 80.0))
 CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = bool(get_value(
     CONFIG, 'combat.client_authoritative_vehicle_control', False))
+OWN_VEHICLE_SYNC_INTERVAL = max(0.0, float(get_value(
+    CONFIG, 'combat.own_vehicle_sync_interval', 0.1)))
 FORCED_POSITION_BROADCAST_INTERVAL = float(get_value(
     CONFIG, 'combat.forced_position_broadcast_interval', 0.0))
 FORCED_POSITION_ON_FIRST_MOTION = bool(get_value(
@@ -4415,6 +4425,23 @@ ARENA_CAPTURE_BASE_POSITIONS = {
     },
 }
 
+ARENA_EXTRA_DATA = {
+    'localized_data': {
+        'en': {'event_name': 'Random Battle', 'session_name': 'Standard'},
+        'EN': {'event_name': 'Random Battle', 'session_name': 'Standard'},
+        'ru': {'event_name': 'Random Battle', 'session_name': 'Standard'},
+        'RU': {'event_name': 'Random Battle', 'session_name': 'Standard'},
+        'uk': {'event_name': 'Random Battle', 'session_name': 'Standard'},
+        'UA': {'event_name': 'Random Battle', 'session_name': 'Standard'},
+    },
+    'opponents': {
+        1: {'name': 'Team 1'},
+        2: {'name': 'Team 2'},
+        '1': {'name': 'Team 1'},
+        '2': {'name': 'Team 2'},
+    },
+}
+
 ARENA_SPAWN_POS = {
     1:  KARELIA_TEAM1_SPAWNS[0],
     2:  (-350.0, 80.0, -350.0),
@@ -4461,10 +4488,66 @@ def _int_keyed_map(value, mapper):
     return out
 
 
+def _normalize_arena_extra_data(value):
+    source = dict(value or {})
+    extra = {}
+    localized = source.get('localized_data')
+    if isinstance(localized, dict):
+        cleaned = {}
+        for lang, lang_data in localized.items():
+            if not isinstance(lang_data, dict):
+                continue
+            event_name = str(lang_data.get('event_name') or '').strip()
+            session_name = str(lang_data.get('session_name') or '').strip()
+            cleaned[str(lang)] = {
+                'event_name': event_name,
+                'session_name': session_name,
+            }
+        if cleaned:
+            extra['localized_data'] = cleaned
+    opponents = source.get('opponents')
+    if isinstance(opponents, dict):
+        cleaned = {}
+        for team, data in opponents.items():
+            if not isinstance(data, dict):
+                continue
+            name = str(data.get('name') or '').strip()
+            if not name:
+                continue
+            cleaned[str(team)] = {'name': name}
+            try:
+                cleaned[int(team)] = {'name': name}
+            except (TypeError, ValueError):
+                pass
+        if cleaned:
+            extra['opponents'] = cleaned
+    for key, data in source.items():
+        if key not in ('localized_data', 'opponents'):
+            extra[key] = data
+    return extra
+
+
+def build_arena_extra_data(arena_type_id: int = ARENA_TYPE_KARELIA):
+    extra = {}
+    for key, value in ARENA_EXTRA_DATA.items():
+        if isinstance(value, dict):
+            extra[key] = {sub_key: dict(sub_value)
+                          if isinstance(sub_value, dict) else sub_value
+                          for sub_key, sub_value in value.items()}
+        else:
+            extra[key] = value
+    return extra
+
+
 def _load_map_settings():
     global ARENA_GEOMETRY_PATH, ARENA_SPAWN_POS
     global ARENA_CAPTURE_BASE_POSITIONS, ARENA_TEAM_SPAWNS
+    global ARENA_EXTRA_DATA
     maps_cfg = get_value(CONFIG, 'maps', {}) or {}
+    arena_extra = _normalize_arena_extra_data(
+        maps_cfg.get('arena_extra_data'))
+    if arena_extra:
+        ARENA_EXTRA_DATA = arena_extra
     geometry = _int_keyed_map(
         maps_cfg.get('geometry_paths'),
         lambda value: str(value).encode('ascii', 'ignore'))
@@ -4685,10 +4768,24 @@ def build_battle_motion_tick(pos, yaw: float,
     return build_vehicle_motion_update(pos, yaw)
 
 
+def should_send_own_vehicle_sync(sess: dict) -> bool:
+    if OWN_VEHICLE_SYNC_INTERVAL <= 0.0:
+        return False
+    now = time.time()
+    last = float(sess.get('battle_last_own_vehicle_sync_time', 0.0))
+    if last > 0.0 and now - last < OWN_VEHICLE_SYNC_INTERVAL:
+        return False
+    sess['battle_last_own_vehicle_sync_time'] = now
+    return True
+
+
 def build_battle_motion_tick_for_session(sess: dict, pos, yaw: float,
                                          speed: float = 0.0,
                                          rspeed: float = 0.0) -> bytes:
     msgs = build_battle_motion_tick(pos, yaw, speed, rspeed)
+    if should_send_own_vehicle_sync(sess):
+        msgs += build_avatar_update_own_vehicle_position(
+            pos, yaw, speed, rspeed)
     if sess.pop('battle_motion_force_position', False):
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
                                       space_id=SPACE_ID, vehicle_id=0)
@@ -5023,7 +5120,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                period_length: int = PREBATTLE_TIMER_SECONDS,
                                vehicle_list=None,
                                statistics_list=None,
-                               battle_id: int = 1) -> bytes:
+                               battle_id: int = 1,
+                               arena_extra_data: dict = None) -> bytes:
     """РџРµСЂРµС…С–Рґ Account в†’ Avatar РґР»СЏ РІС…РѕРґСѓ РІ Р±С–Р№.
 
     Bundle:
@@ -5061,7 +5159,9 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     # 2. createBasePlayer(Avatar)
     #    arenaExtraData РІРёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ BattleLoadingPage С‚Р° СЂС–Р·РЅРёРјРё UI;
     #    РїРѕРєРё С‰Рѕ РїСѓСЃС‚РёР№ dict вЂ” РЅРµ РїРѕРІРёРЅРµРЅ Р»Р°РјР°С‚Рё Loading.
-    arena_extra = pickle.dumps({}, protocol=0)
+    if arena_extra_data is None:
+        arena_extra_data = build_arena_extra_data(arena_type_id)
+    arena_extra = pickle.dumps(arena_extra_data, protocol=0)
 
     props = b''
     player_name_bytes = player_name.encode('utf-8', 'ignore') or b'player'
@@ -6213,6 +6313,17 @@ def build_battle_capture_state(arena_type_id: int, base_assignment: dict):
             'lock': threading.RLock()}
 
 
+def build_base_capture_initial_updates(sess: dict):
+    state = ensure_battle_capture_state(sess)
+    updates = []
+    for base_team in sorted(state.get('bases', {})):
+        base = state['bases'][base_team]
+        updates.append((int(base_team),
+                        int(base.get('base_id') or base_team),
+                        int(base.get('last_sent', 0))))
+    return updates
+
+
 def ensure_battle_capture_state(sess: dict):
     state = sess.get('battle_capture_state')
     if state is not None:
@@ -6452,6 +6563,7 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_late_period_timer_started'] = False
     sess['battle_forced_position_sent_for_motion'] = False
     sess['battle_last_filter_reset_time'] = None
+    sess['battle_last_own_vehicle_sync_time'] = 0.0
 
 
 def approach(current: float, target: float, rate: float, dt: float) -> float:
@@ -6949,11 +7061,14 @@ def build_battle_period_start_messages(sess: dict):
     msgs = build_avatar_update_arena(
         ARENA_UPDATE_PERIOD,
         (ARENA_PERIOD_BATTLE, end_time, BATTLE_TIMER_SECONDS, None))
+    for update in build_base_capture_initial_updates(sess):
+        msgs += build_avatar_update_arena(ARENA_UPDATE_BASE_POINTS, update)
     msgs += build_battle_motion_sync(
         sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
         sess.get('battle_yaw', 0.0),
         0.0, 0.0,
         bind_avatar=True)
+    sess['battle_last_own_vehicle_sync_time'] = time.time()
     if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
         msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
     else:
@@ -7123,6 +7238,18 @@ def send_avatar_player(sock, addr, sess):
         f"spawn={spawn_pos}, health={get_vehicle_max_health(battle_vehicle)}, "
         f"prebattle={prebattle_left}s)")
 
+
+def choose_match_arena_type_id(valid_batch):
+    first_sess = (valid_batch[0].get('sess') or {}) if valid_batch else {}
+    requested = first_sess.get('battle_arena_type_id')
+    if requested is not None:
+        return normalize_arena_type_id(requested)
+    arena_ids = sorted(ENABLED_ARENA_TYPE_IDS)
+    if not arena_ids:
+        return ARENA_TYPE_FALLBACK
+    return normalize_arena_type_id(random.choice(arena_ids))
+
+
 def start_matchmaking_timer(sock):
     global matchmaking_timer, next_battle_id
     delay = random.uniform(MATCHMAKING_MIN_SECONDS, MATCHMAKING_MAX_SECONDS)
@@ -7158,14 +7285,14 @@ def start_matchmaking_timer(sock):
         ]
         for sess in roster_sessions:
             sess['battle_roster_sessions'] = roster_sessions
-        first_sess = (valid_batch[0].get('sess') or {})
-        arena_type_id = normalize_arena_type_id(
-            first_sess.get('battle_arena_type_id'))
+        arena_type_id = choose_match_arena_type_id(valid_batch)
         capture_state = build_battle_capture_state(
-            arena_type_id, first_sess.get('battle_base_assignment') or {1: 1, 2: 2})
+            arena_type_id,
+            (valid_batch[0].get('sess') or {}).get('battle_base_assignment') or {1: 1, 2: 2})
         for queued in valid_batch:
             sess = queued.get('sess')
             if sess:
+                sess['battle_arena_type_id'] = arena_type_id
                 sess['battle_capture_state'] = capture_state
         if arena_type_id in STATIC_OBSTACLE_CACHE:
             print(f"    [battle] static obstacles cache warm "

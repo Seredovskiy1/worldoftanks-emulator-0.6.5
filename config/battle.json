@@ -102,6 +102,7 @@
       "juniper",
       "shrub",
       "pampas"
-    ]
+    ],
+    "own_vehicle_sync_interval": 0.1
   }
 }

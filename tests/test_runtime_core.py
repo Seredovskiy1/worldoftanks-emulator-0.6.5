@@ -281,6 +281,11 @@ def _bw_read_int(data, pos):
     return value, pos
 
 
+def _bw_read_string(data, pos):
+    size, pos = _bw_read_int(data, pos)
+    return data[pos:pos + size], pos + size
+
+
 def _arena_update_values(messages, update_type):
     for payload in _message_payloads(messages, emulator.AVATAR_UPDATEARENA_MSG_ID):
         if payload[4] != update_type:
@@ -288,6 +293,16 @@ def _arena_update_values(messages, update_type):
         size, pos = _bw_read_int(payload, 5)
         return pickle.loads(payload[pos:pos + size])
     return None
+
+
+def _arena_update_all_values(messages, update_type):
+    out = []
+    for payload in _message_payloads(messages, emulator.AVATAR_UPDATEARENA_MSG_ID):
+        if payload[4] != update_type:
+            continue
+        size, pos = _bw_read_int(payload, 5)
+        out.append(pickle.loads(payload[pos:pos + size]))
+    return out
 
 
 def _detailed_position_entity_ids(messages):
@@ -351,6 +366,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self._shot_damage_randomization = emulator.SHOT_DAMAGE_RANDOMIZATION
         self._shot_ap_nonpen_damage_factor = emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR
         self._shot_ricochet_damage_factor = emulator.SHOT_RICOCHET_DAMAGE_FACTOR
+        self._own_vehicle_sync_interval = emulator.OWN_VEHICLE_SYNC_INTERVAL
         emulator.active_battle_accounts.clear()
         emulator.ENABLE_CLIENT_SHOT_DAMAGE_EFFECTS = False
         emulator.KEEP_REMOTE_ENTITIES_ON_VISIBILITY_LOSS = False
@@ -372,6 +388,7 @@ class RuntimeCoreTests(unittest.TestCase):
         emulator.SHOT_DAMAGE_RANDOMIZATION = self._shot_damage_randomization
         emulator.SHOT_AP_NONPEN_DAMAGE_FACTOR = self._shot_ap_nonpen_damage_factor
         emulator.SHOT_RICOCHET_DAMAGE_FACTOR = self._shot_ricochet_damage_factor
+        emulator.OWN_VEHICLE_SYNC_INTERVAL = self._own_vehicle_sync_interval
 
     def test_a20_speed_limits_are_xml_values(self):
         vehicle = next(v for v in emulator.load_all_vehicles(include_disabled=True) if v["name"] == "A-20")
@@ -968,6 +985,19 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(p1[1] + int(s1["server_time_zero_wall"]),
                          p2[1] + int(s2["server_time_zero_wall"]))
 
+    def test_battle_period_start_includes_initial_base_points(self):
+        sess = _make_loading_session(6)
+        sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
+        sess["battle_base_assignment"] = {1: 1, 2: 2}
+        sess["server_time_zero_wall"] = 100.0
+        emulator.sync_match_battle_timers([sess], start_wall=200.0)
+
+        updates = _arena_update_all_values(
+            emulator.build_battle_period_start_messages(sess),
+            emulator.ARENA_UPDATE_BASE_POINTS)
+
+        self.assertEqual(updates, [(1, 1, 0), (2, 2, 0)])
+
     def test_late_ready_player_enters_running_match(self):
         s1 = _make_loading_session(1, ready=True)
         s2 = _make_loading_session(2)
@@ -1112,6 +1142,31 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(y, pos[1])
         self.assertAlmostEqual(z, pos[2])
         self.assertAlmostEqual(yaw_out, yaw)
+
+    def test_battle_motion_tick_for_session_periodically_syncs_own_vehicle(self):
+        pos = (-360.0, 100.0, -360.0)
+        yaw = 0.5
+        sess = {}
+        emulator.OWN_VEHICLE_SYNC_INTERVAL = 0.1
+        detailed_len = len(emulator.build_battle_motion_tick(
+            pos, yaw, 5.0, 0.0))
+
+        with mock.patch.object(emulator.time, "time", return_value=100.0):
+            first = emulator.build_battle_motion_tick_for_session(
+                sess, pos, yaw, 5.0, 0.0)
+        with mock.patch.object(emulator.time, "time", return_value=100.05):
+            second = emulator.build_battle_motion_tick_for_session(
+                sess, pos, yaw, 5.0, 0.0)
+        with mock.patch.object(emulator.time, "time", return_value=100.11):
+            third = emulator.build_battle_motion_tick_for_session(
+                sess, pos, yaw, 5.0, 0.0)
+
+        self.assertEqual(first[0], emulator.CLIENT_DETAILED_POSITION_MSG_ID)
+        self.assertEqual(first[detailed_len],
+                         emulator.AVATAR_UPDATE_OWN_POSITION_MSG_ID)
+        self.assertEqual(second, first[:detailed_len])
+        self.assertEqual(third[detailed_len],
+                         emulator.AVATAR_UPDATE_OWN_POSITION_MSG_ID)
 
     def test_prebattle_session_emits_static_detailed_position(self):
         fake = _FakeBattleModule()
@@ -2870,6 +2925,33 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(by_id[enemy_id][3], 2)
         self.assertEqual(set(statistics),
                          {(emulator.PLAYER_VEHICLE_ID, 0), (enemy_id, 0)})
+
+    def test_avatar_player_bundle_includes_arena_extra_data_names(self):
+        compact = emulator.get_vehicle_compact_descr()
+        vehicle = _make_combat_vehicle()
+
+        msgs = emulator.build_avatar_player_bundle(
+            vehicle_compact_descr=compact,
+            vehicle_data=vehicle,
+            player_name="tester")
+
+        payload = _message_payloads(msgs, 0x05)[0]
+        pos = 4 + 2
+        _name, pos = _bw_read_string(payload, pos)
+        _arena_type_id = struct.unpack_from("<i", payload, pos)[0]
+        pos += 4
+        _arena_gui_type = payload[pos]
+        pos += 1
+        arena_extra_raw, pos = _bw_read_string(payload, pos)
+        arena_extra = pickle.loads(arena_extra_raw)
+
+        self.assertEqual(
+            arena_extra["localized_data"]["EN"]["event_name"],
+            "Random Battle")
+        self.assertEqual(arena_extra["opponents"][1]["name"], "Team 1")
+        self.assertEqual(arena_extra["opponents"]["1"]["name"], "Team 1")
+        self.assertEqual(arena_extra["opponents"][2]["name"], "Team 2")
+        self.assertEqual(arena_extra["opponents"]["2"]["name"], "Team 2")
 
     def test_base_capture_updates_use_actual_base_team(self):
         viewer = _make_combat_session(503, 2, (0.0, 0.0, 0.0))

@@ -155,6 +155,7 @@ DEFAULT_CONFIG = {
         "client_position_max_age": 0.75,
         "client_avatar_vehicle_pos_max_delta": 80.0,
         "client_authoritative_vehicle_control": False,
+        "own_vehicle_sync_interval": 0.1,
         "shot_tank_center_height": 1.3,
         "shot_tank_half_length": 5.2,
         "shot_tank_half_width": 2.4,
@@ -308,6 +309,42 @@ DEFAULT_CONFIG = {
             "1": {
                 "1": [-405.14, -398.27],
                 "2": [396.27, 402.37]
+            }
+        },
+        "arena_extra_data": {
+            "localized_data": {
+                "en": {
+                    "event_name": "Random Battle",
+                    "session_name": "Standard"
+                },
+                "EN": {
+                    "event_name": "Random Battle",
+                    "session_name": "Standard"
+                },
+                "ru": {
+                    "event_name": "Random Battle",
+                    "session_name": "Standard"
+                },
+                "RU": {
+                    "event_name": "Random Battle",
+                    "session_name": "Standard"
+                },
+                "uk": {
+                    "event_name": "Random Battle",
+                    "session_name": "Standard"
+                },
+                "UA": {
+                    "event_name": "Random Battle",
+                    "session_name": "Standard"
+                }
+            },
+            "opponents": {
+                "1": {
+                    "name": "Team 1"
+                },
+                "2": {
+                    "name": "Team 2"
+                }
             }
         }
     }
