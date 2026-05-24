@@ -33,5 +33,6 @@ if not exist "%GAME_EXE%" (
 
 REM ---- Launch game ----
 echo [*] Starting World of Tanks...
+cd /d "%GAME_DIR%"
 start "" "%GAME_EXE%"
 exit /b 0

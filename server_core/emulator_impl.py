@@ -4772,7 +4772,7 @@ def build_avatar_update_own_vehicle_position(pos, yaw: float,
                                              rspeed: float = 0.0) -> bytes:
     em = struct.pack('<I', AVATAR_ENTITY_ID)
     em += struct.pack('<fff', *pos)            # position VECTOR3
-    em += struct.pack('<fff', yaw, 0.0, 0.0)   # direction VECTOR3: yaw,pitch,roll
+    em += pack_direction3d(yaw)               # direction: roll,pitch,yaw
     em += struct.pack('<ff', speed, rspeed)
     return msg_varlen(AVATAR_UPDATE_OWN_POSITION_MSG_ID, em)
 
@@ -5282,14 +5282,6 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                      mapping_data,
                                      entry_id=entry_id)
 
-    visibility_entry_id = struct.pack(
-        '<IHH', SPACE_ID, 1, int(battle_id or 1) & 0xffff)
-    msgs += build_space_data_message(
-        SPACE_ID,
-        SPACE_DATA_ITEMS_VISIBILITY_MASK,
-        build_space_items_visibility_data(),
-        entry_id=visibility_entry_id)
-
     # 3. createCellPlayer(Avatar) вЂ” С‰РѕР± РєР»С–С”РЅС‚ РїРµСЂРµР№С€РѕРІ Р· Р·Р°СЃС‚Р°РІРєРё
     # Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РІ СЂРµР°Р»СЊРЅРёР№ Р±С–Р№ (Avatar.onEnterWorld в†’ onEnterWorld).
     # Р¤РѕСЂРјР°С‚ (server_connection.cpp:1810):
@@ -5310,7 +5302,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     ccp = struct.pack('<I', SPACE_ID)
     ccp += struct.pack('<I', 0)               # vehicleID РЅР° СЏРєРѕРјСѓ СЃС‚РѕС—С‚СЊ Avatar вЂ” 0
     ccp += struct.pack('<fff', *spawn_pos)    # position (x, y, z)
-    ccp += struct.pack('<fff', spawn_yaw, 0.0, 0.0) # direction (yaw, pitch, roll)
+    ccp += pack_direction3d(spawn_yaw)       # direction: roll,pitch,yaw
     ccp += cell_props
     msgs += msg_varlen(0x06, ccp)
 
