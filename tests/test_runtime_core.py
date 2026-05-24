@@ -423,8 +423,46 @@ class RuntimeCoreTests(unittest.TestCase):
         with mock.patch.object(emulator, "send_init_bundle") as send_init:
             scheduled[0][1]()
 
+        send_init.assert_not_called()
+        self.assertFalse(sess["init_scheduled"])
+
+        sess["client_entities_enabled"] = True
+        with mock.patch.object(emulator, "runtime_call_later",
+                               side_effect=capture_later):
+            emulator.schedule_init_bundle(object(), ("127.0.0.1", 20017), sess)
+
+        self.assertEqual(len(scheduled), 2)
+        self.assertTrue(sess["init_scheduled"])
+
+        with mock.patch.object(emulator, "send_init_bundle") as send_init:
+            scheduled[1][1]()
+
         send_init.assert_called_once()
         self.assertFalse(sess["init_scheduled"])
+
+    def test_record_baseapp_handshake_tracks_auth_and_enable_entities(self):
+        sess = {"token": b"\x63\x9a\x87\x02"}
+        messages = [
+            (0x01, b"\x63\x9a\x87\x02", 2),
+            (0x0A, b"\x00", 7),
+        ]
+
+        emulator.record_baseapp_handshake(sess, messages)
+
+        self.assertTrue(sess["client_authenticated"])
+        self.assertTrue(sess["client_entities_enabled"])
+
+    def test_record_baseapp_handshake_ignores_wrong_auth_token(self):
+        sess = {"token": b"\x63\x9a\x87\x02"}
+        messages = [
+            (0x01, b"\x00\x00\x00\x00", 2),
+            (0x0A, b"\x00", 7),
+        ]
+
+        emulator.record_baseapp_handshake(sess, messages)
+
+        self.assertNotIn("client_authenticated", sess)
+        self.assertTrue(sess["client_entities_enabled"])
 
     def test_vehicle_class_tags_identify_artillery_and_tank_destroyers(self):
         vehicles = {v["name"]: v for v in emulator.load_all_vehicles(include_disabled=True)}

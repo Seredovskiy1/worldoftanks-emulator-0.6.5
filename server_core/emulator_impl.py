@@ -11727,9 +11727,21 @@ def schedule_init_bundle(sock, addr, sess):
 
     def _send():
         sess['init_scheduled'] = False
+        if not sess.get('client_entities_enabled'):
+            return
         send_init_bundle(sock, addr, sess)
 
     runtime_call_later(BASEAPP_INIT_DELAY_SECONDS, _send)
+
+
+def record_baseapp_handshake(sess: dict, messages):
+    token = sess.get('token')
+    for m, p, _ in messages:
+        if m == 0x01 and len(p) >= 4:
+            if not token or p[:4] == token:
+                sess['client_authenticated'] = True
+        elif m == 0x0A:
+            sess['client_entities_enabled'] = True
 
 
 tick_counter = 0
@@ -11885,6 +11897,8 @@ def handle_baseapp(sock):
         # С–РЅР°РєС€Рµ РїРѕРІС‚РѕСЂРЅРµ РїС–РґРєР»СЋС‡РµРЅРЅСЏ РїС–РґРµ Р· seq=N+1, Р° РєР»С–С”РЅС‚ С‡РµРєР°С” 0.
         sess['init_sent'] = False
         sess['init_scheduled'] = False
+        sess['client_authenticated'] = False
+        sess['client_entities_enabled'] = False
         sess['tick_started'] = False
         sess['in_seq_at'] = 0
         sess['in_seq_buffered'] = set()
@@ -11907,6 +11921,7 @@ def handle_baseapp(sock):
     else:
         if decrypted and sess_for_addr:
             messages = list(iter_baseapp_ext_messages(body))
+            record_baseapp_handshake(sess_for_addr, messages)
 
             for m, p, _ in messages:
                 if m in (0x02, 0x03, 0x04, 0x05):
@@ -11939,7 +11954,8 @@ def handle_baseapp(sock):
                 print(f"[<] BaseAppExt: {summary or 'none'} | "
                       f"flags=0x{flags:04x} seq={in_seq} body={body.hex()}")
 
-            if any(m in (0x01, 0x0A) for m, _, _ in messages) and not sess_for_addr.get('init_sent'):
+            if (sess_for_addr.get('client_entities_enabled') and
+                    not sess_for_addr.get('init_sent')):
                 send_init_bundle(sock, addr, sess_for_addr)
                 return
 
