@@ -4175,9 +4175,9 @@ CLIENT_POSITION_MAX_AGE = float(get_value(
 CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = float(get_value(
     CONFIG, 'combat.client_avatar_vehicle_pos_max_delta', 80.0))
 CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = bool(get_value(
-    CONFIG, 'combat.client_authoritative_vehicle_control', False))
+    CONFIG, 'combat.client_authoritative_vehicle_control', True))
 OWN_VEHICLE_SYNC_INTERVAL = max(0.0, float(get_value(
-    CONFIG, 'combat.own_vehicle_sync_interval', 0.1)))
+    CONFIG, 'combat.own_vehicle_sync_interval', 0.0)))
 FORCED_POSITION_BROADCAST_INTERVAL = float(get_value(
     CONFIG, 'combat.forced_position_broadcast_interval', 0.0))
 FORCED_POSITION_ON_FIRST_MOTION = bool(get_value(

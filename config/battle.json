@@ -103,6 +103,7 @@
       "shrub",
       "pampas"
     ],
-    "own_vehicle_sync_interval": 0.1
+    "client_authoritative_vehicle_control": true,
+    "own_vehicle_sync_interval": 0.0
   }
 }
