@@ -1722,6 +1722,25 @@ CMD_REQ_QUEUE_INFO = 502
 CMD_REQ_SERVER_STATS = 501
 CMD_ENQUEUE_FOR_ARENA = 700  # vehInvID, arenaTypeID, queueType
 CMD_DEQUEUE      = 701
+ACCOUNT_KNOWN_COMMANDS = {
+    CMD_SYNC_DATA,
+    CMD_EQUIP,
+    CMD_EQUIP_OPTDEV,
+    CMD_EQUIP_SHELLS,
+    CMD_EQUIP_EQS,
+    CMD_EQUIP_TMAN,
+    CMD_SYNC_SHOP,
+    CMD_BUY_ITEM,
+    CMD_BUY_TMAN,
+    CMD_DISMISS_TMAN,
+    CMD_SYNC_DOSSIERS,
+    CMD_SET_LANGUAGE,
+    CMD_REQ_ARENA_LIST,
+    CMD_REQ_SERVER_STATS,
+    CMD_REQ_QUEUE_INFO,
+    CMD_ENQUEUE_FOR_ARENA,
+    CMD_DEQUEUE,
+}
 RES_SUCCESS      = 0
 RES_STREAM       = 1
 RES_CACHE        = 2
@@ -1929,6 +1948,21 @@ def parse_doCmd_request(msg_id: int, payload: bytes):
         return None, None
     req_id, cmd = struct.unpack_from('<hh', payload, 0)
     return req_id, cmd
+
+
+def account_doCmd_payload_cmd(msg_id: int, payload: bytes):
+    if msg_id not in ACCOUNT_DOCMD_MSG_IDS:
+        return None
+    if msg_id == 0xc4 and len(payload) < 16:
+        return None
+    if msg_id == 0xc5 and len(payload) < 20:
+        return None
+    if msg_id == 0xc7 and len(payload) < 8:
+        return None
+    _req_id, cmd = parse_doCmd_request(msg_id, payload)
+    if cmd in ACCOUNT_KNOWN_COMMANDS:
+        return cmd
+    return None
 
 
 def parse_doCmd_int3(payload: bytes):
@@ -11630,6 +11664,9 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         return
 
     if cmd == CMD_DEQUEUE:
+        had_battle_bundle = bool(sess.get('battle_bundle_sent'))
+        if had_battle_bundle:
+            send_player_back_to_hangar(sock, addr, sess)
         dequeue_from_matchmaking(sess)
         with battle_lock:
             active_battle_accounts.pop(sess.get('account_id'), None)
@@ -11911,6 +11948,9 @@ def handle_baseapp(sock):
             deferred_avatar_shots = []
             for m, p, _ in messages:
                 if m in movement_msg_ids:
+                    continue
+                if account_doCmd_payload_cmd(m, p) is not None:
+                    handle_account_doCmd(sock, addr, sess_for_addr, m, p)
                     continue
                 if m not in high_rate_battle_msg_ids:
                     print(f"    [post-init] msg=0x{m:02x} payload={p.hex()}")
