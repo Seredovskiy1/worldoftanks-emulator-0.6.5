@@ -27,7 +27,7 @@ CONFIG = load_config(ROOT_DIR)
 
 
 def get_client_roots():
-    roots = []
+    roots = [ROOT_DIR]
     configured = get_value(CONFIG, 'paths.client_root')
     if configured:
         roots.append(configured)
@@ -8243,6 +8243,7 @@ def find_client_space_dir(arena_type_id: int):
         path = os.path.join(root, 'res', relative)
         if os.path.isdir(path):
             return path
+    print('Checked roots:', roots, 'relative:', relative)
     return None
 
 
