@@ -1000,57 +1000,6 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(p1[1] + int(s1["server_time_zero_wall"]),
                          p2[1] + int(s2["server_time_zero_wall"]))
 
-    def test_battle_period_start_messages_keep_vehicle_control_enabled_for_camera(self):
-        sess = _make_loading_session(1)
-        original = emulator.CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
-        try:
-            emulator.CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = False
-            msgs = emulator.build_battle_period_start_messages(sess)
-        finally:
-            emulator.CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = original
-
-        payloads = _message_payloads(msgs, emulator.CLIENT_CONTROL_ENTITY_MSG_ID)
-        self.assertEqual(len(payloads), 1)
-        entity_id, enabled = struct.unpack("<IB", payloads[0])
-        self.assertEqual(entity_id, emulator.PLAYER_VEHICLE_ID)
-        self.assertEqual(enabled, 1)
-
-    def test_avatar_ready_bundle_primes_all_capture_bases(self):
-        sess = _make_loading_session(1)
-        sent = []
-
-        def capture_send(_sock, _addr, _sess, msgs, _label, reliable=True):
-            sent.append(bytes(msgs))
-            return True
-
-        with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
-                mock.patch.object(emulator, "send_avatar_arena_update", return_value=None), \
-                mock.patch.object(emulator, "runtime_call_later", return_value=None):
-            emulator.send_avatar_ready_and_prebattle(object(), sess["addr"], sess)
-
-        base_updates = []
-        for payload in _message_payloads(sent[0], emulator.AVATAR_UPDATEARENA_MSG_ID):
-            if payload[4] != emulator.ARENA_UPDATE_BASE_POINTS:
-                continue
-            size, pos = _bw_read_int(payload, 5)
-            base_updates.append(pickle.loads(payload[pos:pos + size]))
-        self.assertEqual(base_updates, [(1, 1, 0), (2, 2, 0)])
-
-    def test_start_battle_period_keeps_client_control_flag_with_server_authority(self):
-        sess = _make_loading_session(1)
-        original = emulator.CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
-        try:
-            emulator.CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = False
-            with mock.patch.object(emulator, "send_avatar_messages", return_value=True):
-                started = emulator.start_battle_period_for_session(object(), sess)
-        finally:
-            emulator.CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = original
-
-        self.assertTrue(started)
-        self.assertTrue(sess["battle_period_active"])
-        self.assertTrue(sess["server_vehicle_authoritative"])
-        self.assertTrue(sess["battle_client_control_enabled"])
-
     def test_late_ready_player_enters_running_match(self):
         s1 = _make_loading_session(1, ready=True)
         s2 = _make_loading_session(2)

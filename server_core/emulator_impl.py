@@ -7132,28 +7132,11 @@ def build_battle_vehicle_state_messages(sess: dict):
     return msgs
 
 
-def build_battle_capture_state_messages(sess: dict):
-    msgs = b''
-    state = ensure_battle_capture_state(sess)
-    state_lock = state.get('lock')
-    lock_ctx = state_lock if state_lock is not None else contextlib.nullcontext()
-    with lock_ctx:
-        for base_team in sorted(state.get('bases', {})):
-            base = state['bases'].get(base_team, {})
-            msgs += build_avatar_update_arena(
-                ARENA_UPDATE_BASE_POINTS,
-                (int(base_team),
-                 int(base.get('base_id', base_team)),
-                 int(round(float(base.get('points', 0.0))))))
-    return msgs
-
-
 def build_battle_period_start_messages(sess: dict):
     end_time = wall_time_to_server_time(sess, get_session_battle_end_wall(sess))
     msgs = build_avatar_update_arena(
         ARENA_UPDATE_PERIOD,
         (ARENA_PERIOD_BATTLE, end_time, BATTLE_TIMER_SECONDS, None))
-    msgs += build_battle_capture_state_messages(sess)
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = sess.get('battle_yaw', 0.0)
     msgs += build_battle_motion_sync(
@@ -7161,7 +7144,10 @@ def build_battle_period_start_messages(sess: dict):
         yaw,
         0.0, 0.0,
         bind_avatar=True)
-    msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
+    if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
+        msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
+    else:
+        msgs += disable_client_vehicle_control_message(sess)
     return msgs
 
 
@@ -7270,7 +7256,7 @@ def start_battle_period_for_session(sock, sess: dict) -> bool:
         return False
     sess['battle_period_active'] = True
     sess['server_vehicle_authoritative'] = not CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
-    sess['battle_client_control_enabled'] = True
+    sess['battle_client_control_enabled'] = CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
     sess['battle_last_motion_time'] = now
     return True
 
@@ -7456,14 +7442,10 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     msgs = b''
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
                                      bind_avatar=True)
-    msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
     msgs += build_battle_vehicle_state_messages(sess)
-    msgs += build_battle_capture_state_messages(sess)
     msgs += build_targeting_for_point(sess, initial_target)
-    sent = send_avatar_messages(sock, addr, sess, msgs,
-                                "Avatar ready + initial vehicle position/targeting")
-    if sent:
-        sess['battle_client_control_enabled'] = True
+    send_avatar_messages(sock, addr, sess, msgs,
+                         "Avatar ready + initial vehicle position/targeting")
     match_id = sess.get('battle_match_id')
     sessions = (
         get_match_battle_sessions(match_id)
