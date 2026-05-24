@@ -193,6 +193,7 @@ $active_page = 'index';
 <div class="footer">
     <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Все права защищены.</p>
     <p>Сайт создан для демонстрации и тестирования Project Orion 0.6.5.</p>
+    <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
 </body>

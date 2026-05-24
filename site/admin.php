@@ -1065,6 +1065,7 @@ $csrf_token = $_SESSION['csrf_token'];
 
 <div class="footer">
     <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Админ-панель управляет той же базой, что и сервер.</p>
+    <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
 </body>
