@@ -20,7 +20,18 @@ if %errorlevel% neq 0 (
 
 set "HOSTS=%WINDIR%\System32\drivers\etc\hosts"
 
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; [System.Net.Dns]::GetHostAddresses('%SERVER_HOST%') ^| Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } ^| Select-Object -First 1 -ExpandProperty IPAddressToString" 2^>nul`) do set "SERVER_IP=%%I"
+REM ---- Check if SERVER_HOST is already an IP address ----
+for /f "tokens=1-4 delims=." %%a in ("%SERVER_HOST%") do (
+    if "%%d" neq "" (
+        REM It's an IP address
+        set "SERVER_IP=%SERVER_HOST%"
+    )
+)
+
+REM If not an IP, try to resolve through DNS
+if not defined SERVER_IP (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; [System.Net.Dns]::GetHostAddresses('%SERVER_HOST%') ^| Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } ^| Select-Object -First 1 -ExpandProperty IPAddressToString" 2^>nul`) do set "SERVER_IP=%%I"
+)
 
 echo.
 echo === WoT 0.6.5 Emulator Setup ===
