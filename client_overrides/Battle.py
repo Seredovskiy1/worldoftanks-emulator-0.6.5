@@ -1,4 +1,4 @@
-﻿# uncompyle6 version 3.9.3
+# uncompyle6 version 3.9.3
 # Python bytecode version base 2.6 (62161)
 # Decompiled from: Python 3.9.13 (tags/v3.9.13:6de2ca5, May 17 2022, 16:36:42) [MSC v.1929 64 bit (AMD64)]
 # Embedded file name: scripts/client/gui/Scaleform/Battle.py
@@ -532,15 +532,16 @@ class TeamBasesPanel(object):
     def __onTeamBasePointsUpdate(self, team, baseID, points):
         if team not in (1, 2):
             return
-            isAllyTeam = True if team == BigWorld.player().team else False
-            teamType = 'red' if isAllyTeam else 'green'
-            points or self.__callFlash(teamType, 'show', [False])
-        else:
-            msg = self.__msgAllyBaseCapturedBy if isAllyTeam else self.__msgEnemyBaseCapturedBy
-            self.__callFlash(teamType, 'show', [True])
-            self.__callFlash(teamType, 'updateProgress', [points / 100.0])
-            self.__callFlash(teamType, 'updateTitle', [i18n.convert(msg)])
-            self.__callFlash(teamType, 'updateTimer', ['%s' % points])
+        isAllyTeam = True if team == BigWorld.player().team else False
+        teamType = 'red' if isAllyTeam else 'green'
+        if points <= 0:
+            self.__callFlash(teamType, 'show', [False])
+            return
+        msg = self.__msgAllyBaseCapturedBy if isAllyTeam else self.__msgEnemyBaseCapturedBy
+        self.__callFlash(teamType, 'show', [True])
+        self.__callFlash(teamType, 'updateProgress', [points / 100.0])
+        self.__callFlash(teamType, 'updateTitle', [i18n.convert(msg)])
+        self.__callFlash(teamType, 'updateTimer', ['%s' % points])
         return
 
     def __onTeamBaseCaptured(self, team):
