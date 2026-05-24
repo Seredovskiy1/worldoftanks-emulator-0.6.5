@@ -255,28 +255,55 @@ def _aim_gun_at(sess, target_pos, shell, high_arc=False):
     return _set_gun_direction(sess, shot_vec)
 
 
-def _message_ids(messages):
-    out = []
+def _fixed_payload_size(msg_id):
+    return {
+        0x00: 4,
+        0x01: 4,
+        0x02: 1,
+        0x03: 4,
+        0x04: 1,
+        0x0A: 5,
+        0x0D: 1,
+        emulator.CLIENT_SET_VEHICLE_MSG_ID: 8,
+        emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID: 12,
+        emulator.CLIENT_DETAILED_POSITION_MSG_ID: 28,
+        emulator.CLIENT_FORCED_POSITION_MSG_ID: 36,
+        emulator.CLIENT_CONTROL_ENTITY_MSG_ID: 5,
+    }.get(msg_id)
+
+
+def _iter_messages(messages):
     pos = 0
-    while pos + 3 <= len(messages):
+    length = len(messages)
+    while pos < length:
         msg_id = messages[pos]
+        fixed_size = _fixed_payload_size(msg_id)
+        if fixed_size is not None:
+            end = pos + 1 + fixed_size
+            if end > length:
+                break
+            yield msg_id, messages[pos + 1:end]
+            pos = end
+            continue
+        if pos + 3 > length:
+            break
         size = struct.unpack_from("<H", messages, pos + 1)[0]
-        out.append(msg_id)
-        pos += 3 + size
-    return out
+        end = pos + 3 + size
+        if end > length:
+            break
+        yield msg_id, messages[pos + 3:end]
+        pos = end
+
+
+def _message_ids(messages):
+    return [msg_id for msg_id, _payload in _iter_messages(messages)]
 
 
 def _message_payloads(messages, wanted_id):
-    out = []
-    pos = 0
-    while pos + 3 <= len(messages):
-        msg_id = messages[pos]
-        size = struct.unpack_from("<H", messages, pos + 1)[0]
-        payload = messages[pos + 3:pos + 3 + size]
-        if msg_id == wanted_id:
-            out.append(payload)
-        pos += 3 + size
-    return out
+    return [
+        payload for msg_id, payload in _iter_messages(messages)
+        if msg_id == wanted_id
+    ]
 
 
 def _bw_read_int(data, pos):
@@ -2986,7 +3013,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(set(statistics),
                          {(emulator.PLAYER_VEHICLE_ID, 0), (enemy_id, 0)})
 
-    def test_avatar_player_bundle_omits_space_items_visibility_mask(self):
+    def test_avatar_player_bundle_includes_space_items_visibility_mask(self):
         compact = emulator.get_vehicle_compact_descr()
         msgs = emulator.build_avatar_player_bundle(
             vehicle_compact_descr=compact,
@@ -2994,9 +3021,11 @@ class RuntimeCoreTests(unittest.TestCase):
             team=1)
 
         visibility_entries = [
-            key for key, _data in _space_data_entries(msgs)
+            data for key, data in _space_data_entries(msgs)
             if key == emulator.SPACE_DATA_ITEMS_VISIBILITY_MASK]
-        self.assertEqual(visibility_entries, [])
+        self.assertEqual(len(visibility_entries), 1)
+        mask = struct.unpack("<I", visibility_entries[0])[0]
+        self.assertEqual(mask, emulator.SPACE_ITEMS_VISIBILITY_SERVER_MASK)
 
     def test_base_capture_updates_use_actual_base_team(self):
         viewer = _make_combat_session(503, 2, (0.0, 0.0, 0.0))
