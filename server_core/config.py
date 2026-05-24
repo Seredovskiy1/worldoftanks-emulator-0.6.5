@@ -223,6 +223,7 @@ DEFAULT_CONFIG = {
         "battle_terrain_chunk_size": 100.0,
         "battle_terrain_visible_offset": 2,
         "battle_terrain_normal_step": 1.5,
+        "terrain_orientation_max_degrees": 35.0,
         "forced_position_broadcast_interval": 0.0,
         "forced_position_on_first_motion": False,
         "battle_engine_accel_factor": 0.18,

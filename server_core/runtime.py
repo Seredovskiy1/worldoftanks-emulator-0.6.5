@@ -167,13 +167,8 @@ class EventLoopRuntime:
                 rspeed = 0.0
                 addr = sess.get("addr")
                 if addr:
-                    static_msg_builder = getattr(
-                        mod, "build_vehicle_motion_update", None)
-                    msgs = (static_msg_builder(pos, yaw)
-                            if static_msg_builder is not None else
-                            mod.build_battle_motion_tick(pos, yaw, speed, rspeed))
                     mod.send_avatar_messages(sock, addr, sess,
-                                             msgs,
+                                             mod.build_battle_motion_tick(pos, yaw, speed, rspeed),
                                              "",
                                              reliable=False)
             elif sess.get("server_vehicle_authoritative", True):
@@ -216,13 +211,8 @@ class EventLoopRuntime:
                     not sess.get("server_vehicle_authoritative", True) and
                     mod.is_recent_client_vehicle_position(sess)):
                 yaw = float(sess.get("client_vehicle_yaw", yaw))
-            filter_msg_builder = getattr(
-                mod, "build_vehicle_motion_filter_update_for", None)
-            remote_msg = (
-                filter_msg_builder(remote_id, remote_pos, yaw, pitch, roll)
-                if filter_msg_builder is not None else
-                mod.build_vehicle_motion_update_for(
-                    remote_id, remote_pos, yaw, pitch, roll))
+            remote_msg = mod.build_vehicle_motion_update_for(
+                remote_id, remote_pos, yaw, pitch, roll)
             for observer in sessions:
                 if observer is sess or not observer.get("addr"):
                     continue

@@ -4495,6 +4495,8 @@ BATTLE_TERRAIN_VISIBLE_OFFSET = int(get_value(
     CONFIG, 'combat.battle_terrain_visible_offset', 2))
 BATTLE_TERRAIN_NORMAL_STEP = float(get_value(
     CONFIG, 'combat.battle_terrain_normal_step', 1.5))
+TERRAIN_ORIENTATION_MAX_ANGLE = math.radians(float(get_value(
+    CONFIG, 'combat.terrain_orientation_max_degrees', 35.0)))
 BATTLE_ENGINE_ACCEL_FACTOR = float(get_value(
     CONFIG, 'combat.battle_engine_accel_factor', 0.18))
 BATTLE_BRAKE_FORCE_FACTOR = float(get_value(
@@ -4819,7 +4821,9 @@ def build_avatar_vehicle_bind(pos, yaw: float) -> bytes:
 def build_battle_motion_sync(pos, yaw: float,
                              speed: float = 0.0,
                              rspeed: float = 0.0,
-                             bind_avatar: bool = False) -> bytes:
+                             bind_avatar: bool = False,
+                             pitch: float = 0.0,
+                             roll: float = 0.0) -> bytes:
     msgs = b''
     if bind_avatar:
         msgs += build_set_vehicle(AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID)
@@ -4828,21 +4832,24 @@ def build_battle_motion_sync(pos, yaw: float,
                               space_id=SPACE_ID,
                               vehicle_id=PLAYER_VEHICLE_ID) +
         build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
-        build_vehicle_motion_update(pos, yaw)
+        build_vehicle_motion_update(pos, yaw, pitch, roll)
     )
     return msgs
 
 
 def build_battle_motion_tick(pos, yaw: float,
                              speed: float = 0.0,
-                             rspeed: float = 0.0) -> bytes:
-    return build_vehicle_motion_filter_update(pos, yaw)
+                             rspeed: float = 0.0,
+                             pitch: float = 0.0,
+                             roll: float = 0.0) -> bytes:
+    return build_vehicle_motion_update(pos, yaw, pitch, roll)
 
 
 def build_battle_motion_tick_for_session(sess: dict, pos, yaw: float,
                                          speed: float = 0.0,
                                          rspeed: float = 0.0) -> bytes:
-    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed)
+    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
+    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed, pitch, roll)
     if sess.pop('battle_motion_force_position', False):
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
                                       space_id=SPACE_ID, vehicle_id=0)
@@ -4937,16 +4944,6 @@ def build_vehicle_avatar_update(entity_id: int, pos, yaw: float) -> bytes:
     return msg_fixed(CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID, payload)
 
 
-def build_vehicle_motion_filter_update(pos, yaw: float) -> bytes:
-    return build_vehicle_avatar_update(PLAYER_VEHICLE_ID, pos, yaw)
-
-
-def build_vehicle_motion_filter_update_for(vehicle_id: int, pos, yaw: float,
-                                           pitch: float = 0.0,
-                                           roll: float = 0.0) -> bytes:
-    return build_vehicle_avatar_update(vehicle_id, pos, yaw)
-
-
 def build_vehicle_motion_update(pos, yaw: float,
                                 pitch: float = 0.0,
                                 roll: float = 0.0) -> bytes:
@@ -4974,7 +4971,9 @@ def decode_client_coord_ypr(payload: bytes, offset: int = 0):
 def build_own_vehicle_motion_update(pos, yaw: float,
                                     speed: float = 0.0,
                                     rspeed: float = 0.0,
-                                    force: bool = False) -> bytes:
+                                    force: bool = False,
+                                    pitch: float = 0.0,
+                                    roll: float = 0.0) -> bytes:
     """Hard-sync the own camera matrix and the actual Vehicle entity.
 
     This is not used for every motion tick. updateOwnVehiclePosition resets the
@@ -4983,7 +4982,7 @@ def build_own_vehicle_motion_update(pos, yaw: float,
     """
     msgs = (
         build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
-        build_vehicle_motion_update(pos, yaw)
+        build_vehicle_motion_update(pos, yaw, pitch, roll)
     )
     if force:
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
@@ -6060,7 +6059,10 @@ def get_remote_vehicle_angles(remote_sess: dict):
         yaw = float(remote_sess.get('client_vehicle_yaw', remote_sess.get('battle_yaw', 0.0)))
     else:
         yaw = float(remote_sess.get('battle_yaw', 0.0))
-    return yaw, 0.0, 0.0
+    pos = get_effective_vehicle_pos(
+        remote_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
+    pitch, roll = vehicle_body_pitch_roll_for_session(remote_sess, pos, yaw)
+    return yaw, pitch, roll
 
 
 def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> bytes:
@@ -6153,8 +6155,8 @@ def broadcast_remote_vehicle_position(sock, source_sess: dict, force: bool = Fal
     pos = get_effective_vehicle_pos(
         source_sess, ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw, pitch, roll = get_remote_vehicle_angles(source_sess)
-    update_msg = build_vehicle_motion_filter_update_for(remote_id, pos, yaw,
-                                                        pitch, roll)
+    update_msg = build_vehicle_motion_update_for(remote_id, pos, yaw,
+                                                 pitch, roll)
     with battle_lock:
         observers = [other for account_id, other in active_battle_accounts.items()
                      if account_id != source_account_id and
@@ -6254,8 +6256,8 @@ def start_battle_tick_loop(sock):
                     if (not sess.get('server_vehicle_authoritative', True) and
                             is_recent_client_vehicle_position(sess)):
                         yaw = float(sess.get('client_vehicle_yaw', yaw))
-                    remote_msg = build_vehicle_motion_filter_update_for(
-                        remote_id, remote_pos, yaw, pitch, roll)
+                    remote_msg = build_vehicle_motion_update_for(remote_id, remote_pos, yaw,
+                                                                 pitch, roll)
                     for observer in sessions:
                         if observer is sess or not observer.get('addr'):
                             continue
@@ -6836,9 +6838,11 @@ def send_own_vehicle_position(sock, addr, sess, label: str = '',
     yaw = sess.get('battle_yaw', 0.0)
     speed = sess.get('battle_speed', 0.0)
     rspeed = sess.get('battle_rspeed', 0.0)
+    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
     return send_avatar_messages(
         sock, addr, sess,
-        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force),
+        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force,
+                                        pitch=pitch, roll=roll),
         label,
         reliable=reliable)
 
@@ -7105,11 +7109,14 @@ def build_battle_period_start_messages(sess: dict):
         (ARENA_PERIOD_BATTLE, end_time, BATTLE_TIMER_SECONDS, None))
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = sess.get('battle_yaw', 0.0)
+    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
     msgs += build_battle_motion_sync(
         pos,
         yaw,
         0.0, 0.0,
-        bind_avatar=True)
+        bind_avatar=True,
+        pitch=pitch,
+        roll=roll)
     if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
         msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
     else:
@@ -7402,12 +7409,15 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     sess['battle_client_ready'] = True
     pos = sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA])
     yaw = sess.get('battle_yaw', 0.0)
+    pitch, roll = vehicle_body_pitch_roll_for_session(sess, pos, yaw)
     initial_target = (pos[0] + math.sin(yaw) * 100.0,
                       pos[1] + 2.0,
                       pos[2] + math.cos(yaw) * 100.0)
     msgs = b''
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
-                                     bind_avatar=True)
+                                     bind_avatar=True,
+                                     pitch=pitch,
+                                     roll=roll)
     msgs += build_battle_vehicle_state_messages(sess)
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
@@ -8259,6 +8269,30 @@ def sample_terrain(arena_type_id: int, x: float, z: float, fallback_y=None):
     nx, ny, nz = -dhdx, 1.0, -dhdz
     length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
     return height, (nx / length, ny / length, nz / length)
+
+
+def terrain_pitch_roll_from_normal(normal, yaw: float):
+    nx, ny, nz = normal
+    if abs(ny) <= 0.001:
+        return 0.0, 0.0
+    dhdx = -float(nx) / float(ny)
+    dhdz = -float(nz) / float(ny)
+    forward_slope = dhdx * math.sin(yaw) + dhdz * math.cos(yaw)
+    right_slope = dhdx * math.cos(yaw) - dhdz * math.sin(yaw)
+    pitch = clamp(math.atan(forward_slope),
+                  -TERRAIN_ORIENTATION_MAX_ANGLE,
+                  TERRAIN_ORIENTATION_MAX_ANGLE)
+    roll = clamp(math.atan(right_slope),
+                 -TERRAIN_ORIENTATION_MAX_ANGLE,
+                 TERRAIN_ORIENTATION_MAX_ANGLE)
+    return pitch, roll
+
+
+def vehicle_body_pitch_roll_for_session(sess: dict, pos, yaw: float):
+    arena_type_id = normalize_arena_type_id(
+        sess.get('battle_arena_type_id') or ARENA_TYPE_KARELIA)
+    _height, normal = sample_terrain(arena_type_id, pos[0], pos[2], pos[1])
+    return terrain_pitch_roll_from_normal(normal, yaw)
 
 
 def find_client_space_dir(arena_type_id: int):
