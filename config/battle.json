@@ -21,7 +21,6 @@
   },
   "combat": {
     "client_shot_damage_effects": false,
-    "client_authoritative_vehicle_control": true,
     "vehicle_speed_multiplier": 1.0,
     "vehicle_rotation_multiplier": 1.5,
     "vehicle_max_health_overrides": {
