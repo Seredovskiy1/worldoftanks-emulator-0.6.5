@@ -1,6 +1,10 @@
 from encodings import utf_8
-import os, gettext, constants, BigWorld
+import os
+import gettext
+import constants
+import BigWorld
 from debug_utils import LOG_WARNING, LOG_CURRENT_EXCEPTION
+
 g_translators = {}
 
 def convert(utf8String):
@@ -22,9 +26,12 @@ def makeString(key, *args, **kargs):
                 return key
             translator = g_translators.get(moName)
             if translator is None:
-                resolved = convert(BigWorld.wg_resolveFileName('text'))
-                path = os.path.dirname(resolved.replace('\\', '/').rstrip('/'))
-                translator = gettext.translation(moName, path, languages=['text'])
+                try:
+                    resolved = convert(BigWorld.wg_resolveFileName('text'))
+                    path = os.path.dirname(resolved.replace('\\', '/').rstrip('/'))
+                    translator = gettext.translation(moName, path, languages=['text'])
+                except IOError:
+                    translator = gettext.NullTranslations()
                 g_translators[moName] = translator
             text = translator.gettext(subkey)
             if text == '?empty?':
