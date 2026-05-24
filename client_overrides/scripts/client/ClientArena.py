@@ -1,4 +1,4 @@
-﻿                          
+                          
 
                                           
 
@@ -548,11 +548,6 @@ class Plane():
 
         return False
 
-
-
-
-
-return
 
 
 

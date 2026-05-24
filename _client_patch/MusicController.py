@@ -180,5 +180,3 @@ class MusicController(object):
                     soundEvent.stop()
             return soundEvent
 
-
-return

@@ -1,4 +1,4 @@
-﻿                          
+                          
 
                                           
 
@@ -1001,14 +1001,3 @@ def _decodeSegment(vehicleDescr, segment):
     return (
 
      componentName, segment & 255, segStart, segEnd)
-
-
-
-
-
-return
-
-
-
-                                                                                        
-

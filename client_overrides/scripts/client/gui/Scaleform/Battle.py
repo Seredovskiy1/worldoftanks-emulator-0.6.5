@@ -1,4 +1,4 @@
-﻿                          
+                          
 
                                           
 
@@ -2592,11 +2592,6 @@ def vehicleHasTurretRotator(vTypeDesc):
 
     return result
 
-
-
-
-
-return
 
 
 
