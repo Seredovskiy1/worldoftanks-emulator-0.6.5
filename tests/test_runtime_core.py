@@ -1121,31 +1121,25 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(sock.remaining, 5)
         self.assertFalse(runtime.outbound)
 
-    def test_battle_motion_tick_includes_speed_and_detailed_position(self):
+    def test_battle_motion_tick_uses_avatar_update_for_vehicle_filter(self):
         pos = (-360.0, 100.0, -360.0)
         yaw = 0.5
-        pkt = emulator.build_battle_motion_tick(pos, yaw, 5.0, 0.25)
-        self.assertEqual(pkt[0], emulator.AVATAR_UPDATE_OWN_POSITION_MSG_ID)
-        self.assertIn(emulator.CLIENT_DETAILED_POSITION_MSG_ID, pkt)
-        speed, rspeed = struct.unpack_from("<ff", pkt, 31)
-        self.assertAlmostEqual(speed, 5.0)
-        self.assertAlmostEqual(rspeed, 0.25)
+        pkt = emulator.build_battle_motion_tick(pos, yaw, 5.0, 0.0)
+        self.assertEqual(pkt[0], emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
+        self.assertNotEqual(pkt[0], emulator.CLIENT_DETAILED_POSITION_MSG_ID)
+        eid = struct.unpack_from("<I", pkt, 1)[0]
+        self.assertEqual(eid, emulator.PLAYER_VEHICLE_ID)
 
-    def test_battle_motion_tick_for_session_includes_surface_orientation(self):
+    def test_battle_motion_tick_for_session_does_not_force_terrain_pitch_roll(self):
         sess = _make_combat_session(33, 1, (10.0, 4.0, 20.0))
-        sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
-        with mock.patch.object(
-                emulator, "sample_terrain",
-                return_value=(4.0, (0.0, 0.70710678, -0.70710678))):
-            pkt = emulator.build_battle_motion_tick_for_session(
-                sess, (10.0, 4.0, 20.0), 0.75, 7.0, 0.0)
-        self.assertEqual(pkt[0], emulator.AVATAR_UPDATE_OWN_POSITION_MSG_ID)
-        detailed_offset = pkt.index(emulator.CLIENT_DETAILED_POSITION_MSG_ID)
-        _eid, _x, _y, _z, roll, pitch, _yaw = struct.unpack_from(
-            "<I3f3f", pkt, detailed_offset + 1)
-        self.assertGreater(abs(pitch), 0.1)
+        pkt = emulator.build_battle_motion_tick_for_session(
+            sess, (10.0, 4.0, 20.0), 0.75, 7.0, 0.0)
 
-    def test_remote_vehicle_angles_use_terrain_not_gun_pitch(self):
+        self.assertEqual(pkt[0], emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
+        eid = struct.unpack_from("<I", pkt, 1)[0]
+        self.assertEqual(eid, emulator.PLAYER_VEHICLE_ID)
+
+    def test_remote_vehicle_angles_do_not_use_turret_or_terrain_as_body_orientation(self):
         sess = _make_combat_session(32, 1, (10.0, 4.0, 20.0))
         sess["battle_arena_type_id"] = emulator.ARENA_TYPE_KARELIA
         sess["battle_yaw"] = 0.0
@@ -1158,9 +1152,8 @@ class RuntimeCoreTests(unittest.TestCase):
             yaw, pitch, roll = emulator.get_remote_vehicle_angles(sess)
 
         self.assertAlmostEqual(yaw, 0.0)
-        self.assertGreater(abs(pitch), 0.1)
-        self.assertNotAlmostEqual(pitch, sess["battle_gun_pitch"])
-        self.assertAlmostEqual(roll, 0.0, places=2)
+        self.assertAlmostEqual(pitch, 0.0)
+        self.assertAlmostEqual(roll, 0.0)
 
     def test_prebattle_session_emits_static_detailed_position(self):
         fake = _FakeBattleModule()
@@ -1199,9 +1192,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(fake.base_capture_calls, [1])
         self.assertEqual(len(fake.avatar_sends), 1)
         self.assertEqual(fake.avatar_sends[0]["msgs"][0],
-                         emulator.AVATAR_UPDATE_OWN_POSITION_MSG_ID)
-        self.assertIn(emulator.CLIENT_DETAILED_POSITION_MSG_ID,
-                      fake.avatar_sends[0]["msgs"])
+                         emulator.CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID)
         self.assertIsNotNone(sess.get("battle_last_filter_reset_time"))
 
     def test_hidden_enemy_gets_no_intro_or_motion_packets(self):
@@ -3296,37 +3287,6 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(resolved["artillerySplash"])
         self.assertEqual(resolved["result"], emulator.SHOT_RESULT_CRITICAL_HIT)
         self.assertEqual(target["battle_vehicle_health"], 214)
-
-    def test_artillery_splash_uses_recent_client_position(self):
-        artillery = _make_combat_vehicle()
-        artillery.update({
-            "vehicleClass": "SPG",
-            "isSPG": True,
-            "tags": frozenset(("SPG",)),
-        })
-        source = _make_combat_session(97, 1, (0.0, 0.0, 40.0),
-                                      vehicle=artillery)
-        target = _make_combat_session(98, 2, (0.0, 0.0, 20.0), health=300)
-        target["battle_pos"] = (0.0, 0.0, 20.0)
-        target["client_vehicle_pos"] = (8.0, 1.3, 20.0)
-        target["client_vehicle_last_update_time"] = time.time()
-        shell = _make_shell(kind="HIGH_EXPLOSIVE", penetration=5.0,
-                            damage=100.0, explosion_radius=10.0)
-        source["battle_last_shot_shell"] = shell
-        source["battle_last_shot_target_pos"] = (11.5, 1.3, 20.0)
-        source["battle_last_shot_target_pos_time"] = time.time()
-        emulator.active_battle_accounts[source["account_id"]] = source
-        emulator.active_battle_accounts[target["account_id"]] = target
-
-        with mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
-                mock.patch.object(emulator, "send_remote_vehicle", return_value=None):
-            hit_target, damage, resolved = emulator.apply_shot_damage(
-                object(), source, shell, (0.0, 2.0, 40.0),
-                emulator.normalize_vec((0.2, -0.2, -1.0)))
-
-        self.assertIs(hit_target, target)
-        self.assertGreater(damage, 0)
-        self.assertTrue(resolved["artillerySplash"])
 
     def test_artillery_he_splash_misses_outside_radius(self):
         artillery = _make_combat_vehicle()

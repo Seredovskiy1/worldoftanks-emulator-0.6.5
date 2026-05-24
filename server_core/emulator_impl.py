@@ -4313,10 +4313,6 @@ CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = float(get_value(
     CONFIG, 'combat.client_avatar_vehicle_pos_max_delta', 80.0))
 CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = bool(get_value(
     CONFIG, 'combat.client_authoritative_vehicle_control', False))
-SERVER_CLIENT_POSITION_SYNC_XZ = float(get_value(
-    CONFIG, 'combat.server_client_position_sync_xz', 0.35))
-SERVER_CLIENT_POSITION_SYNC_MAX_Y = float(get_value(
-    CONFIG, 'combat.server_client_position_sync_max_y', 4.0))
 FORCED_POSITION_BROADCAST_INTERVAL = float(get_value(
     CONFIG, 'combat.forced_position_broadcast_interval', 0.0))
 FORCED_POSITION_ON_FIRST_MOTION = bool(get_value(
@@ -4839,20 +4835,14 @@ def build_battle_motion_sync(pos, yaw: float,
 
 def build_battle_motion_tick(pos, yaw: float,
                              speed: float = 0.0,
-                             rspeed: float = 0.0,
-                             pitch: float = 0.0,
-                             roll: float = 0.0) -> bytes:
-    return (
-        build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
-        build_vehicle_motion_update(pos, yaw, pitch, roll)
-    )
+                             rspeed: float = 0.0) -> bytes:
+    return build_vehicle_motion_filter_update(pos, yaw)
 
 
 def build_battle_motion_tick_for_session(sess: dict, pos, yaw: float,
                                          speed: float = 0.0,
                                          rspeed: float = 0.0) -> bytes:
-    pitch, roll = get_vehicle_surface_angles(sess, pos, yaw)
-    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed, pitch, roll)
+    msgs = build_battle_motion_tick(pos, yaw, speed, rspeed)
     if sess.pop('battle_motion_force_position', False):
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
                                       space_id=SPACE_ID, vehicle_id=0)
@@ -4940,25 +4930,21 @@ def pack_packed_xyz(pos) -> bytes:
     return pack_packed_xz(pos[0], pos[2]) + pack_packed_y(pos[1])
 
 
-def build_vehicle_avatar_update(entity_id: int, pos, yaw: float,
-                                pitch: float = 0.0,
-                                roll: float = 0.0) -> bytes:
+def build_vehicle_avatar_update(entity_id: int, pos, yaw: float) -> bytes:
     payload = struct.pack('<I', entity_id)
     payload += pack_packed_xyz(pos)
-    payload += pack_yaw_pitch_roll(yaw, pitch, roll)
+    payload += pack_yaw_pitch_roll(yaw, 0.0, 0.0)
     return msg_fixed(CLIENT_AVATAR_UPDATE_NOALIAS_FULLPOS_YPR_MSG_ID, payload)
 
 
-def build_vehicle_motion_filter_update(pos, yaw: float,
-                                       pitch: float = 0.0,
-                                       roll: float = 0.0) -> bytes:
-    return build_vehicle_avatar_update(PLAYER_VEHICLE_ID, pos, yaw, pitch, roll)
+def build_vehicle_motion_filter_update(pos, yaw: float) -> bytes:
+    return build_vehicle_avatar_update(PLAYER_VEHICLE_ID, pos, yaw)
 
 
 def build_vehicle_motion_filter_update_for(vehicle_id: int, pos, yaw: float,
                                            pitch: float = 0.0,
                                            roll: float = 0.0) -> bytes:
-    return build_vehicle_avatar_update(vehicle_id, pos, yaw, pitch, roll)
+    return build_vehicle_avatar_update(vehicle_id, pos, yaw)
 
 
 def build_vehicle_motion_update(pos, yaw: float,
@@ -5988,9 +5974,7 @@ def get_effective_vehicle_pos(sess: dict, fallback=None):
     return ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]
 
 
-def record_client_vehicle_position(sess: dict, pos, yaw: float,
-                                 pitch: float = 0.0,
-                                 roll: float = 0.0):
+def record_client_vehicle_position(sess: dict, pos, yaw: float):
     if freeze_destroyed_vehicle(sess):
         return
     prev = sess.get('client_vehicle_pos')
@@ -6007,13 +5991,10 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float,
         new_x, new_z, static_blocked = resolve_motion_against_obstacles(
             arena_type_id, prev_x, prev_z, new_x, new_z)
         if static_blocked:
-            if sess.get('server_vehicle_authoritative', True):
-                resolved_y, _normal = sample_terrain(
-                    arena_type_id, new_x, new_z, float(pos[1]))
-                pos = (new_x, resolved_y, new_z)
-            else:
-                pos = (new_x, float(pos[1]), new_z)
+            resolved_y, _normal = sample_terrain(
+                arena_type_id, new_x, new_z, float(pos[1]))
             sess['battle_motion_force_position'] = True
+            pos = (new_x, resolved_y, new_z)
         elif blocked:
             pos = (new_x, float(pos[1]), new_z)
     if prev is None:
@@ -6060,10 +6041,7 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float,
         sess['battle_turret_yaw'] = yaw
     sess['client_vehicle_pos'] = pos
     sess['client_vehicle_yaw'] = yaw
-    sess['client_vehicle_pitch'] = float(pitch)
-    sess['client_vehicle_roll'] = float(roll)
     sess['client_vehicle_last_update_time'] = now
-    sync_server_battle_position_from_client(sess, pos, yaw)
 
 
 def is_plausible_avatar_vehicle_position(sess: dict, pos) -> bool:
@@ -6082,9 +6060,7 @@ def get_remote_vehicle_angles(remote_sess: dict):
         yaw = float(remote_sess.get('client_vehicle_yaw', remote_sess.get('battle_yaw', 0.0)))
     else:
         yaw = float(remote_sess.get('battle_yaw', 0.0))
-    pos = get_effective_vehicle_pos(remote_sess, remote_sess.get('battle_pos'))
-    pitch, roll = get_vehicle_surface_angles(remote_sess, pos, yaw)
-    return yaw, pitch, roll
+    return yaw, 0.0, 0.0
 
 
 def build_remote_vehicle_messages(observer_sess: dict, remote_sess: dict) -> bytes:
@@ -6590,8 +6566,6 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['server_vehicle_authoritative'] = True
     sess['client_vehicle_pos'] = None
     sess['client_vehicle_yaw'] = spawn_yaw
-    sess['client_vehicle_pitch'] = 0.0
-    sess['client_vehicle_roll'] = 0.0
     sess['client_vehicle_last_update_time'] = 0.0
     sess['client_vehicle_last_move_time'] = 0.0
     sess['client_vehicle_slope'] = 0.0
@@ -6947,7 +6921,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             print(f"    [avu] msg=0x04 wardUpdate ward_id={ward_id} pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) "
                   f"yaw={yaw:.2f} match_PV={ward_id == PLAYER_VEHICLE_ID}")
         if ward_id == PLAYER_VEHICLE_ID:
-            record_client_vehicle_position(sess, pos, yaw, _pitch, _roll)
+            record_client_vehicle_position(sess, pos, yaw)
             count = sess.get('client_vehicle_update_count', 0) + 1
             sess['client_vehicle_update_count'] = count
             if count % 100 == 1:
@@ -6969,7 +6943,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             print(f"    [avu] msg=0x05 wardUpdate ward_id={ward_id} rel_id={rel_id} "
                   f"pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) yaw={yaw:.2f} match_PV={ward_id == PLAYER_VEHICLE_ID}")
         if ward_id == PLAYER_VEHICLE_ID:
-            record_client_vehicle_position(sess, pos, yaw, _pitch, _roll)
+            record_client_vehicle_position(sess, pos, yaw)
         return True
 
     return False
@@ -8065,84 +8039,6 @@ def unique_positions(points):
         if all(sum((pos[i] - other[i]) ** 2 for i in range(3)) > 0.01 for other in out):
             out.append(pos)
     return out
-
-
-def orientation_from_terrain_normal(yaw: float, normal):
-    nx, ny, nz = (float(normal[0]), float(normal[1]), float(normal[2]))
-    if ny < 1e-3:
-        return 0.0, 0.0
-    fx = math.sin(yaw)
-    fz = math.cos(yaw)
-    rx = fz
-    rz = -fx
-    pitch = math.atan2(-(nx * fx + nz * fz), ny)
-    roll = math.atan2(nx * rx + nz * rz, ny)
-    limit = math.pi * 0.49
-    return (
-        clamp(pitch, -limit, limit),
-        clamp(roll, -limit, limit),
-    )
-
-
-def get_vehicle_surface_angles(sess: dict, pos=None, yaw=None):
-    pos = safe_vec3(pos, None)
-    if pos is None:
-        pos = safe_vec3(get_effective_vehicle_pos(sess, None), None)
-    if pos is None:
-        return 0.0, 0.0
-    yaw = safe_float(yaw if yaw is not None else vehicle_hit_yaw(sess), 0.0)
-    if is_recent_client_vehicle_position(sess):
-        client_pitch = sess.get('client_vehicle_pitch')
-        client_roll = sess.get('client_vehicle_roll')
-        if client_pitch is not None and client_roll is not None:
-            return float(client_pitch), float(client_roll)
-    arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
-    _height, normal = sample_terrain(arena_type_id, pos[0], pos[2], pos[1])
-    return orientation_from_terrain_normal(yaw, normal)
-
-
-def shot_target_positions(sess: dict):
-    points = []
-    effective = safe_vec3(get_effective_vehicle_pos(sess, None), None)
-    if effective is not None:
-        points.append(effective)
-    if is_recent_client_vehicle_position(sess):
-        client_pos = safe_vec3(sess.get('client_vehicle_pos'), None)
-        if client_pos is not None:
-            points.append(client_pos)
-    prev_pos = safe_vec3(sess.get('battle_prev_pos'), None)
-    if prev_pos is not None:
-        points.append(prev_pos)
-    return unique_positions(points)
-
-
-def sync_server_battle_position_from_client(sess: dict, pos, yaw: float):
-    if not sess.get('server_vehicle_authoritative', True):
-        return
-    if not is_plausible_avatar_vehicle_position(sess, pos):
-        return
-    base = sess.get('battle_pos')
-    if base is None:
-        return
-    dx = float(pos[0]) - float(base[0])
-    dz = float(pos[2]) - float(base[2])
-    xz_dist = math.sqrt(dx * dx + dz * dz)
-    if xz_dist < SERVER_CLIENT_POSITION_SYNC_XZ:
-        return
-    arena_type_id = normalize_arena_type_id(sess.get('battle_arena_type_id'))
-    terrain_y, _normal = sample_terrain(
-        arena_type_id, float(pos[0]), float(pos[2]), float(pos[1]))
-    client_y = float(pos[1])
-    if abs(client_y - terrain_y) <= SERVER_CLIENT_POSITION_SYNC_MAX_Y:
-        sync_y = client_y
-    else:
-        sync_y = terrain_y
-    synced = (float(pos[0]), sync_y, float(pos[2]))
-    sess['battle_prev_pos'] = base
-    sess['battle_pos'] = synced
-    sess['battle_yaw'] = float(yaw)
-    sess['battle_speed'] = float(sess.get('client_vehicle_observed_speed', 0.0))
-    sess['battle_rspeed'] = float(sess.get('client_vehicle_observed_rspeed', 0.0))
 
 
 def ray_miss_distance(shot_pos, shot_vec, point):
@@ -9826,7 +9722,11 @@ def find_artillery_shot_target(source_sess: dict, shot_pos, shot_vec):
             continue
         if int(target.get('battle_vehicle_health') or 0) <= 0:
             continue
-        for pos in shot_target_positions(target):
+        for pos in unique_positions((
+                target.get('battle_pos'),
+                target.get('battle_prev_pos'),
+                target.get('client_vehicle_pos'),
+        )):
             center = (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2])
             dx = center[0] - marker_pos[0]
             dy = center[1] - marker_pos[1]
@@ -9891,7 +9791,12 @@ def find_direct_ray_shot_candidate(source_sess: dict, shot_pos, shot_vec,
         armor_model = vehicle_armor_model(vehicle)
         dims = armor_dimensions(armor_model)
         yaw = vehicle_hit_yaw(target)
-        for pos in shot_target_positions(target):
+        positions = unique_positions((
+            target.get('battle_pos'),
+            target.get('battle_prev_pos'),
+            target.get('client_vehicle_pos'),
+        ))
+        for pos in positions:
             ray_hit = ray_vehicle_box_hit(shot_pos, shot_vec, pos, yaw, dims)
             if ray_hit is None:
                 continue
@@ -9949,7 +9854,11 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
             health = int(target.get('battle_vehicle_health') or 0)
             if health <= 0:
                 continue
-            positions = shot_target_positions(target)
+            positions = unique_positions((
+                target.get('battle_pos'),
+                target.get('battle_prev_pos'),
+                target.get('client_vehicle_pos'),
+            ))
             if not positions:
                 continue
             for pos in positions:
@@ -10012,7 +9921,11 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
             health = int(target.get('battle_vehicle_health') or 0)
             if health <= 0:
                 continue
-            positions = shot_target_positions(target)
+            positions = unique_positions((
+                target.get('battle_pos'),
+                target.get('battle_prev_pos'),
+                target.get('client_vehicle_pos'),
+            ))
             uname = target.get('username') or 'bot'
             for pos in positions:
                 center = (pos[0], pos[1] + SHOT_TANK_CENTER_HEIGHT, pos[2])
