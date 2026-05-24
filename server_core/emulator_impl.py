@@ -666,7 +666,7 @@ def seed_default_account_inventory(account_id: int):
 
 
 def fix_legacy_tankman_nations(cur, account_id: int, veh_list):
-    veh_by_inv = {int(v['inv_id']): v for v in veh_list}
+    veh_by_inv = get_vehicle_inventory_map()
     valid_pairs = {(int(v.get('nationID') or 0),
                     int(v.get('vehicleTypeID') or 0)) for v in veh_list}
     nation_default_vtype = {}
@@ -2042,18 +2042,26 @@ def is_hull_locked_gun_vehicle(vehicle: dict) -> bool:
 
 
 _MOTION_WARNED = False
+_VEHICLES_CACHE = {}
+_VEHICLES_BY_INV_CACHE = {}
 
 
 def load_all_vehicles(include_disabled: bool = False):
     """Р§РёС‚Р°С” _vehicles.json (РіРµРЅРµСЂСѓС”С‚СЊСЃСЏ _dump_vehicles.py) С– РїРѕРІРµСЂС‚Р°С”
     СЃРїРёСЃРѕРє (invID, compactDescr_bytes, name) РґР»СЏ СѓСЃС–С… С‚Р°РЅРєС–РІ РіСЂРё.
     РћР±РјРµР¶СѓС” РґРѕ MAX_VEHICLES_INLINE С‰РѕР± pickle РІРјС–СЃС‚РёРІСЃСЏ РІ РѕРґРёРЅ UDP packet."""
+    cache_key = bool(include_disabled)
+    cached = _VEHICLES_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     json_path = resolve_existing_path(
         ROOT_DIR, get_value(CONFIG, 'data.vehicles_path', 'data/_vehicles.json'),
         '_vehicles.json')
     if not os.path.exists(json_path):
         print(f"[!] _vehicles.json РЅРµ Р·РЅР°Р№РґРµРЅРѕ вЂ” Р°РЅРіР°СЂ Р±СѓРґРµ РїРѕСЂРѕР¶РЅС–Рј")
-        return []
+        _VEHICLES_CACHE[cache_key] = []
+        _VEHICLES_BY_INV_CACHE[cache_key] = {}
+        return _VEHICLES_CACHE[cache_key]
     import json
     with open(json_path, 'r') as f:
         data = json.load(f)
@@ -2164,6 +2172,10 @@ def load_all_vehicles(include_disabled: bool = False):
             print(f"[i] motion params OK for all {len(out)} vehicle(s) "
                   f"(speedLimits/engine/chassis/terrain physics loaded from XML)")
         _MOTION_WARNED = True
+    _VEHICLES_CACHE[cache_key] = out
+    _VEHICLES_BY_INV_CACHE[cache_key] = {
+        int(vehicle['inv_id']): vehicle for vehicle in out
+    }
     return out
 
 
@@ -2291,8 +2303,12 @@ def reset_data_caches():
     _ARTEFACTS_CONFIG_CACHE = None
     _ALL_UNLOCK_DESCRIPTORS_CACHE = None
     _MOTION_WARNED = False
+    _VEHICLES_CACHE.clear()
+    _VEHICLES_BY_INV_CACHE.clear()
     STATIC_OBSTACLE_CACHE.clear()
     STATIC_OBSTACLE_INDEX_CACHE.clear()
+    SPOTTING_BUSH_CACHE.clear()
+    SPOTTING_BUSH_INDEX_CACHE.clear()
     STATIC_MODEL_RADIUS_CACHE.clear()
     STATIC_MODEL_BOUNDS_CACHE.clear()
     BATTLE_TERRAIN_BLOCK_CACHE.clear()
@@ -2375,11 +2391,19 @@ def pick_random_passport(nation_name: str, is_premium: bool = False):
     }
 
 
+def get_vehicle_inventory_map(include_disabled: bool = False):
+    cache_key = bool(include_disabled)
+    if cache_key not in _VEHICLES_BY_INV_CACHE:
+        load_all_vehicles(include_disabled=include_disabled)
+    return _VEHICLES_BY_INV_CACHE.get(cache_key, {})
+
+
 def get_vehicle_by_inventory_id(inv_id: int):
-    for vehicle in load_all_vehicles():
-        if vehicle['inv_id'] == inv_id:
-            return vehicle
-    return None
+    try:
+        inv_id = int(inv_id)
+    except (TypeError, ValueError):
+        return None
+    return get_vehicle_inventory_map().get(inv_id)
 
 
 def get_vehicle_compact_descr(inv_id: int = None) -> bytes:
@@ -3239,7 +3263,7 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
         veh_eq_slots, veh_od_slots = {}, {}
         veh_ammo_layouts = {}
 
-    veh_by_inv = {int(v['inv_id']): v for v in veh_list}
+    veh_by_inv = get_vehicle_inventory_map()
     tankmen_compDescr = {}
     tankmen_vehicle   = {}
     crew_by_vehicle   = {}
@@ -3517,8 +3541,7 @@ def build_vehicle_inventory_diff(account_id: int, veh_inv_id: int) -> dict:
 def build_crew_inventory_diff(account_id: int, veh_inv_id: int,
                               dismissed_tankman: int = 0) -> dict:
     veh_inv_id = int(veh_inv_id)
-    veh_list = load_all_vehicles()
-    veh_by_inv = {int(v['inv_id']): v for v in veh_list}
+    veh_by_inv = get_vehicle_inventory_map()
     vehicle = veh_by_inv.get(veh_inv_id)
     crew_size = int(vehicle.get('crewSize') or 4) if vehicle else 0
     tankmen_rows = load_account_tankmen(account_id)
@@ -5648,39 +5671,86 @@ def freeze_destroyed_vehicle(sess: dict) -> bool:
     return True
 
 
+_BATTLE_TICK_CONTEXT = None
+
+
+def begin_battle_tick_context(sessions):
+    global _BATTLE_TICK_CONTEXT
+    team_live_sessions = {}
+    for sess in sessions:
+        if not sess.get('battle_bundle_sent'):
+            continue
+        if not sess.get('battle_period_active'):
+            continue
+        if not is_live_vehicle_session(sess):
+            continue
+        key = (sess.get('battle_match_id'), sess.get('battle_team'))
+        team_live_sessions.setdefault(key, []).append(sess)
+    _BATTLE_TICK_CONTEXT = {
+        'team_live_sessions': team_live_sessions,
+        'direct_visibility': {},
+        'vehicle_visibility': {},
+    }
+
+
+def end_battle_tick_context():
+    global _BATTLE_TICK_CONTEXT
+    _BATTLE_TICK_CONTEXT = None
+
+
+def battle_tick_context_cache(name):
+    if not isinstance(_BATTLE_TICK_CONTEXT, dict):
+        return None
+    return _BATTLE_TICK_CONTEXT.get(name)
+
+
 def is_vehicle_directly_visible_to(observer_sess: dict, source_sess: dict) -> bool:
+    cache = battle_tick_context_cache('direct_visibility')
+    cache_key = None
+    if cache is not None:
+        cache_key = (id(observer_sess), id(source_sess))
+        if cache_key in cache:
+            return cache[cache_key]
+    should_mark = False
     if observer_sess is source_sess:
-        return True
-    if observer_sess.get('battle_match_id') != source_sess.get('battle_match_id'):
-        return False
-    if not SPOTTING_ENABLED:
-        return True
-    if is_same_battle_team(observer_sess, source_sess):
-        return True
-    if (not observer_sess.get('battle_period_active') or
+        visible = True
+    elif observer_sess.get('battle_match_id') != source_sess.get('battle_match_id'):
+        visible = False
+    elif not SPOTTING_ENABLED:
+        visible = True
+    elif is_same_battle_team(observer_sess, source_sess):
+        visible = True
+    elif (not observer_sess.get('battle_period_active') or
             not source_sess.get('battle_period_active')):
-        return False
-    observer_pos = safe_vec3(get_effective_vehicle_pos(observer_sess, None), None)
-    source_pos = safe_vec3(get_effective_vehicle_pos(source_sess, None), None)
-    if observer_pos is None or source_pos is None:
-        return False
-    dx = float(source_pos[0]) - float(observer_pos[0])
-    dz = float(source_pos[2]) - float(observer_pos[2])
-    distance = math.sqrt(dx * dx + dz * dz)
-    auto_reveal = max(0.0, SPOTTING_AUTO_REVEAL_DISTANCE)
-    max_range = max(auto_reveal, SPOTTING_MAX_RANGE)
-    if distance <= auto_reveal:
+        visible = False
+    else:
+        observer_pos = safe_vec3(get_effective_vehicle_pos(observer_sess, None), None)
+        source_pos = safe_vec3(get_effective_vehicle_pos(source_sess, None), None)
+        if observer_pos is None or source_pos is None:
+            visible = False
+        else:
+            dx = float(source_pos[0]) - float(observer_pos[0])
+            dz = float(source_pos[2]) - float(observer_pos[2])
+            distance = math.sqrt(dx * dx + dz * dz)
+            auto_reveal = max(0.0, SPOTTING_AUTO_REVEAL_DISTANCE)
+            max_range = max(auto_reveal, SPOTTING_MAX_RANGE)
+            if distance <= auto_reveal:
+                visible = True
+                should_mark = True
+            else:
+                view_range = clamp(
+                    vehicle_view_range(get_session_battle_vehicle(observer_sess)),
+                    auto_reveal, max_range)
+                camo = vehicle_current_invisibility(source_sess, observer_sess,
+                                                    observer_pos, source_pos)
+                spot_range = view_range - (view_range - auto_reveal) * camo
+                spot_range = clamp(spot_range, auto_reveal, max_range)
+                visible = distance <= spot_range
+                should_mark = visible
+    if should_mark:
         mark_remote_vehicle_spotted(observer_sess, source_sess)
-        return True
-    view_range = clamp(vehicle_view_range(get_session_battle_vehicle(observer_sess)),
-                       auto_reveal, max_range)
-    camo = vehicle_current_invisibility(source_sess, observer_sess,
-                                        observer_pos, source_pos)
-    spot_range = view_range - (view_range - auto_reveal) * camo
-    spot_range = clamp(spot_range, auto_reveal, max_range)
-    visible = distance <= spot_range
-    if visible:
-        mark_remote_vehicle_spotted(observer_sess, source_sess)
+    if cache is not None:
+        cache[cache_key] = visible
     return visible
 
 
@@ -5691,27 +5761,42 @@ def is_vehicle_spotted_by_observer_team(observer_sess: dict, source_sess: dict) 
     if observer_team is None:
         return False
     match_id = observer_sess.get('battle_match_id')
-    with battle_lock:
-        spotters = [
-            sess for sess in active_battle_accounts.values()
-            if sess is not observer_sess and
-            sess is not source_sess and
-            sess.get('battle_match_id') == match_id and
-            sess.get('battle_team') == observer_team and
-            sess.get('battle_bundle_sent') and
-            sess.get('battle_period_active') and
-            is_live_vehicle_session(sess)
-        ]
+    ctx = _BATTLE_TICK_CONTEXT
+    if isinstance(ctx, dict):
+        spotters = ctx.get('team_live_sessions', {}).get(
+            (match_id, observer_team), ())
+    else:
+        with battle_lock:
+            spotters = [
+                sess for sess in active_battle_accounts.values()
+                if sess.get('battle_match_id') == match_id and
+                sess.get('battle_team') == observer_team and
+                sess.get('battle_bundle_sent') and
+                sess.get('battle_period_active') and
+                is_live_vehicle_session(sess)
+            ]
     for spotter in spotters:
+        if spotter is observer_sess or spotter is source_sess:
+            continue
         if is_vehicle_directly_visible_to(spotter, source_sess):
             return True
     return False
 
 
 def is_vehicle_visible_to(observer_sess: dict, source_sess: dict) -> bool:
-    if is_vehicle_directly_visible_to(observer_sess, source_sess):
-        return True
-    return is_vehicle_spotted_by_observer_team(observer_sess, source_sess)
+    cache = battle_tick_context_cache('vehicle_visibility')
+    cache_key = None
+    if cache is not None:
+        cache_key = (id(observer_sess), id(source_sess))
+        if cache_key in cache:
+            return cache[cache_key]
+    visible = (
+        is_vehicle_directly_visible_to(observer_sess, source_sess) or
+        is_vehicle_spotted_by_observer_team(observer_sess, source_sess)
+    )
+    if cache is not None:
+        cache[cache_key] = visible
+    return visible
 
 
 def mark_remote_vehicle_spotted(observer_sess: dict, source_sess: dict):
@@ -5931,7 +6016,7 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
             pos = (new_x, resolved_y, new_z)
         elif blocked:
             pos = (new_x, float(pos[1]), new_z)
-    if prev is None:
+    if BATTLE_VERBOSE_DEBUG and prev is None:
         print(f"    [client_pos] FIRST set client_vehicle_pos=({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) yaw={yaw:.2f}")
     if prev is not None:
         dx = pos[0] - prev[0]
@@ -5950,9 +6035,10 @@ def record_client_vehicle_position(sess: dict, pos, yaw: float):
             sess['client_vehicle_slope_time'] = now
             sample_count = sess.get('client_vehicle_slope_sample_count', 0) + 1
             sess['client_vehicle_slope_sample_count'] = sample_count
-            print(f"    [slope] sample dy={dy:+.2f} dxz={xz_dist:.2f} "
-                  f"raw={slope:+.3f} EMA={prev_slope:+.3f}->{new_slope:+.3f} "
-                  f"client_y={pos[1]:.2f}")
+            if BATTLE_VERBOSE_DEBUG:
+                print(f"    [slope] sample dy={dy:+.2f} dxz={xz_dist:.2f} "
+                      f"raw={slope:+.3f} EMA={prev_slope:+.3f}->{new_slope:+.3f} "
+                      f"client_y={pos[1]:.2f}")
         dt = max(0.001, min(1.0, now - prev_time)) if prev_time > 0.0 else 0.0
         if dt > 0.0:
             forward = dx * math.sin(yaw) + dz * math.cos(yaw)
@@ -6882,7 +6968,7 @@ def handle_client_avatar_update(sess: dict, msg_id: int, payload: bytes):
             record_client_vehicle_position(sess, pos, yaw)
             count = sess.get('client_vehicle_update_count', 0) + 1
             sess['client_vehicle_update_count'] = count
-            if count % 100 == 1:
+            if BATTLE_VERBOSE_DEBUG and count % 100 == 1:
                 print(f"[<] client Vehicle#{ward_id} pos="
                       f"({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f}) "
                       f"yaw={yaw:.2f}")
@@ -11800,14 +11886,14 @@ def handle_baseapp(sock):
             if avatar_update_only:
                 cnt = sess_for_addr.get('avatar_update_count', 0) + 1
                 sess_for_addr['avatar_update_count'] = cnt
-                if cnt % 100 == 1:
+                if BATTLE_VERBOSE_DEBUG and cnt % 100 == 1:
                     summary = ", ".join(f"0x{m:02x}({len(p)}B)"
                                         for m, p, _ in messages)
                     print(f"[<] movementUpdate x{cnt}: {summary}")
             elif all(m in high_rate_battle_msg_ids for m, _, _ in messages):
                 cnt = sess_for_addr.get('battle_input_count', 0) + 1
                 sess_for_addr['battle_input_count'] = cnt
-                if cnt % 100 == 1:
+                if BATTLE_VERBOSE_DEBUG and cnt % 100 == 1:
                     summary = ", ".join(f"0x{m:02x}({len(p)}B)"
                                         for m, p, _ in messages)
                     print(f"[<] battleInput x{cnt}: {summary}")

@@ -145,102 +145,119 @@ class EventLoopRuntime:
         if not sessions:
             return
         self.battle_tick_count += 1
-        remote_payloads = []
+        remote_payloads = {}
         def payload_for(observer):
-            payload = None
-            for entry in remote_payloads:
-                if entry[0] is observer:
-                    payload = entry[1]
-                    break
-            if payload is None:
-                payload = []
-                remote_payloads.append((observer, payload))
-            return payload
+            key = id(observer)
+            entry = remote_payloads.get(key)
+            if entry is None:
+                entry = (observer, [])
+                remote_payloads[key] = entry
+            return entry[1]
 
+        sessions_by_match = {}
         for sess in sessions:
-            in_prebattle = not sess.get("battle_period_active")
-            flags = sess.get("battle_motion_flags", 0)
-            if in_prebattle:
-                pos = sess.get("battle_pos", mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA])
-                yaw = float(sess.get("battle_yaw", 0.0))
-                speed = 0.0
-                rspeed = 0.0
-                addr = sess.get("addr")
-                if addr:
-                    mod.send_avatar_messages(sock, addr, sess,
-                                             mod.build_battle_motion_tick(pos, yaw, speed, rspeed),
-                                             "",
-                                             reliable=False)
-            elif sess.get("server_vehicle_authoritative", True):
-                pos, yaw, speed, rspeed = mod.advance_battle_motion(sess, flags)
-                addr = sess.get("addr")
-                if addr:
-                    tick_msg_builder = getattr(
-                        mod, "build_battle_motion_tick_for_session", None)
-                    msgs = (tick_msg_builder(sess, pos, yaw, speed, rspeed)
-                            if tick_msg_builder is not None else
-                            mod.build_battle_motion_tick(pos, yaw, speed, rspeed))
-                    mod.send_avatar_messages(sock, addr, sess,
-                                             msgs,
-                                             "",
-                                             reliable=False)
-            else:
-                pos = mod.get_effective_vehicle_pos(
-                    sess, sess.get("battle_pos", mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA]))
-                yaw = float(sess.get("client_vehicle_yaw", sess.get("battle_yaw", 0.0)))
-                if sess.pop("battle_motion_force_position", False):
+            sessions_by_match.setdefault(sess.get("battle_match_id"), []).append(sess)
+        motion_state = {}
+        begin_context = getattr(mod, "begin_battle_tick_context", None)
+        end_context = getattr(mod, "end_battle_tick_context", None)
+        if begin_context is not None:
+            begin_context(sessions)
+        try:
+            for sess in sessions:
+                in_prebattle = not sess.get("battle_period_active")
+                flags = sess.get("battle_motion_flags", 0)
+                if in_prebattle:
+                    pos = sess.get("battle_pos", mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA])
+                    yaw = float(sess.get("battle_yaw", 0.0))
+                    speed = 0.0
+                    rspeed = 0.0
                     addr = sess.get("addr")
                     if addr:
-                        mod.send_avatar_messages(
-                            sock, addr, sess,
-                            mod.build_forced_position(
-                                mod.PLAYER_VEHICLE_ID, pos, yaw,
-                                space_id=mod.SPACE_ID, vehicle_id=0),
-                            "",
-                            reliable=False)
-            if not in_prebattle:
-                process_collision = getattr(
-                    mod, "process_pending_vehicle_collision", None)
-                if process_collision is not None:
-                    process_collision(sock, sess)
-            source_account_id = sess.get("account_id")
-            remote_id = mod.get_remote_vehicle_id(sess)
-            _yaw, gun_pitch, turret_yaw = mod.get_remote_vehicle_angles(sess)
-            remote_pos = mod.get_effective_vehicle_pos(sess, pos)
-            if (not in_prebattle and
-                    not sess.get("server_vehicle_authoritative", True) and
-                    mod.is_recent_client_vehicle_position(sess)):
-                yaw = float(sess.get("client_vehicle_yaw", yaw))
-            remote_msg = mod.build_vehicle_motion_update_for(
-                remote_id, remote_pos, yaw, gun_pitch, turret_yaw)
-            for observer in sessions:
-                if observer is sess or not observer.get("addr"):
-                    continue
-                if observer.get("battle_match_id") != sess.get("battle_match_id"):
-                    continue
-                known = observer.setdefault("known_remote_accounts", set())
-                update_visibility = getattr(mod, "update_remote_vehicle_visibility", None)
-                if update_visibility is not None:
-                    if not update_visibility(sock, observer, sess):
+                        mod.send_avatar_messages(sock, addr, sess,
+                                                 mod.build_battle_motion_tick(pos, yaw, speed, rspeed),
+                                                 "",
+                                                 reliable=False)
+                elif sess.get("server_vehicle_authoritative", True):
+                    pos, yaw, speed, rspeed = mod.advance_battle_motion(sess, flags)
+                    addr = sess.get("addr")
+                    if addr:
+                        tick_msg_builder = getattr(
+                            mod, "build_battle_motion_tick_for_session", None)
+                        msgs = (tick_msg_builder(sess, pos, yaw, speed, rspeed)
+                                if tick_msg_builder is not None else
+                                mod.build_battle_motion_tick(pos, yaw, speed, rspeed))
+                        mod.send_avatar_messages(sock, addr, sess,
+                                                 msgs,
+                                                 "",
+                                                 reliable=False)
+                else:
+                    pos = mod.get_effective_vehicle_pos(
+                        sess, sess.get("battle_pos", mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA]))
+                    yaw = float(sess.get("client_vehicle_yaw", sess.get("battle_yaw", 0.0)))
+                    if sess.pop("battle_motion_force_position", False):
+                        addr = sess.get("addr")
+                        if addr:
+                            mod.send_avatar_messages(
+                                sock, addr, sess,
+                                mod.build_forced_position(
+                                    mod.PLAYER_VEHICLE_ID, pos, yaw,
+                                    space_id=mod.SPACE_ID, vehicle_id=0),
+                                "",
+                                reliable=False)
+                if not in_prebattle:
+                    process_collision = getattr(
+                        mod, "process_pending_vehicle_collision", None)
+                    if process_collision is not None:
+                        process_collision(sock, sess)
+                remote_id = mod.get_remote_vehicle_id(sess)
+                _yaw, gun_pitch, turret_yaw = mod.get_remote_vehicle_angles(sess)
+                remote_pos = mod.get_effective_vehicle_pos(sess, pos)
+                if (not in_prebattle and
+                        not sess.get("server_vehicle_authoritative", True) and
+                        mod.is_recent_client_vehicle_position(sess)):
+                    yaw = float(sess.get("client_vehicle_yaw", yaw))
+                motion_state[id(sess)] = (
+                    sess.get("account_id"),
+                    mod.build_vehicle_motion_update_for(
+                        remote_id, remote_pos, yaw, gun_pitch, turret_yaw))
+
+            update_visibility = getattr(mod, "update_remote_vehicle_visibility", None)
+            for match_sessions in sessions_by_match.values():
+                for sess in match_sessions:
+                    state = motion_state.get(id(sess))
+                    if state is None:
                         continue
-                    if source_account_id not in known:
+                    source_account_id, remote_msg = state
+                    for observer in match_sessions:
+                        if observer is sess or not observer.get("addr"):
+                            continue
+                        known = observer.setdefault("known_remote_accounts", set())
+                        if update_visibility is not None:
+                            if not update_visibility(sock, observer, sess):
+                                continue
+                            if source_account_id not in known:
+                                continue
+                        elif source_account_id not in known:
+                            mod.send_remote_vehicle(sock, observer, sess)
+                            if source_account_id not in known:
+                                continue
+                        payload_for(observer).append(remote_msg)
+            build_minimap = getattr(mod, "build_minimap_positions_update", None)
+            if build_minimap is not None:
+                for observer in active_sessions:
+                    if not observer.get("addr"):
                         continue
-                elif source_account_id not in known:
-                    mod.send_remote_vehicle(sock, observer, sess)
-                    if source_account_id not in known:
-                        continue
-                payload_for(observer).append(remote_msg)
-        build_minimap = getattr(mod, "build_minimap_positions_update", None)
-        if build_minimap is not None:
-            for observer in active_sessions:
-                if not observer.get("addr"):
-                    continue
-                msg = build_minimap(observer, sessions)
-                if msg:
-                    payload_for(observer).append(msg)
-        for observer, payload in remote_payloads:
-            mod.send_avatar_messages(sock, observer.get("addr"), observer,
-                                     b"".join(payload), "", reliable=False)
+                    match_sessions = sessions_by_match.get(
+                        observer.get("battle_match_id"), sessions)
+                    msg = build_minimap(observer, match_sessions)
+                    if msg:
+                        payload_for(observer).append(msg)
+            for observer, payload in remote_payloads.values():
+                mod.send_avatar_messages(sock, observer.get("addr"), observer,
+                                         b"".join(payload), "", reliable=False)
+        finally:
+            if end_context is not None:
+                end_context()
         self._broadcast_filter_resets(sock, active_sessions, prebattle_sessions,
                                       iter_start)
         processed_matches = set()
