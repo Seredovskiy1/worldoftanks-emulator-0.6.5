@@ -6830,8 +6830,19 @@ def advance_battle_motion(sess: dict, flags: int = None):
         turn_factor += (1.0 - min_turn_factor) * min(
             1.0, abs(speed) / max(0.01, abs(target_speed)))
     target_rspeed *= turn_factor
-    rspeed_rate = rot_accel if abs(target_rspeed) > abs(rspeed) else rot_decel
-    rspeed = approach(rspeed, target_rspeed, rspeed_rate, dt)
+    # When turning in place (no forward/backward input and vehicle is nearly
+    # stopped), apply rotation speed instantly without acceleration ramp-up.
+    # This prevents the unwanted "spin-up" feeling when pressing A/D while
+    # stationary.
+    pivot_in_place = (
+        abs(target_speed) < 0.001 and
+        abs(speed) < BATTLE_STOP_SPEED
+    )
+    if pivot_in_place:
+        rspeed = target_rspeed
+    else:
+        rspeed_rate = rot_accel if abs(target_rspeed) > abs(rspeed) else rot_decel
+        rspeed = approach(rspeed, target_rspeed, rspeed_rate, dt)
 
     if abs(target_speed) < 0.001 and abs(speed) < BATTLE_STOP_SPEED:
         speed = 0.0
