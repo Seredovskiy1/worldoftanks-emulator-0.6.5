@@ -1432,68 +1432,38 @@ input:checked + .slider:before {
 
 /* ========== ANIMATIONS ========== */
 @keyframes battlefieldSweep {
-    0% {
-        background-position: 0% 0%, 0 0;
-    }
-    100% {
-        background-position: 180% 180%, 0 28px;
-    }
+    0% { background-position: 0% 0%, 0 0; }
+    100% { background-position: 180% 180%, 0 28px; }
 }
 
 @keyframes tacticalScan {
-    0%, 46%, 100% {
-        transform: translateX(-110%);
-    }
-    64% {
-        transform: translateX(110%);
-    }
+    0%, 46%, 100% { transform: translateX(-110%); }
+    64% { transform: translateX(110%); }
 }
 
 @keyframes heroSweep {
-    0%, 100% {
-        transform: translateX(-65%);
-    }
-    50% {
-        transform: translateX(65%);
-    }
+    0%, 100% { transform: translateX(-65%); }
+    50% { transform: translateX(65%); }
 }
 
 @keyframes playSignal {
-    0%, 100% {
-        box-shadow: 0 0 15px rgba(229, 169, 59, 0.4), inset 0 1px 0 rgba(255,255,255,0.4);
-    }
-    50% {
-        box-shadow: 0 0 30px rgba(229, 169, 59, 0.58), 0 0 12px rgba(209, 39, 17, 0.28), inset 0 1px 0 rgba(255,255,255,0.4);
-    }
+    0%, 100% { box-shadow: 0 0 15px rgba(229, 169, 59, 0.4), inset 0 1px 0 rgba(255,255,255,0.4); }
+    50% { box-shadow: 0 0 30px rgba(229, 169, 59, 0.58), 0 0 12px rgba(209, 39, 17, 0.28), inset 0 1px 0 rgba(255,255,255,0.4); }
 }
 
 @keyframes pollLoad {
-    from {
-        transform: scaleX(0.18);
-        transform-origin: left;
-    }
-    to {
-        transform: scaleX(1);
-        transform-origin: left;
-    }
+    from { transform: scaleX(0.18); transform-origin: left; }
+    to { transform: scaleX(1); transform-origin: left; }
 }
 
 @keyframes barGlint {
-    0%, 44% {
-        transform: translateX(-100%);
-    }
-    100% {
-        transform: translateX(100%);
-    }
+    0%, 44% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 @keyframes logoHeat {
-    0%, 100% {
-        text-shadow: 0 0 10px rgba(0,0,0,0.8), 2px 2px 2px #ff4500;
-    }
-    50% {
-        text-shadow: 0 0 12px rgba(0,0,0,0.8), 0 0 18px rgba(255,69,0,0.38), 2px 2px 2px #ff4500;
-    }
+    0%, 100% { text-shadow: 0 0 10px rgba(0,0,0,0.8), 2px 2px 2px #ff4500; }
+    50% { text-shadow: 0 0 12px rgba(0,0,0,0.8), 0 0 18px rgba(255,69,0,0.38), 2px 2px 2px #ff4500; }
 }
 
 @keyframes adminPulse {
@@ -1512,14 +1482,8 @@ input:checked + .slider:before {
 }
 
 @keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(12px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* ========== RESPONSIVE ========== */
