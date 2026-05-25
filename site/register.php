@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'recaptcha.php';
 
 if (isset($_SESSION['user_id'])) {
     header('Location: profile.php');
@@ -46,7 +47,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Пароль может состоять только из латинских букв, цифр и символа подчеркивания (_).';
     } elseif ($password !== $password_confirm) {
         $error = 'Пароли не совпадают.';
-
+    } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
+        $error = 'Пожалуйста, подтвердите, что вы не робот.';
     } else {
         $normalized = normalize_login_name($username);
 
@@ -90,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>World of Tanks Project Orion 0.6.5 - Регистрация</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 
@@ -157,6 +160,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="form-group">
                             <label for="password_confirm">Подтвердите пароль</label>
                             <input type="password" name="password_confirm" id="password_confirm" class="form-control" placeholder="Повторите пароль..." required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
+                        </div>
+                        <div class="form-group">
+                            <label>Подтвердите, что вы не робот</label>
+                            <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                         </div>
                         <div style="margin-top: 25px; display: flex; justify-content: space-between; align-items: center;">
                             <a href="login.php" style="font-size: 13px;">Уже зарегистрированы? Войти</a>

@@ -27,6 +27,24 @@ $active_page = 'index';
     <title>World of Tanks Project Orion 0.6.5 - Главная</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        wot: { gold: '#e5a93b', dark: '#1a1a1c', panel: '#101011' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .modal-overlay { transition: opacity 0.3s ease; }
+        .modal-content { transition: transform 0.3s ease, opacity 0.3s ease; }
+        .modal-overlay.hidden { opacity: 0; pointer-events: none; }
+        .modal-overlay.hidden .modal-content { transform: scale(0.9) translateY(20px); opacity: 0; }
+    </style>
 </head>
 <body>
 
@@ -195,6 +213,62 @@ $active_page = 'index';
     <p>Сайт создан для демонстрации и тестирования Project Orion 0.6.5.</p>
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
+
+<!-- Modal -->
+<div id="donateModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div class="modal-content relative bg-gradient-to-b from-[#1e1e20] to-[#101011] border border-[#e5a93b]/40 rounded-2xl shadow-2xl shadow-[#e5a93b]/10 max-w-md w-full mx-4 p-0 overflow-hidden">
+        <button onclick="closeModal()" class="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors text-2xl leading-none z-10">&times;</button>
+        <div class="bg-gradient-to-r from-[#e5a93b]/20 to-transparent px-6 pt-6 pb-4 border-b border-[#e5a93b]/20">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-[#e5a93b]/20 flex items-center justify-center text-[#e5a93b] text-xl font-bold">&#9733;</div>
+                <div>
+                    <h2 class="text-white text-xl font-bold tracking-tight">Поддержи проект</h2>
+                    <p class="text-gray-400 text-sm">Project Orion 0.6.5</p>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+            <p class="text-gray-300 text-sm leading-relaxed">
+                Сервер живёт и развивается благодаря вашей поддержке. Если тебе нравится проект, ты можешь помочь с оплатой хостинга и разработкой новых возможностей.
+            </p>
+            <div class="bg-black/30 rounded-xl p-4 border border-[#e5a93b]/10">
+                <div class="flex items-center gap-2 text-[#e5a93b] text-sm font-semibold mb-3">
+                    <span class="text-lg">&#9829;</span>
+                    <span>Варианты поддержки</span>
+                </div>
+                <ul class="space-y-2 text-gray-400 text-sm">
+                    <li class="flex items-start gap-2">
+                        <span class="text-[#e5a93b] mt-0.5">&#9672;</span>
+                        <span>Разовое пожертвование через DonationAlerts</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-[#e5a93b] mt-0.5">&#9672;</span>
+                        <span>Регулярная поддержка развития сервера</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-[#e5a93b] mt-0.5">&#9672;</span>
+                        <span>Твой донат помогает с хостингом и нововведениями</span>
+                    </li>
+                </ul>
+            </div>
+            <a href="https://www.donationalerts.com/r/verffexcrf" target="_blank" class="block w-full py-3 bg-gradient-to-r from-[#e5a93b] to-[#d4941f] hover:from-[#f0b84d] hover:to-[#daa12a] text-black font-bold text-center rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a93b]/20 hover:shadow-[#e5a93b]/40">
+                &#9829;&nbsp;&nbsp;Задонатить на проект
+            </a>
+            <p class="text-gray-500 text-xs text-center">
+                Спасибо, что ты с нами! Каждая подписка и донат помогают серверу расти.
+            </p>
+        </div>
+        <div class="px-6 pb-4 flex justify-center">
+            <button onclick="closeModal()" class="text-gray-500 hover:text-white text-sm transition-colors">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function closeModal() {
+    document.getElementById('donateModal').classList.add('hidden');
+}
+</script>
 
 </body>
 </html>

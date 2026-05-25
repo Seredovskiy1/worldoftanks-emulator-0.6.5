@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'recaptcha.php';
 
 if (isset($_SESSION['user_id'])) {
     header('Location: profile.php');
@@ -14,6 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($username) || empty($password)) {
         $error = 'Пожалуйста, заполните все поля.';
+    } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
+        $error = 'Пожалуйста, подтвердите, что вы не робот.';
     } else {
         try {
             $stmt = $pdo->prepare("SELECT id, username, password_hash, is_admin FROM accounts WHERE username = ? OR normalized_name = ? OR email = ?");
@@ -48,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>World of Tanks Project Orion 0.6.5 - Вход</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 
@@ -101,6 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-group">
                         <label for="password">Пароль</label>
                         <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required>
+                    </div>
+                    <div class="form-group">
+                        <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                     </div>
                     <div style="margin-top: 25px; display: flex; justify-content: space-between; align-items: center;">
                         <a href="register.php" style="font-size: 13px;">Нет аккаунта? Создать</a>
