@@ -438,6 +438,25 @@ def _apply_env(config):
     return config
 
 
+def _apply_env_json(config, root):
+    """Read config/env.json and set public_host based on isProduction flag."""
+    env_path = os.path.join(root, "config", "env.json")
+    if not os.path.exists(env_path):
+        return config
+    try:
+        env_data = _read_json(env_path)
+    except Exception:
+        return config
+    env_section = env_data.get("env", {})
+    is_production = env_section.get("isProduction", False)
+    if is_production:
+        host = env_section.get("production_host", "63.185.68.216")
+    else:
+        host = env_section.get("local_host", "127.0.0.1")
+    _set_path(config, "server.public_host", host)
+    return config
+
+
 def load_config(root_path=None, force=False):
     global _CONFIG, _CONFIG_ROOT
     root = _root_path(root_path)
@@ -453,6 +472,7 @@ def load_config(root_path=None, force=False):
                     name.endswith(".local.json")):
                 continue
             _merge_dict(config, _read_json(path))
+    _apply_env_json(config, root)
     _apply_env(config)
     _CONFIG = config
     _CONFIG_ROOT = root
