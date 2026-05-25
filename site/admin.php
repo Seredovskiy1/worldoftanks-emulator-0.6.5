@@ -433,7 +433,6 @@ $csrf_token = $_SESSION['csrf_token'];
     <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
     <style>
         body { overflow-x: hidden; }
-        .admin-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.55; mix-blend-mode: screen; }
         .top-bar, .header-banner, .nav-container, .main-layout, .footer { position: relative; z-index: 1; }
         .admin-shell { max-width: 1360px; width: 100%; }
         .admin-grid { display: grid; grid-template-columns: 292px 1fr; gap: 18px; width: 100%; }
@@ -478,17 +477,11 @@ $csrf_token = $_SESSION['csrf_token'];
         .tanks-table tbody tr { transition: background 0.16s, box-shadow 0.16s; }
         .tanks-table tbody tr:hover { box-shadow: inset 3px 0 0 rgba(229,169,59,0.8); }
         .tank-name { font-weight: 800; color: #ffffff; letter-spacing: 0.2px; }
-        .admin-shell .btn { position: relative; overflow: hidden; }
-        .admin-shell .btn::after { content: ""; position: absolute; top: -80%; left: -30%; width: 28px; height: 260%; background: rgba(255,255,255,0.22); transform: rotate(24deg) translateX(-80px); transition: transform 0.35s; pointer-events: none; }
-        .admin-shell .btn:hover::after { transform: rotate(24deg) translateX(230px); }
         .btn-danger { background: linear-gradient(180deg, #5b1710 0%, #36100c 100%); color: #ffffff; border: 1px solid #8f2518; }
         .btn-danger:hover { background: linear-gradient(180deg, #7a2116 0%, #45130e 100%); color: #ffffff; }
         .btn-success { background: linear-gradient(180deg, #239a55 0%, #145f35 100%); color: #ffffff; border: 1px solid #2ecc71; }
         .btn-success:hover { background: linear-gradient(180deg, #2abf69 0%, #197242 100%); color: #ffffff; }
         .admin-empty { text-align: center; padding: 28px; color: #8c8c8c; }
-        @keyframes adminPulse { 0%, 100% { opacity: 0.35; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } }
-        @keyframes noticeDrop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes rowFlash { 0% { background: rgba(229,169,59,0.28); } 100% { background: transparent; } }
         @media (max-width: 1080px) {
             .admin-grid { grid-template-columns: 1fr; }
             .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -499,10 +492,6 @@ $csrf_token = $_SESSION['csrf_token'];
             .admin-form-grid { grid-template-columns: 1fr; }
             .bulk-actions { justify-content: flex-start; }
             .metric-grid { grid-template-columns: 1fr; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .admin-live::before, .row-flash, .notice-line.show, .metric, .account-link, .admin-shell .btn::after { animation: none; transition: none; }
-            .admin-fx { display: none; }
         }
     </style>
     <script>
@@ -796,7 +785,8 @@ $csrf_token = $_SESSION['csrf_token'];
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu flex-wrap">
+    <button class="nav-hamburger" onclick="document.getElementById('navMenu').classList.toggle('open')" aria-label="Меню">&#9776;</button>
+    <ul class="nav-menu" id="navMenu">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="profile.php" class="nav-link">Кабинет</a></li>

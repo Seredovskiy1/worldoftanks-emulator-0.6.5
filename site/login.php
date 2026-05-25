@@ -80,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu flex-wrap">
+    <button class="nav-hamburger" onclick="document.getElementById('navMenu').classList.toggle('open')" aria-label="Меню">&#9776;</button>
+    <ul class="nav-menu" id="navMenu">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
@@ -89,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <div class="main-layout flex-col items-center" style="justify-content: center;">
-    <div class="content-area w-full md:w-[500px]" style="width: 500px;">
+    <div class="content-area w-full" style="max-width: 500px;">
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Авторизация</div>

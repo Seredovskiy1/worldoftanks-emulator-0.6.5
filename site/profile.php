@@ -121,7 +121,8 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu flex-wrap">
+    <button class="nav-hamburger" onclick="document.getElementById('navMenu').classList.toggle('open')" aria-label="Меню">&#9776;</button>
+    <ul class="nav-menu" id="navMenu">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
