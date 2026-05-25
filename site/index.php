@@ -30,6 +30,7 @@ $active_page = 'index';
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            important: true,
             theme: {
                 extend: {
                     colors: {
@@ -49,7 +50,7 @@ $active_page = 'index';
 <body>
 
 <div class="top-bar">
-    <div class="top-bar-content">
+    <div class="top-bar-content flex-col md:flex-row md:justify-between text-center md:text-left gap-1 md:gap-0">
         <div class="top-bar-links">
             <a href="index.php">Портал</a>
             <a href="download.php">Скачать</a>
@@ -68,18 +69,18 @@ $active_page = 'index';
     </div>
 </div>
 
-<div class="header-banner">
-    <div class="logo-container">
-        <img src="images/logo.png" alt="Logo" class="logo-icon">
+<div class="header-banner h-[100px] md:h-[180px]">
+    <div class="logo-container gap-2 md:gap-[18px]">
+        <img src="images/logo.png" alt="Logo" class="logo-icon w-10 h-10 md:w-[72px] md:h-[72px]">
         <div class="logo-text-wrapper">
-            <div class="logo-text">World of Tanks</div>
-            <div class="logo-subtext">Project Orion 0.6.5</div>
+            <div class="logo-text text-xl md:text-4xl">World of Tanks</div>
+            <div class="logo-subtext text-[9px] md:text-sm">Project Orion 0.6.5</div>
         </div>
     </div>
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu">
+    <ul class="nav-menu flex-wrap">
         <li class="nav-item"><a href="index.php" class="nav-link active">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
@@ -90,24 +91,24 @@ $active_page = 'index';
     </ul>
 </div>
 
-<div class="main-layout">
-    <div class="content-area">
-        <div class="hero-slider">
+<div class="main-layout flex-col md:flex-row">
+    <div class="content-area w-full md:w-[70%]">
+        <div class="hero-slider h-[180px] md:h-[300px]">
             <img src="images/wot_banner.png" alt="Мир Танков 0.6.5">
             <div class="hero-overlay">
-                <div class="hero-title">Масштабные танковые бои 2011 года!</div>
-                <div class="hero-desc">Соберите команду, выберите легендарный Lowe, Т-34 или Maus и окунитесь в атмосферу классической физики и геймплея 0.6.5!</div>
+                <div class="hero-title text-base md:text-2xl">Масштабные танковые бои 2011 года!</div>
+                <div class="hero-desc text-xs md:text-sm">Соберите команду, выберите легендарный Lowe, Т-34 или Maus и окунитесь в атмосферу классической физики и геймплея 0.6.5!</div>
             </div>
         </div>
 
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Новости сервера</div>
+                <div class="card-title text-sm md:text-lg">Новости сервера</div>
             </div>
             <div class="card-body">
                 <div class="news-list">
-                    <div class="news-item">
-                        <img src="images/wot_banner.png" class="news-img" alt="Новость 1">
+                    <div class="news-item flex-col md:flex-row">
+                        <img src="images/wot_banner.png" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" alt="Новость 1">
                         <div class="news-info">
                             <a href="#" class="news-title">Запуск классического сервера 0.6.5!</a>
                             <div class="news-meta">
@@ -119,8 +120,8 @@ $active_page = 'index';
                             </div>
                         </div>
                     </div>
-                    <div class="news-item">
-                        <img src="images/wot_banner.png" class="news-img" alt="Новость 2">
+                    <div class="news-item flex-col md:flex-row">
+                        <img src="images/wot_banner.png" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" alt="Новость 2">
                         <div class="news-info">
                             <a href="#" class="news-title">Обновленная система управления танками в админке</a>
                             <div class="news-meta">
@@ -137,12 +138,12 @@ $active_page = 'index';
         </div>
     </div>
 
-    <div class="sidebar-area">
-        <a href="download.php" class="play-btn">Играть бесплатно</a>
+    <div class="sidebar-area w-full md:w-[30%]">
+        <a href="download.php" class="play-btn text-sm md:text-lg text-center">Играть бесплатно</a>
 
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Статистика сервера</div>
+                <div class="card-title text-sm md:text-lg">Статистика сервера</div>
             </div>
             <div class="card-body">
                 <div class="stat-row">
@@ -166,7 +167,7 @@ $active_page = 'index';
 
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Опрос</div>
+                <div class="card-title text-sm md:text-lg">Опрос</div>
             </div>
             <div class="card-body">
                 <div style="font-weight: 600; margin-bottom: 15px; color: #ffffff;">Вам нравится версия 0.6.5?</div>
@@ -195,7 +196,7 @@ $active_page = 'index';
 
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Мы в соцсетях</div>
+                <div class="card-title text-sm md:text-lg">Мы в соцсетях</div>
             </div>
             <div class="card-body">
                 <div class="social-links">
@@ -208,7 +209,7 @@ $active_page = 'index';
     </div>
 </div>
 
-<div class="footer">
+<div class="footer text-[11px] md:text-xs px-3 md:px-0">
     <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Все права защищены.</p>
     <p>Сайт создан для демонстрации и тестирования Project Orion 0.6.5.</p>
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>

@@ -429,6 +429,8 @@ $csrf_token = $_SESSION['csrf_token'];
     <title>World of Tanks Project Orion 0.6.5 - Админ-панель</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
     <style>
         body { overflow-x: hidden; }
         .admin-fx { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.55; mix-blend-mode: screen; }
@@ -770,7 +772,7 @@ $csrf_token = $_SESSION['csrf_token'];
 <canvas class="admin-fx" id="adminFx"></canvas>
 
 <div class="top-bar">
-    <div class="top-bar-content">
+    <div class="top-bar-content flex-col md:flex-row md:justify-between text-center md:text-left gap-1 md:gap-0">
         <div class="top-bar-links">
             <a href="index.php">Портал</a>
             <a href="download.php">Загрузки</a>
@@ -783,18 +785,18 @@ $csrf_token = $_SESSION['csrf_token'];
     </div>
 </div>
 
-<div class="header-banner">
-    <div class="logo-container">
-        <img src="images/logo.png" alt="Logo" class="logo-icon">
+<div class="header-banner h-[100px] md:h-[180px]">
+    <div class="logo-container gap-2 md:gap-[18px]">
+        <img src="images/logo.png" alt="Logo" class="logo-icon w-10 h-10 md:w-[72px] md:h-[72px]">
         <div class="logo-text-wrapper">
-            <div class="logo-text">World of Tanks</div>
-            <div class="logo-subtext">панель управления сервером</div>
+            <div class="logo-text text-xl md:text-4xl">World of Tanks</div>
+            <div class="logo-subtext text-[9px] md:text-sm">панель управления сервером</div>
         </div>
     </div>
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu">
+    <ul class="nav-menu flex-wrap">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="profile.php" class="nav-link">Кабинет</a></li>
@@ -807,7 +809,7 @@ $csrf_token = $_SESSION['csrf_token'];
         <div class="admin-stack">
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Игроки</div>
+                    <div class="card-title text-sm md:text-lg">Игроки</div>
                 </div>
                 <div class="card-body">
                     <form action="admin.php" method="GET" class="search-box">
@@ -841,7 +843,7 @@ $csrf_token = $_SESSION['csrf_token'];
 
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Аккаунт</div>
+                    <div class="card-title text-sm md:text-lg">Аккаунт</div>
                 </div>
                 <div class="card-body">
                     <?php if ($selected_account): ?>
@@ -889,7 +891,7 @@ $csrf_token = $_SESSION['csrf_token'];
         <div class="admin-stack">
             <div class="admin-hero-strip">
                 <div>
-                    <div class="admin-hero-title">Контроль техники</div>
+                    <div class="admin-hero-title text-base md:text-xl">Контроль техники</div>
                     <div class="admin-hero-sub">Глобальное отключение работает для всех, а персональное правило может разрешить или заблокировать танк отдельному аккаунту.</div>
                 </div>
                 <div class="admin-live">live db</div>
@@ -918,7 +920,7 @@ $csrf_token = $_SESSION['csrf_token'];
 
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Доступ к технике</div>
+                    <div class="card-title text-sm md:text-lg">Доступ к технике</div>
                     <div class="muted">Событий: <?php echo $event_count; ?></div>
                 </div>
                 <div class="card-body">
@@ -1063,7 +1065,7 @@ $csrf_token = $_SESSION['csrf_token'];
     </div>
 </div>
 
-<div class="footer">
+<div class="footer text-[11px] md:text-xs px-3 md:px-0">
     <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Админ-панель управляет той же базой, что и сервер.</p>
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>

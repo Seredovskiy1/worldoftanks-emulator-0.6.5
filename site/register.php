@@ -93,11 +93,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
     <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
 </head>
 <body>
 
 <div class="top-bar">
-    <div class="top-bar-content">
+    <div class="top-bar-content flex-col md:flex-row md:justify-between text-center md:text-left gap-1 md:gap-0">
         <div class="top-bar-links">
             <a href="index.php">Портал</a>
             <a href="download.php">Скачать</a>
@@ -108,18 +110,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
-<div class="header-banner">
-    <div class="logo-container">
-        <img src="images/logo.png" alt="Logo" class="logo-icon">
+<div class="header-banner h-[100px] md:h-[180px]">
+    <div class="logo-container gap-2 md:gap-[18px]">
+        <img src="images/logo.png" alt="Logo" class="logo-icon w-10 h-10 md:w-[72px] md:h-[72px]">
         <div class="logo-text-wrapper">
-            <div class="logo-text">World of Tanks</div>
-            <div class="logo-subtext">Project Orion 0.6.5</div>
+            <div class="logo-text text-xl md:text-4xl">World of Tanks</div>
+            <div class="logo-subtext text-[9px] md:text-sm">Project Orion 0.6.5</div>
         </div>
     </div>
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu">
+    <ul class="nav-menu flex-wrap">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link active">Регистрация</a></li>
@@ -127,11 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </ul>
 </div>
 
-<div class="main-layout" style="justify-content: center;">
-    <div class="content-area" style="width: 550px;">
+<div class="main-layout flex-col items-center" style="justify-content: center;">
+    <div class="content-area w-full md:w-[550px]" style="width: 550px;">
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Регистрация нового игрока</div>
+                <div class="card-title text-sm md:text-lg">Регистрация нового игрока</div>
             </div>
             <div class="card-body">
                 <?php if (!empty($error)): ?>
@@ -165,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label>Подтвердите, что вы не робот</label>
                             <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                         </div>
-                        <div style="margin-top: 25px; display: flex; justify-content: space-between; align-items: center;">
+                        <div class="form-actions">
                             <a href="login.php" style="font-size: 13px;">Уже зарегистрированы? Войти</a>
                             <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
                         </div>

@@ -9,11 +9,13 @@ require_once 'db.php';
     <title>World of Tanks Project Orion 0.6.5 - Скачать игру</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
 </head>
 <body>
 
 <div class="top-bar">
-    <div class="top-bar-content">
+    <div class="top-bar-content flex-col md:flex-row md:justify-between text-center md:text-left gap-1 md:gap-0">
         <div class="top-bar-links">
             <a href="index.php">Портал</a>
             <a href="download.php">Скачать</a>
@@ -32,18 +34,18 @@ require_once 'db.php';
     </div>
 </div>
 
-<div class="header-banner">
-    <div class="logo-container">
-        <img src="images/logo.png" alt="Logo" class="logo-icon">
+<div class="header-banner h-[100px] md:h-[180px]">
+    <div class="logo-container gap-2 md:gap-[18px]">
+        <img src="images/logo.png" alt="Logo" class="logo-icon w-10 h-10 md:w-[72px] md:h-[72px]">
         <div class="logo-text-wrapper">
-            <div class="logo-text">World of Tanks</div>
-            <div class="logo-subtext">Project Orion 0.6.5</div>
+            <div class="logo-text text-xl md:text-4xl">World of Tanks</div>
+            <div class="logo-subtext text-[9px] md:text-sm">Project Orion 0.6.5</div>
         </div>
     </div>
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu">
+    <ul class="nav-menu flex-wrap">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link active">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
@@ -54,21 +56,21 @@ require_once 'db.php';
     </ul>
 </div>
 
-<div class="main-layout" style="justify-content: center;">
-    <div class="content-area" style="width: 800px;">
+<div class="main-layout flex-col items-center" style="justify-content: center;">
+    <div class="content-area content-area--wide w-full">
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Скачать клиент игры</div>
+                <div class="card-title text-sm md:text-lg">Скачать клиент игры</div>
             </div>
             <div class="card-body">
                 <div class="dl-box">
-                    <div class="dl-title">Полный клиент World of Tanks v.0.6.5</div>
+                    <div class="dl-title text-base md:text-xl">Полный клиент World of Tanks v.0.6.5</div>
                     <div class="dl-meta">Размер: ~2.4 ГБ | Формат: ZIP-архив | Версия: 0.6.5 (2011 год)</div>
                     <a href="#" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">Скачать клиент (Google Drive)</a>
                 </div>
 
                 <div class="dl-box" style="border-style: solid;">
-                    <div class="dl-title" style="color: #e5a93b;">Серверный лаунчер-патч</div>
+                    <div class="dl-title text-base md:text-xl" style="color: #e5a93b;">Серверный лаунчер-патч</div>
                     <div class="dl-meta">Размер: ~5 МБ | Обязательно для подключения к нашему серверу</div>
                     <a href="#" class="btn btn-primary" style="font-size: 15px; background: linear-gradient(180deg, #e5a93b 0%, #b87c14 100%); color: #000; border-color: #ffcc00; font-weight: 800;">Скачать лаунчер</a>
                 </div>
@@ -97,7 +99,7 @@ require_once 'db.php';
     </div>
 </div>
 
-<div class="footer">
+<div class="footer text-[11px] md:text-xs px-3 md:px-0">
     <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Все права защищены.</p>
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>

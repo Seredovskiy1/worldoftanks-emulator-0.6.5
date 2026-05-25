@@ -89,11 +89,13 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
     <title>World of Tanks Project Orion 0.6.5 - Личный кабинет</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
 </head>
 <body>
 
 <div class="top-bar">
-    <div class="top-bar-content">
+    <div class="top-bar-content flex-col md:flex-row md:justify-between text-center md:text-left gap-1 md:gap-0">
         <div class="top-bar-links">
             <a href="index.php">Портал</a>
             <a href="download.php">Скачать</a>
@@ -108,18 +110,18 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
     </div>
 </div>
 
-<div class="header-banner">
-    <div class="logo-container">
-        <img src="images/logo.png" alt="Logo" class="logo-icon">
+<div class="header-banner h-[100px] md:h-[180px]">
+    <div class="logo-container gap-2 md:gap-[18px]">
+        <img src="images/logo.png" alt="Logo" class="logo-icon w-10 h-10 md:w-[72px] md:h-[72px]">
         <div class="logo-text-wrapper">
-            <div class="logo-text">World of Tanks</div>
-            <div class="logo-subtext">Project Orion 0.6.5</div>
+            <div class="logo-text text-xl md:text-4xl">World of Tanks</div>
+            <div class="logo-subtext text-[9px] md:text-sm">Project Orion 0.6.5</div>
         </div>
     </div>
 </div>
 
 <div class="nav-container">
-    <ul class="nav-menu">
+    <ul class="nav-menu flex-wrap">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
@@ -130,11 +132,11 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
     </ul>
 </div>
 
-<div class="main-layout">
-    <div class="content-area">
+<div class="main-layout flex-col md:flex-row">
+    <div class="content-area w-full md:w-[70%]">
         <div class="card">
             <div class="card-header">
-                <div class="profile-username"><?php echo htmlspecialchars($account['username']); ?></div>
+                <div class="profile-username text-lg md:text-2xl"><?php echo htmlspecialchars($account['username']); ?></div>
                 <?php if (intval($account['is_admin']) === 1): ?>
                     <span class="profile-role">Администратор</span>
                 <?php else: ?>
@@ -142,7 +144,7 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
                 <?php endif; ?>
             </div>
             <div class="card-body">
-                <div class="profile-resources">
+                <div class="profile-resources grid-cols-1 md:grid-cols-3">
                     <div class="resource-card">
                         <div class="resource-val resource-credits"><?php echo number_format($account['credits']); ?></div>
                         <div class="resource-label">Кредиты</div>
@@ -157,9 +159,9 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
                     </div>
                 </div>
 
-                <div style="font-size: 18px; font-weight: 600; color: #e5a93b; text-transform: uppercase; margin-bottom: 20px; border-bottom: 1px solid #28282a; padding-bottom: 8px;">Статистика боев</div>
+                <div class="section-title">Статистика боев</div>
 
-                <div class="stat-grid">
+                <div class="stat-grid grid-cols-1 md:grid-cols-2">
                     <div>
                         <div class="stat-row">
                             <span class="stat-label">Сыграно боев:</span>
@@ -214,11 +216,11 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 15px; margin-top: 25px;">
-                    <div class="resource-card" style="flex: 1; padding: 10px 15px; font-size: 13px;">
+                <div class="profile-extras">
+                    <div class="resource-card">
                         <span class="stat-label">Слоты в ангаре:</span> <span class="stat-value"><?php echo $account['slots']; ?></span>
                     </div>
-                    <div class="resource-card" style="flex: 1; padding: 10px 15px; font-size: 13px;">
+                    <div class="resource-card">
                         <span class="stat-label">Места в казарме:</span> <span class="stat-value"><?php echo $account['berths']; ?></span>
                     </div>
                 </div>
@@ -226,10 +228,10 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
         </div>
     </div>
 
-    <div class="sidebar-area">
+    <div class="sidebar-area w-full md:w-[30%]">
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Смена пароля</div>
+                <div class="card-title text-sm md:text-lg">Смена пароля</div>
             </div>
             <div class="card-body">
                 <?php if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])): ?>
@@ -261,7 +263,7 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
     </div>
 </div>
 
-<div class="footer">
+<div class="footer text-[11px] md:text-xs px-3 md:px-0">
     <p>&copy; 2026 World of Tanks Project Orion 0.6.5. Все права защищены.</p>
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>

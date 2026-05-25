@@ -167,6 +167,11 @@ a:hover {
     gap: 30px;
 }
 
+.content-area--wide {
+    width: 100%;
+    max-width: 800px;
+}
+
 .sidebar-area {
     width: 30%;
     display: flex;
@@ -657,6 +662,51 @@ input:checked + .slider:before {
 .badge-usa { background: #1a4f8a; color: #ffffff; }
 .badge-france { background: #2980b9; color: #ffffff; }
 .badge-china { background: #d35400; color: #ffffff; }
+
+.form-actions {
+    margin-top: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+@media (max-width: 480px) {
+    .form-actions {
+        flex-direction: column;
+        gap: 12px;
+    }
+    .form-actions .btn { width: 100%; }
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #e5a93b;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #28282a;
+    padding-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+    .section-title { font-size: 14px; margin-bottom: 14px; }
+}
+
+.profile-extras {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+}
+
+.profile-extras .resource-card {
+    flex: 1;
+    padding: 10px 15px;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .profile-extras { flex-direction: column; gap: 10px; }
+}
 
 .status-active { color: #2ecc71; font-weight: 600; }
 .status-disabled { color: #e74c3c; font-weight: 600; }
