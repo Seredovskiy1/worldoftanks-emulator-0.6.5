@@ -300,6 +300,9 @@ $filter_class = $_GET['class'] ?? '';
 $filter_tier = $_GET['tier'] ?? '';
 $filter_status = $_GET['status'] ?? '';
 $selected_account_id = intval($_GET['account_id'] ?? 0);
+$tab = $_GET['tab'] ?? 'vehicles';
+$user_search = trim($_GET['user_search'] ?? '');
+$user_page = max(1, intval($_GET['user_page'] ?? 1));
 
 try {
     $disabled_tanks = $pdo->query("SELECT vehicle_name FROM disabled_vehicles")->fetchAll(PDO::FETCH_COLUMN);
@@ -883,6 +886,12 @@ $csrf_token = $_SESSION['csrf_token'];
         </div>
 
         <div class="admin-stack">
+            <div class="admin-tabs" style="display:flex;gap:4px;margin-bottom:14px;">
+                <a href="admin.php?tab=vehicles&amp;account_id=<?php echo intval($selected_account_id); ?>&amp;account_search=<?php echo h($account_search); ?>" class="btn <?php echo $tab === 'vehicles' ? 'btn-primary' : 'btn-secondary'; ?>" style="flex:1;text-align:center;">Контроль техники</a>
+                <a href="admin.php?tab=users&amp;account_id=<?php echo intval($selected_account_id); ?>&amp;account_search=<?php echo h($account_search); ?>" class="btn <?php echo $tab === 'users' ? 'btn-primary' : 'btn-secondary'; ?>" style="flex:1;text-align:center;">Пользователи</a>
+            </div>
+
+            <?php if ($tab === 'vehicles'): ?>
             <div class="admin-hero-strip">
                 <div>
                     <div class="admin-hero-title text-base md:text-xl">Контроль техники</div>
@@ -919,6 +928,7 @@ $csrf_token = $_SESSION['csrf_token'];
                 </div>
                 <div class="card-body">
                     <form action="admin.php" method="GET" class="admin-toolbar">
+                        <input type="hidden" name="tab" value="vehicles">
                         <input type="hidden" name="account_id" value="<?php echo intval($selected_account_id); ?>">
                         <input type="hidden" name="account_search" value="<?php echo h($account_search); ?>">
                         <input type="text" name="search" class="form-control search-input" placeholder="Поиск танка" value="<?php echo h($search); ?>">
@@ -949,7 +959,7 @@ $csrf_token = $_SESSION['csrf_token'];
                             <option value="overridden" <?php echo $filter_status === 'overridden' ? 'selected' : ''; ?>>Есть персональное правило</option>
                         </select>
                         <button type="submit" class="btn btn-primary">Фильтр</button>
-                        <a href="admin.php?account_id=<?php echo intval($selected_account_id); ?>" class="btn btn-secondary">Сбросить</a>
+                        <a href="admin.php?tab=vehicles&amp;account_id=<?php echo intval($selected_account_id); ?>" class="btn btn-secondary">Сбросить</a>
                     </form>
 
                     <div class="bulk-panel">
@@ -1046,6 +1056,7 @@ $csrf_token = $_SESSION['csrf_token'];
                             $end = min($total_pages, $page + 4);
                             for ($i = $start; $i <= $end; $i++):
                                 $query_params = $_GET;
+                                $query_params['tab'] = 'vehicles';
                                 $query_params['page'] = $i;
                                 $link = 'admin.php?' . http_build_query($query_params);
                             ?>
@@ -1055,6 +1066,103 @@ $csrf_token = $_SESSION['csrf_token'];
                     <?php endif; ?>
                 </div>
             </div>
+            <?php elseif ($tab === 'users'): ?>
+            <?php
+            $user_limit = 50;
+            $user_where = '';
+            $user_bind = [];
+            if ($user_search !== '') {
+                $user_where = "WHERE id = ? OR username LIKE ? OR email LIKE ? OR reg_ip LIKE ?";
+                $like = '%' . $user_search . '%';
+                $user_bind = [intval($user_search), $like, $like, $like];
+            }
+            try {
+                $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM accounts $user_where");
+                $count_stmt->execute($user_bind);
+                $user_total = intval($count_stmt->fetchColumn());
+            } catch (Exception $e) {
+                $user_total = 0;
+            }
+            $user_total_pages = max(1, intval(ceil($user_total / $user_limit)));
+            $user_page = min($user_page, $user_total_pages);
+            $user_offset = ($user_page - 1) * $user_limit;
+            try {
+                $stmt = $pdo->prepare("SELECT id, username, email, reg_ip, is_admin, created_at, last_login FROM accounts $user_where ORDER BY id ASC LIMIT $user_limit OFFSET $user_offset");
+                $stmt->execute($user_bind);
+                $all_users = $stmt->fetchAll();
+            } catch (Exception $e) {
+                $all_users = [];
+            }
+            ?>
+            <div class="admin-hero-strip">
+                <div>
+                    <div class="admin-hero-title text-base md:text-xl">Пользователи</div>
+                    <div class="admin-hero-sub">Страница <?php echo $user_page; ?> из <?php echo $user_total_pages; ?> · всего <?php echo $user_total; ?> аккаунтов</div>
+                </div>
+                <div class="admin-live"><?php echo $total_accounts; ?> аккаунтов</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title text-sm md:text-lg">Все пользователи</div>
+                </div>
+                <div class="card-body">
+                    <form action="admin.php" method="GET" class="admin-toolbar">
+                        <input type="hidden" name="tab" value="users">
+                        <input type="hidden" name="user_page" value="1">
+                        <input type="text" name="user_search" class="form-control search-input" placeholder="ID, логин, email или IP" value="<?php echo h($user_search); ?>">
+                        <button type="submit" class="btn btn-primary">Найти</button>
+                        <a href="admin.php?tab=users" class="btn btn-secondary">Сбросить</a>
+                    </form>
+
+                    <div class="tanks-table-container">
+                        <table class="tanks-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Логин</th>
+                                    <th>Email</th>
+                                    <th>IP</th>
+                                    <th>Админ</th>
+                                    <th>Регистрация</th>
+                                    <th>Последний вход</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($all_users as $u): ?>
+                                    <tr>
+                                        <td><?php echo intval($u['id']); ?></td>
+                                        <td class="tank-name"><?php echo h($u['username']); ?></td>
+                                        <td style="color:#b7b0a7;font-size:12px;"><?php echo h($u['email'] ?? '-'); ?></td>
+                                        <td style="font-family:monospace;font-size:12px;color:#8c8c8c;"><?php echo h($u['reg_ip'] ?? '-'); ?></td>
+                                        <td><?php echo intval($u['is_admin']) === 1 ? '<span class="pill pill-on">да</span>' : '<span class="pill pill-off">нет</span>'; ?></td>
+                                        <td style="font-size:12px;color:#8c8c8c;"><?php echo h($u['created_at'] ?? '-'); ?></td>
+                                        <td style="font-size:12px;color:#8c8c8c;"><?php echo h($u['last_login'] ?? '-'); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <?php if (empty($all_users)): ?>
+                                    <tr>
+                                        <td colspan="7" class="admin-empty">Пользователи не найдены.</td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <?php if ($user_total_pages > 1): ?>
+                        <div class="pagination">
+                            <?php
+                            $u_start = max(1, $user_page - 4);
+                            $u_end = min($user_total_pages, $user_page + 4);
+                            for ($i = $u_start; $i <= $u_end; $i++):
+                            ?>
+                                <a href="admin.php?tab=users&amp;user_page=<?php echo $i; ?>&amp;user_search=<?php echo h($user_search); ?>" class="pagination-item <?php echo $user_page === $i ? 'active' : ''; ?>"><?php echo $i; ?></a>
+                            <?php endfor; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
