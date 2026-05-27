@@ -11,6 +11,9 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        $error = 'Сессия устарела. Обновите страницу.';
+    } else {
     $current_password = $_POST['current_password'] ?? '';
     $new_password = $_POST['new_password'] ?? '';
     $new_password_confirm = $_POST['new_password_confirm'] ?? '';
@@ -19,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         $error = 'Пожалуйста, заполните все поля.';
     } elseif (strlen($new_password) < 6) {
         $error = 'Новый пароль должен быть не менее 6 символов.';
-    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $new_password)) {
-        $error = 'Новый пароль может состоять только из латинских букв, цифр и символа подчеркивания (_).';
+    } elseif (strlen($new_password) > 128) {
+        $error = 'Новый пароль слишком длинный (максимум 128 символов).';
     } elseif ($new_password !== $new_password_confirm) {
         $error = 'Новые пароли не совпадают.';
 
@@ -39,8 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                 $error = 'Неверный текущий пароль.';
             }
         } catch (Exception $e) {
-            $error = 'Ошибка базы данных: ' . $e->getMessage();
+            error_log("Profile password change error: " . $e->getMessage());
+            $error = 'Произошла внутренняя ошибка. Попробуйте позже.';
         }
+    }
     }
 }
 
@@ -53,7 +58,15 @@ try {
     $stmt->execute([$user_id]);
     $dossier = $stmt->fetch();
 } catch (Exception $e) {
-    die("Ошибка загрузки профиля: " . $e->getMessage());
+    error_log("Profile load error: " . $e->getMessage());
+    $account = null;
+    $dossier = null;
+}
+
+if (!$account) {
+    session_destroy();
+    header('Location: login.php');
+    exit;
 }
 
 if (!$dossier) {
@@ -245,17 +258,19 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
                 <?php endif; ?>
 
                 <form action="profile.php" method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
+                    <input type="hidden" name="change_password" value="1">
                     <div class="form-group">
                         <label for="current_password">Текущий пароль</label>
-                        <input type="password" name="current_password" id="current_password" class="form-control" required>
+                        <input type="password" name="current_password" id="current_password" class="form-control" required autocomplete="current-password">
                     </div>
                     <div class="form-group">
                         <label for="new_password">Новый пароль</label>
-                        <input type="password" name="new_password" id="new_password" class="form-control" required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
+                        <input type="password" name="new_password" id="new_password" class="form-control" required minlength="6" maxlength="128" autocomplete="new-password">
                     </div>
                     <div class="form-group">
                         <label for="new_password_confirm">Подтвердите пароль</label>
-                        <input type="password" name="new_password_confirm" id="new_password_confirm" class="form-control" required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
+                        <input type="password" name="new_password_confirm" id="new_password_confirm" class="form-control" required minlength="6" maxlength="128" autocomplete="new-password">
                     </div>
                     <button type="submit" name="change_password" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Обновить пароль</button>
                 </form>

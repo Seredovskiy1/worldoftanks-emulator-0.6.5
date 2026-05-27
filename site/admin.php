@@ -30,7 +30,6 @@ function require_csrf() {
 function vehicle_catalog_path() {
     $paths = [
         __DIR__ . DIRECTORY_SEPARATOR . '_vehicles.json',
-        'C:\\Users\\qwerty\\Documents\\GitHub\\worldoftanks-emulator-0.6.5\\data\\_vehicles.json',
     ];
     foreach ($paths as $path) {
         if (is_file($path)) {
@@ -285,7 +284,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['ajax'])) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        json_out(['success' => false, 'error' => $e->getMessage()]);
+        error_log("Admin AJAX error: " . $e->getMessage());
+        json_out(['success' => false, 'error' => 'Произошла внутренняя ошибка.']);
     }
 }
 
@@ -304,6 +304,7 @@ $selected_account_id = intval($_GET['account_id'] ?? 0);
 try {
     $disabled_tanks = $pdo->query("SELECT vehicle_name FROM disabled_vehicles")->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {
+    error_log("Admin disabled_tanks query: " . $e->getMessage());
     $disabled_tanks = [];
 }
 $disabled_set = array_flip($disabled_tanks);
@@ -318,6 +319,7 @@ try {
     }
     $accounts = $stmt->fetchAll();
 } catch (Exception $e) {
+    error_log("Admin accounts query: " . $e->getMessage());
     $accounts = [];
 }
 
@@ -348,6 +350,7 @@ if ($selected_account_id > 0) {
             }
         }
     } catch (Exception $e) {
+        error_log("Admin selected_account query: " . $e->getMessage());
         $selected_account = null;
     }
 }
@@ -360,6 +363,7 @@ try {
     $override_count = intval($pdo->query("SELECT COUNT(*) FROM account_vehicle_overrides")->fetchColumn());
     $event_count = intval($pdo->query("SELECT COUNT(*) FROM vehicle_access_events")->fetchColumn());
 } catch (Exception $e) {
+    error_log("Admin stats query: " . $e->getMessage());
 }
 
 $filtered_vehicles = [];
@@ -497,7 +501,7 @@ $csrf_token = $_SESSION['csrf_token'];
     <script>
         const csrfToken = <?php echo json_encode($csrf_token); ?>;
         const selectedAccountId = <?php echo intval($selected_account_id); ?>;
-        const filteredVehicleNames = <?php echo json_encode($filtered_vehicle_names, JSON_UNESCAPED_UNICODE); ?>;
+        const filteredVehicleNames = <?php echo json_encode($filtered_vehicle_names); ?>;
 
         function statusPill(enabled) {
             return enabled

@@ -15,6 +15,7 @@ try {
     $stmt = $pdo->query("SELECT SUM(wins) FROM dossier");
     $total_wins = intval($stmt->fetchColumn());
 } catch (Exception $e) {
+    error_log("Index stats query: " . $e->getMessage());
 }
 
 $active_page = 'index';

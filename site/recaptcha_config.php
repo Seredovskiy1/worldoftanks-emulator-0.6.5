@@ -15,7 +15,7 @@
  * 7. Готово!
  */
 
-define('RECAPTCHA_SITE_KEY', '6LdrRPwsAAAAAForngYBVG6xOzb1sOpHKyewkG5i');
-define('RECAPTCHA_SECRET_KEY', '6LdrRPwsAAAAAPxHSRlsVxvagmTr3JNSEtFwfE2U');
+define('RECAPTCHA_SITE_KEY', getenv('RECAPTCHA_SITE_KEY') ?: '6LdrRPwsAAAAAForngYBVG6xOzb1sOpHKyewkG5i');
+define('RECAPTCHA_SECRET_KEY', getenv('RECAPTCHA_SECRET_KEY') ?: '6LdrRPwsAAAAAPxHSRlsVxvagmTr3JNSEtFwfE2U');
 
 // reCAPTCHA v2 не використовує scoring — просто success/fail

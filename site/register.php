@@ -9,8 +9,15 @@ if (isset($_SESSION['user_id'])) {
 
 $error = '';
 $success = '';
+$max_attempts = 5;
+$lockout_time = 900;
+$reg_attempts_key = 'reg_attempts_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+$reg_attempts = $_SESSION[$reg_attempts_key] ?? ['count' => 0, 'time' => 0];
+if ($reg_attempts['count'] >= $max_attempts && time() - $reg_attempts['time'] < $lockout_time) {
+    $error = 'Слишком много попыток регистрации. Попробуйте через 15 минут.';
+}
 
-if (!function_exists('normalize_login_name')) {
+if (empty($error) && !function_exists('normalize_login_name')) {
     function normalize_login_name($username) {
         $username = trim($username);
         if (strpos($username, '@') !== false) {
@@ -29,7 +36,10 @@ if (!function_exists('normalize_login_name')) {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        $error = 'Сессия устарела. Обновите страницу.';
+    } else {
     $username = trim($_POST['username'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -43,13 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Пожалуйста, введите корректный адрес электронной почты.';
     } elseif (strlen($password) < 6) {
         $error = 'Пароль должен быть не менее 6 символов.';
-    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $password)) {
-        $error = 'Пароль может состоять только из латинских букв, цифр и символа подчеркивания (_).';
+    } elseif (strlen($password) > 128) {
+        $error = 'Пароль слишком длинный (максимум 128 символов).';
     } elseif ($password !== $password_confirm) {
         $error = 'Пароли не совпадают.';
     } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
         $error = 'Пожалуйста, подтвердите, что вы не робот.';
     } else {
+        $reg_ip = $_SERVER['REMOTE_ADDR'] ?? '';
         $normalized = normalize_login_name($username);
 
         try {
@@ -58,13 +69,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->fetchColumn() > 0) {
                 $error = 'Этот никнейм или email уже зарегистрирован.';
             } else {
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM accounts WHERE reg_ip = ?");
+                $stmt->execute([$reg_ip]);
+                if ($stmt->fetchColumn() > 0) {
+                    $error = 'С одного IP можно зарегистрировать только один аккаунт.';
+                } else {
                 $password_hash = hash('sha256', $password);
                 $now = date('Y-m-d H:i:s');
 
                 $pdo->beginTransaction();
 
-                $stmt = $pdo->prepare("INSERT INTO accounts (username, email, normalized_name, password_hash, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$username, $email, $normalized, $password_hash, $now, $now]);
+                $stmt = $pdo->prepare("INSERT INTO accounts (username, email, normalized_name, password_hash, reg_ip, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$username, $email, $normalized, $password_hash, $reg_ip, $now, $now]);
                 
                 $new_id = $pdo->lastInsertId();
 
@@ -73,14 +89,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pdo->commit();
 
+                unset($_SESSION[$reg_attempts_key]);
                 $success = 'Регистрация успешна! Теперь вы можете войти.';
+            }
             }
         } catch (Exception $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            $error = 'Ошибка базы данных: ' . $e->getMessage();
+            $reg_attempts['count']++;
+            $reg_attempts['time'] = time();
+            $_SESSION[$reg_attempts_key] = $reg_attempts;
+            error_log("Register DB error: " . $e->getMessage());
+            $error = 'Произошла внутренняя ошибка. Попробуйте позже.';
         }
+    }
     }
 }
 ?>
@@ -148,21 +171,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 <?php else: ?>
                     <form action="register.php" method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
                         <div class="form-group">
                             <label for="username">Никнейм</label>
-                            <input type="text" name="username" id="username" class="form-control" placeholder="Введите никнейм..." required minlength="3" maxlength="24" autocomplete="off">
+                            <input type="text" name="username" id="username" class="form-control" placeholder="Введите никнейм..." required minlength="3" maxlength="24" autocomplete="username">
                         </div>
                         <div class="form-group">
                             <label for="email">Электронная почта (email)</label>
-                            <input type="email" name="email" id="email" class="form-control" placeholder="Введите email..." required autocomplete="off">
+                            <input type="email" name="email" id="email" class="form-control" placeholder="Введите email..." required autocomplete="email">
                         </div>
                         <div class="form-group">
                             <label for="password">Пароль</label>
-                            <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
+                            <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required minlength="6" maxlength="128">
                         </div>
                         <div class="form-group">
                             <label for="password_confirm">Подтвердите пароль</label>
-                            <input type="password" name="password_confirm" id="password_confirm" class="form-control" placeholder="Повторите пароль..." required minlength="6" pattern="^[a-zA-Z0-9_]+$" title="Пароль может содержать только латинские буквы, цифры и символ подчеркивания (_)">
+                            <input type="password" name="password_confirm" id="password_confirm" class="form-control" placeholder="Повторите пароль..." required minlength="6" maxlength="128">
                         </div>
                         <div class="form-group">
                             <label>Подтвердите, что вы не робот</label>

@@ -1,4 +1,12 @@
 <?php
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'domain' => '',
+    'secure' => false,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
@@ -12,12 +20,7 @@ function load_server_database_config() {
         'password' => '',
     ];
     $paths = [];
-    $envPath = getenv('WOT_SERVER_CONFIG');
-    if ($envPath) {
-        $paths[] = $envPath;
-    }
     $paths[] = __DIR__ . DIRECTORY_SEPARATOR . 'server.json';
-    $paths[] = 'C:\\Users\\qwerty\\Documents\\GitHub\\worldoftanks-emulator-0.6.5\\config\\server.json';
     foreach ($paths as $path) {
         if (!is_string($path) || $path === '' || !is_file($path)) {
             continue;
@@ -57,8 +60,28 @@ function ensure_site_schema($pdo) {
     if (!db_column_exists($pdo, 'disabled_vehicles', 'updated_at')) {
         $pdo->exec("ALTER TABLE disabled_vehicles ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
     }
+    if (db_column_exists($pdo, 'accounts', 'id') && !db_column_exists($pdo, 'accounts', 'reg_ip')) {
+        $pdo->exec("ALTER TABLE accounts ADD COLUMN reg_ip VARCHAR(45) NULL DEFAULT NULL AFTER email");
+    }
     $ready = true;
 }
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+function verify_csrf($token) {
+    return !empty($_SESSION['csrf_token']) && !empty($token) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+function security_headers() {
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://www.google.com https://www.gstatic.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src https://www.google.com; img-src 'self' data:; connect-src 'self'; font-src 'self'");
+}
+
+security_headers();
 
 $db_config = load_server_database_config();
 $db_host = $db_config['host'] ?? '127.0.0.1';
@@ -75,6 +98,7 @@ try {
     ]);
     ensure_site_schema($pdo);
 } catch (PDOException $e) {
-    die("Connection failed: " . $e->getMessage());
+    error_log("DB connection error: " . $e->getMessage());
+    die("Connection failed. Please check server configuration.");
 }
 ?>

@@ -8,8 +8,16 @@ if (isset($_SESSION['user_id'])) {
 }
 
 $error = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$max_attempts = 10;
+$lockout_time = 900;
+$attempts_key = 'login_attempts_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+$attempts = $_SESSION[$attempts_key] ?? ['count' => 0, 'time' => 0];
+if ($attempts['count'] >= $max_attempts && time() - $attempts['time'] < $lockout_time) {
+    $error = 'Слишком много попыток. Попробуйте через 15 минут.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        $error = 'Сессия устарела. Обновите страницу.';
+    } else {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
@@ -24,22 +32,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = $stmt->fetch();
 
             if ($user && hash('sha256', $password) === $user['password_hash']) {
+                session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['is_admin'] = (intval($user['is_admin']) === 1);
 
                 $now = date('Y-m-d H:i:s');
-                $update_stmt = $pdo->prepare("UPDATE accounts SET last_login = ? WHERE id = ?");
-                $update_stmt->execute([$now, $user['id']]);
+                $reg_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+                $update_stmt = $pdo->prepare("UPDATE accounts SET last_login = ?, reg_ip = ? WHERE id = ?");
+                $update_stmt->execute([$now, $reg_ip, $user['id']]);
 
+                unset($_SESSION[$attempts_key]);
                 header('Location: profile.php');
                 exit;
             } else {
+                $attempts['count']++;
+                $attempts['time'] = time();
+                $_SESSION[$attempts_key] = $attempts;
                 $error = 'Неверное имя пользователя или пароль.';
             }
         } catch (Exception $e) {
-            $error = 'Ошибка базы данных: ' . $e->getMessage();
+            error_log("Login DB error: " . $e->getMessage());
+            $error = 'Произошла внутренняя ошибка. Попробуйте позже.';
         }
+    }
     }
 }
 ?>
@@ -101,13 +117,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
                 
                 <form action="login.php" method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
                     <div class="form-group">
                         <label for="username">Логин или Email</label>
-                        <input type="text" name="username" id="username" class="form-control" placeholder="Введите логин..." required autocomplete="off">
+                        <input type="text" name="username" id="username" class="form-control" placeholder="Введите логин..." required autocomplete="username">
                     </div>
                     <div class="form-group">
                         <label for="password">Пароль</label>
-                        <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required>
+                        <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required autocomplete="current-password">
                     </div>
                     <div class="form-group">
                         <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
