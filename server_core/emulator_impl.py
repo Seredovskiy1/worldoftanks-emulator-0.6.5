@@ -4233,6 +4233,8 @@ CLIENT_POSITION_MAX_AGE = float(get_value(
     CONFIG, 'combat.client_position_max_age', 0.75))
 CLIENT_AVATAR_VEHICLE_POS_MAX_DELTA = float(get_value(
     CONFIG, 'combat.client_avatar_vehicle_pos_max_delta', 80.0))
+SERVER_VEHICLE_AUTHORITATIVE = bool(get_value(
+    CONFIG, 'combat.server_vehicle_authoritative', True))
 CLIENT_AUTHORITATIVE_VEHICLE_CONTROL = bool(get_value(
     CONFIG, 'combat.client_authoritative_vehicle_control', False))
 OWN_VEHICLE_SYNC_INTERVAL = max(0.0, float(get_value(
@@ -7314,7 +7316,7 @@ def start_battle_period_for_session(sock, sess: dict) -> bool:
     if not sent:
         return False
     sess['battle_period_active'] = True
-    sess['server_vehicle_authoritative'] = not CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
+    sess['server_vehicle_authoritative'] = SERVER_VEHICLE_AUTHORITATIVE
     sess['battle_client_control_enabled'] = CLIENT_AUTHORITATIVE_VEHICLE_CONTROL
     sess['battle_last_motion_time'] = now
     return True

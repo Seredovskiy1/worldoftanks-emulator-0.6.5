@@ -104,6 +104,7 @@
       "shrub",
       "pampas"
     ],
+    "server_vehicle_authoritative": true,
     "client_authoritative_vehicle_control": false,
     "own_vehicle_sync_interval": 0.0
   }
