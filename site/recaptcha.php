@@ -19,7 +19,7 @@ function verify_recaptcha($response) {
     $post_fields = http_build_query([
         'secret'   => RECAPTCHA_SECRET_KEY,
         'response' => $response,
-        'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
+        'remoteip' => get_client_ip(),
     ]);
 
     $result = false;

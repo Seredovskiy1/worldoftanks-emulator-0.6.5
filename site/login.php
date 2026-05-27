@@ -10,7 +10,7 @@ if (isset($_SESSION['user_id'])) {
 $error = '';
 $max_attempts = 10;
 $lockout_time = 900;
-$attempts_key = 'login_attempts_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+$attempts_key = 'login_attempts_' . get_client_ip();
 $attempts = $_SESSION[$attempts_key] ?? ['count' => 0, 'time' => 0];
 if ($attempts['count'] >= $max_attempts && time() - $attempts['time'] < $lockout_time) {
     $error = 'Слишком много попыток. Попробуйте через 15 минут.';
@@ -38,7 +38,7 @@ if ($attempts['count'] >= $max_attempts && time() - $attempts['time'] < $lockout
                 $_SESSION['is_admin'] = (intval($user['is_admin']) === 1);
 
                 $now = date('Y-m-d H:i:s');
-                $reg_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+                $reg_ip = get_client_ip();
                 $update_stmt = $pdo->prepare("UPDATE accounts SET last_login = ?, reg_ip = ? WHERE id = ?");
                 $update_stmt->execute([$now, $reg_ip, $user['id']]);
 

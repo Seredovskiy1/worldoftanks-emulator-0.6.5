@@ -11,7 +11,7 @@ $error = '';
 $success = '';
 $max_attempts = 5;
 $lockout_time = 900;
-$reg_attempts_key = 'reg_attempts_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+$reg_attempts_key = 'reg_attempts_' . get_client_ip();
 $reg_attempts = $_SESSION[$reg_attempts_key] ?? ['count' => 0, 'time' => 0];
 if ($reg_attempts['count'] >= $max_attempts && time() - $reg_attempts['time'] < $lockout_time) {
     $error = 'Слишком много попыток регистрации. Попробуйте через 15 минут.';
@@ -60,7 +60,7 @@ if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
         $error = 'Пожалуйста, подтвердите, что вы не робот.';
     } else {
-        $reg_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $reg_ip = get_client_ip();
         $normalized = normalize_login_name($username);
 
         try {
