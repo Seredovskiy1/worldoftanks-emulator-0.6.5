@@ -285,5 +285,6 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
+<script src="sparks.js"></script>
 </body>
 </html>

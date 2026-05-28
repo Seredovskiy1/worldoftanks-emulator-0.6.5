@@ -106,5 +106,6 @@ require_once 'db.php';
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
+<script src="sparks.js"></script>
 </body>
 </html>

@@ -154,48 +154,57 @@ if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     </ul>
 </div>
 
+<style>
+    .auth-card .form-control { padding: 15px 20px; font-size: 16px; }
+    .auth-card .btn { font-size: 16px; padding: 15px 25px; }
+    .auth-card label { font-size: 14px; margin-bottom: 8px; }
+    .auth-card .card-title { font-size: 24px; }
+    .auth-card .g-recaptcha { transform: scale(1.1); transform-origin: left center; margin-top: 5px; }
+    @media (max-width: 480px) { .auth-card .g-recaptcha { transform: scale(0.85); } }
+</style>
+
 <div class="main-layout flex-col items-center" style="justify-content: center;">
-    <div class="content-area w-full" style="max-width: 550px;">
+    <div class="content-area w-full auth-card" style="max-width: 850px;">
         <div class="card">
             <div class="card-header">
                 <div class="card-title text-sm md:text-lg">Регистрация нового игрока</div>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="padding: 30px;">
                 <?php if (!empty($error)): ?>
                     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
                 <?php endif; ?>
                 
                 <?php if (!empty($success)): ?>
                     <div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
-                    <div style="text-align: center; margin-top: 15px;">
-                        <a href="login.php" class="btn btn-primary">Перейти ко входу</a>
+                    <div style="text-align: center; margin-top: 25px;">
+                        <a href="login.php" class="btn btn-primary" style="width: 250px;">Перейти ко входу</a>
                     </div>
                 <?php else: ?>
                     <form action="register.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom: 25px;">
                             <label for="username">Никнейм</label>
                             <input type="text" name="username" id="username" class="form-control" placeholder="Введите никнейм..." required minlength="3" maxlength="24" autocomplete="username">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom: 25px;">
                             <label for="email">Электронная почта (email)</label>
                             <input type="email" name="email" id="email" class="form-control" placeholder="Введите email..." required autocomplete="email">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom: 25px;">
                             <label for="password">Пароль</label>
                             <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required minlength="6" maxlength="128">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom: 25px;">
                             <label for="password_confirm">Подтвердите пароль</label>
                             <input type="password" name="password_confirm" id="password_confirm" class="form-control" placeholder="Повторите пароль..." required minlength="6" maxlength="128">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom: 25px;">
                             <label>Подтвердите, что вы не робот</label>
                             <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                         </div>
-                        <div class="form-actions">
-                            <a href="login.php" style="font-size: 13px;">Уже зарегистрированы? Войти</a>
-                            <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+                        <div class="form-actions" style="margin-top: 35px;">
+                            <a href="login.php" style="font-size: 15px;">Уже зарегистрированы? Войти</a>
+                            <button type="submit" class="btn btn-primary" style="width: 250px;">Зарегистрироваться</button>
                         </div>
                     </form>
                 <?php endif; ?>
@@ -209,5 +218,6 @@ if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
+<script src="sparks.js"></script>
 </body>
 </html>

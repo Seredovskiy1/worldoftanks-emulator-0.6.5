@@ -57,6 +57,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $error = 'Ошибка при обновлении статуса.';
                 }
             }
+        } elseif ($_POST['action'] === 'approve_bug' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
+            $pdo->prepare("UPDATE bug_reports SET is_approved = 1 WHERE id = ?")->execute([$bug_id]);
+            $success = 'Репорт успешно одобрен!';
+        } elseif ($_POST['action'] === 'delete_bug' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
+            $pdo->prepare("DELETE FROM bug_comments WHERE bug_id = ?")->execute([$bug_id]);
+            $pdo->prepare("DELETE FROM bug_reports WHERE id = ?")->execute([$bug_id]);
+            header("Location: bugs.php");
+            exit;
         }
     }
 }
@@ -78,6 +86,13 @@ try {
 
 if (!$bug) {
     die("Баг-репорт не найден.");
+}
+
+$is_admin = isset($_SESSION['is_admin']) && $_SESSION['is_admin'];
+$is_approved = intval($bug['is_approved'] ?? 0) === 1;
+
+if (!$is_approved && !$is_admin) {
+    die("<div style='padding:50px; text-align:center; color:#fff; font-family:sans-serif; background:#09090a; height:100vh;'><h2>Доступ закрыт</h2><p style='color:#8c8c8c; margin-bottom:20px;'>Этот баг-репорт ожидает проверки администратором.</p><a href='bugs.php' style='color:#e5a93b;'>Вернуться назад</a></div>");
 }
 
 // Fetch comments
@@ -293,7 +308,20 @@ function get_status_label($status) {
                                 <option value="closed" <?php echo $bug['status'] === 'closed' ? 'selected' : ''; ?>>Закрыт</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn btn-secondary" style="width: 100%;">Сохранить</button>
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;">Сохранить статус</button>
+                    </form>
+
+                    <?php if (!$is_approved): ?>
+                        <form method="POST" onsubmit="return confirm('Одобрить этот репорт?');" style="margin-bottom: 10px;">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                            <input type="hidden" name="action" value="approve_bug">
+                            <button type="submit" class="btn btn-primary" style="width: 100%; background: #27ae60;">Одобрить (Сделать публичным)</button>
+                        </form>
+                    <?php endif; ?>
+                    <form method="POST" onsubmit="return confirm('Точно удалить этот репорт?');">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                        <input type="hidden" name="action" value="delete_bug">
+                        <button type="submit" class="btn btn-primary" style="width: 100%; background: #c0392b;">Удалить репорт</button>
                     </form>
                 </div>
             </div>
@@ -306,5 +334,6 @@ function get_status_label($status) {
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
+<script src="sparks.js"></script>
 </body>
 </html>

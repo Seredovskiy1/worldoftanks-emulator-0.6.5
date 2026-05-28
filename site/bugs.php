@@ -5,40 +5,55 @@ require_once 'recaptcha.php';
 $error = '';
 $success = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_bug') {
-    if (!isset($_SESSION['user_id'])) {
-        $error = 'Вы должны войти в систему, чтобы создать баг-репорт.';
-    } elseif (!verify_csrf($_POST['csrf_token'] ?? '')) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
         $error = 'Ошибка CSRF. Попробуйте еще раз.';
     } else {
-        $stmt = $pdo->prepare("SELECT created_at FROM bug_reports WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
-        $stmt->execute([$_SESSION['user_id']]);
-        $last_bug = $stmt->fetchColumn();
+        $action = $_POST['action'];
+        
+        if ($action === 'create_bug') {
+            if (!isset($_SESSION['user_id'])) {
+                $error = 'Вы должны войти в систему, чтобы создать баг-репорт.';
+            } else {
+                $stmt = $pdo->prepare("SELECT created_at FROM bug_reports WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
+                $stmt->execute([$_SESSION['user_id']]);
+                $last_bug = $stmt->fetchColumn();
 
-        if ($last_bug && time() - strtotime($last_bug) < 180 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
-            $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в 3 минуты. Пожалуйста, подождите.';
-        } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
-            $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
-        } else {
-            $title = trim($_POST['title'] ?? '');
-        $description = trim($_POST['description'] ?? '');
+                if ($last_bug && time() - strtotime($last_bug) < 180 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                    $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в 3 минуты. Пожалуйста, подождите.';
+                } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
+                    $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
+                } else {
+                    $title = trim($_POST['title'] ?? '');
+                    $description = trim($_POST['description'] ?? '');
 
-        if (mb_strlen($title) < 5 || mb_strlen($title) > 100) {
-            $error = 'Заголовок должен содержать от 5 до 100 символов.';
-        } elseif (mb_strlen($description) < 10) {
-            $error = 'Описание должно содержать минимум 10 символов.';
-        } else {
-            try {
-                $stmt = $pdo->prepare("INSERT INTO bug_reports (account_id, title, description, status) VALUES (?, ?, ?, 'open')");
-                $stmt->execute([$_SESSION['user_id'], $title, $description]);
-                $success = 'Баг-репорт успешно создан.';
-            } catch (Exception $e) {
-                error_log("Create bug error: " . $e->getMessage());
-                $error = 'Произошла ошибка при создании баг-репорта.';
+                    if (mb_strlen($title) < 5 || mb_strlen($title) > 100) {
+                        $error = 'Заголовок должен содержать от 5 до 100 символов.';
+                    } elseif (mb_strlen($description) < 10) {
+                        $error = 'Описание должно содержать минимум 10 символов.';
+                    } else {
+                        try {
+                            $stmt = $pdo->prepare("INSERT INTO bug_reports (account_id, title, description, status, is_approved) VALUES (?, ?, ?, 'open', 0)");
+                            $stmt->execute([$_SESSION['user_id'], $title, $description]);
+                            $success = 'Баг-репорт успешно отправлен. Он появится на сайте после проверки администратором.';
+                        } catch (Exception $e) {
+                            error_log("Create bug error: " . $e->getMessage());
+                            $error = 'Произошла ошибка при создании баг-репорта.';
+                        }
+                    }
+                }
             }
+        } elseif ($action === 'approve_bug' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
+            $bug_id = intval($_POST['bug_id'] ?? 0);
+            $pdo->prepare("UPDATE bug_reports SET is_approved = 1 WHERE id = ?")->execute([$bug_id]);
+            $success = 'Репорт успешно одобрен!';
+        } elseif ($action === 'delete_bug' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
+            $bug_id = intval($_POST['bug_id'] ?? 0);
+            $pdo->prepare("DELETE FROM bug_comments WHERE bug_id = ?")->execute([$bug_id]);
+            $pdo->prepare("DELETE FROM bug_reports WHERE id = ?")->execute([$bug_id]);
+            $success = 'Репорт был удален!';
         }
     }
-}
 }
 
 // Fetch bugs
@@ -183,12 +198,40 @@ function get_status_label($status) {
                     <div style="padding: 20px; text-align: center; color: #8c8c8c;">Баг-репортов пока нет.</div>
                 <?php else: ?>
                     <?php foreach ($bugs as $bug): ?>
+                        <?php
+                        $is_admin = isset($_SESSION['is_admin']) && $_SESSION['is_admin'];
+                        $is_approved = intval($bug['is_approved']) === 1;
+                        ?>
                         <div class="bug-item">
-                            <a href="bug_view.php?id=<?php echo $bug['id']; ?>" class="bug-title"><?php echo htmlspecialchars($bug['title']); ?></a>
-                            <div class="bug-meta">
+                            <?php if ($is_approved || $is_admin): ?>
+                                <a href="bug_view.php?id=<?php echo $bug['id']; ?>" class="bug-title"><?php echo htmlspecialchars($bug['title']); ?></a>
+                            <?php else: ?>
+                                <span class="bug-title" style="color: #8c8c8c; cursor: default;">Репорт #<?php echo $bug['id']; ?> - Очікує перевірки</span>
+                            <?php endif; ?>
+                            
+                            <div class="bug-meta" style="align-items: center;">
                                 <span class="status-badge"><?php echo get_status_label($bug['status']); ?></span>
                                 <span>Автор: <?php echo htmlspecialchars($bug['username'] ?? 'Неизвестно'); ?></span>
                                 <span>Создано: <?php echo htmlspecialchars($bug['created_at']); ?></span>
+                                
+                                <?php if ($is_admin): ?>
+                                    <div style="margin-left: auto; display: flex; gap: 10px;">
+                                        <?php if (!$is_approved): ?>
+                                            <form method="POST" style="margin: 0;" onsubmit="return confirm('Одобрить этот репорт? Он станет виден всем.');">
+                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                                                <input type="hidden" name="action" value="approve_bug">
+                                                <input type="hidden" name="bug_id" value="<?php echo $bug['id']; ?>">
+                                                <button type="submit" class="status-badge" style="background: #27ae60; color: white; border:none; cursor:pointer;">Одобрить</button>
+                                            </form>
+                                        <?php endif; ?>
+                                        <form method="POST" style="margin: 0;" onsubmit="return confirm('Точно удалить этот репорт навсегда?');">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                                            <input type="hidden" name="action" value="delete_bug">
+                                            <input type="hidden" name="bug_id" value="<?php echo $bug['id']; ?>">
+                                            <button type="submit" class="status-badge" style="background: #c0392b; color: white; border:none; cursor:pointer;">Удалить</button>
+                                        </form>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -238,5 +281,6 @@ function get_status_label($status) {
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
+<script src="sparks.js"></script>
 </body>
 </html>

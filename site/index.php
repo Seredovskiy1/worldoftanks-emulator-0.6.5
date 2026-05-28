@@ -304,5 +304,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+<script src="sparks.js"></script>
 </body>
 </html>

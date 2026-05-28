@@ -106,33 +106,42 @@ if ($attempts['count'] >= $max_attempts && time() - $attempts['time'] < $lockout
     </ul>
 </div>
 
+<style>
+    .auth-card .form-control { padding: 15px 20px; font-size: 16px; }
+    .auth-card .btn { font-size: 16px; padding: 15px 25px; }
+    .auth-card label { font-size: 14px; margin-bottom: 8px; }
+    .auth-card .card-title { font-size: 24px; }
+    .auth-card .g-recaptcha { transform: scale(1.1); transform-origin: left center; margin-top: 5px; }
+    @media (max-width: 480px) { .auth-card .g-recaptcha { transform: scale(0.85); } }
+</style>
+
 <div class="main-layout flex-col items-center" style="justify-content: center;">
-    <div class="content-area w-full" style="max-width: 500px;">
+    <div class="content-area w-full auth-card" style="max-width: 800px;">
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Авторизация</div>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="padding: 30px;">
                 <?php if (!empty($error)): ?>
                     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
                 <?php endif; ?>
                 
                 <form action="login.php" method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom: 25px;">
                         <label for="username">Логин или Email</label>
                         <input type="text" name="username" id="username" class="form-control" placeholder="Введите логин..." required autocomplete="username">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom: 25px;">
                         <label for="password">Пароль</label>
                         <input type="password" name="password" id="password" class="form-control" placeholder="Введите пароль..." required autocomplete="current-password">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom: 25px;">
                         <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                     </div>
-                    <div class="form-actions">
-                        <a href="register.php" style="font-size: 13px;">Нет аккаунта? Создать</a>
-                        <button type="submit" class="btn btn-primary">Войти</button>
+                    <div class="form-actions" style="margin-top: 35px;">
+                        <a href="register.php" style="font-size: 15px;">Нет аккаунта? Создать</a>
+                        <button type="submit" class="btn btn-primary" style="width: 200px;">Войти</button>
                     </div>
                 </form>
             </div>
@@ -145,5 +154,6 @@ if ($attempts['count'] >= $max_attempts && time() - $attempts['time'] < $lockout
     <p>Project Orion является некоммерческим фанатским проектом и не претендует на права Wargaming.</p>
 </div>
 
+<script src="sparks.js"></script>
 </body>
 </html>
