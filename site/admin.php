@@ -1135,7 +1135,9 @@ $csrf_token = $_SESSION['csrf_token'];
                                         <td><?php echo intval($u['id']); ?></td>
                                         <td class="tank-name"><?php echo h($u['username']); ?></td>
                                         <td style="color:#b7b0a7;font-size:12px;"><?php echo h($u['email'] ?? '-'); ?></td>
-                                        <td style="font-family:monospace;font-size:12px;color:#8c8c8c;"><?php echo h($u['reg_ip'] ?? '-'); ?></td>
+                                        <td style="font-family:monospace;font-size:12px;color:#8c8c8c;">
+                                            <?php echo intval($u['is_admin']) === 1 ? 'null' : h($u['reg_ip'] ?? '-'); ?>
+                                        </td>
                                         <td><?php echo intval($u['is_admin']) === 1 ? '<span class="pill pill-on">да</span>' : '<span class="pill pill-off">нет</span>'; ?></td>
                                         <td style="font-size:12px;color:#8c8c8c;"><?php echo h($u['created_at'] ?? '-'); ?></td>
                                         <td style="font-size:12px;color:#8c8c8c;"><?php echo h($u['last_login'] ?? '-'); ?></td>
