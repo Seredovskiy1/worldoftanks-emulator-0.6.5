@@ -81,6 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $comment_id = intval($_POST['comment_id'] ?? 0);
             $pdo->prepare("DELETE FROM bug_comments WHERE id = ?")->execute([$comment_id]);
             $success = 'Комментарий удален.';
+        } elseif ($_POST['action'] === 'toggle_ban' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
+            $author_id = intval($_POST['author_id'] ?? 0);
+            $new_ban_status = intval($_POST['ban_status'] ?? 0);
+            $pdo->prepare("UPDATE accounts SET is_banned_reports = ? WHERE id = ?")->execute([$new_ban_status, $author_id]);
+            $success = $new_ban_status ? 'Пользователь забанен для репортов.' : 'Пользователь разбанен.';
         }
     }
 }
@@ -89,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 $bug = null;
 try {
     $stmt = $pdo->prepare("
-        SELECT b.*, a.username, a.is_admin 
+        SELECT b.*, a.username, a.is_admin, a.is_banned_reports 
         FROM bug_reports b 
         LEFT JOIN accounts a ON b.account_id = a.id 
         WHERE b.id = ?
@@ -352,6 +357,22 @@ function get_status_label($status) {
                             <button type="submit" class="btn btn-primary" style="width: 100%; background: #27ae60;">Одобрить (Сделать публичным)</button>
                         </form>
                     <?php endif; ?>
+
+                    <?php if (!$bug['is_admin']): ?>
+                        <form method="POST" onsubmit="return confirm('Вы уверены?');" style="margin-bottom: 10px;">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                            <input type="hidden" name="action" value="toggle_ban">
+                            <input type="hidden" name="author_id" value="<?php echo $bug['account_id']; ?>">
+                            <?php if ($bug['is_banned_reports']): ?>
+                                <input type="hidden" name="ban_status" value="0">
+                                <button type="submit" class="btn btn-secondary" style="width: 100%; border: 1px solid #2ecc71; color: #2ecc71;">Разбанить автора</button>
+                            <?php else: ?>
+                                <input type="hidden" name="ban_status" value="1">
+                                <button type="submit" class="btn btn-secondary" style="width: 100%; border: 1px solid #e74c3c; color: #e74c3c;">Забанить автора (репорты)</button>
+                            <?php endif; ?>
+                        </form>
+                    <?php endif; ?>
+
                     <form method="POST" onsubmit="return confirm('Точно удалить этот репорт?');">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                         <input type="hidden" name="action" value="delete_bug">

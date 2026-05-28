@@ -15,11 +15,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (!isset($_SESSION['user_id'])) {
                 $error = 'Вы должны войти в систему, чтобы создать баг-репорт.';
             } else {
-                $stmt = $pdo->prepare("SELECT COUNT(*) FROM bug_reports WHERE account_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+                $stmt = $pdo->prepare("SELECT is_banned_reports FROM accounts WHERE id = ?");
                 $stmt->execute([$_SESSION['user_id']]);
-                $recent_bugs = intval($stmt->fetchColumn());
+                $is_banned = intval($stmt->fetchColumn()) === 1;
 
-                if ($recent_bugs > 0 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                $stmt = $pdo->prepare("SELECT TIMESTAMPDIFF(SECOND, MAX(created_at), NOW()) FROM bug_reports WHERE account_id = ?");
+                $stmt->execute([$_SESSION['user_id']]);
+                $seconds_since_last = $stmt->fetchColumn();
+                $recent_bugs = ($seconds_since_last !== null && $seconds_since_last !== false && intval($seconds_since_last) < 3600) ? 1 : 0;
+
+                if ($is_banned && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                    $error = 'Ваш аккаунт заблокирован для создания баг-репортов администрацией.';
+                } elseif ($recent_bugs > 0 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
                     $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в час. Пожалуйста, подождите.';
                 } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
                     $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
