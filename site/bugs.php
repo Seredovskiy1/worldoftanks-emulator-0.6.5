@@ -15,11 +15,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (!isset($_SESSION['user_id'])) {
                 $error = 'Вы должны войти в систему, чтобы создать баг-репорт.';
             } else {
-                $stmt = $pdo->prepare("SELECT created_at FROM bug_reports WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM bug_reports WHERE account_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)");
                 $stmt->execute([$_SESSION['user_id']]);
-                $last_bug = $stmt->fetchColumn();
+                $recent_bugs = intval($stmt->fetchColumn());
 
-                if ($last_bug && time() - strtotime($last_bug) < 3600 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                if ($recent_bugs > 0 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
                     $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в час. Пожалуйста, подождите.';
                 } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
                     $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
@@ -206,7 +206,7 @@ function get_status_label($status) {
                             <?php if ($is_approved || $is_admin): ?>
                                 <a href="bug_view.php?id=<?php echo $bug['id']; ?>" class="bug-title"><?php echo htmlspecialchars($bug['title']); ?></a>
                             <?php else: ?>
-                                <span class="bug-title" style="color: #8c8c8c; cursor: default;">Репорт #<?php echo $bug['id']; ?> - Очікує перевірки</span>
+                                <span class="bug-title" style="color: #8c8c8c; cursor: default;">Репорт #<?php echo $bug['id']; ?> - Ожидает проверки</span>
                             <?php endif; ?>
                             
                             <div class="bug-meta" style="align-items: center;">
@@ -247,7 +247,7 @@ function get_status_label($status) {
             </div>
             <div class="card-body">
                 <?php if (isset($_SESSION['user_id'])): ?>
-                    <form method="POST" action="bugs.php">
+                    <form method="POST" action="bugs.php" onsubmit="this.querySelector('button[type=submit]').disabled=true; this.querySelector('button[type=submit]').innerHTML='Отправка...';">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                         <input type="hidden" name="action" value="create_bug">
                         
