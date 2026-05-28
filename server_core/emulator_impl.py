@@ -7543,10 +7543,14 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     msgs = b''
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
                                      bind_avatar=True)
-    msgs += build_battle_vehicle_state_messages(sess)
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
                          "Avatar ready + initial vehicle position/targeting")
+
+    def _send_delayed_vehicle_state():
+        state_msgs = build_battle_vehicle_state_messages(sess)
+        send_avatar_messages(sock, addr, sess, state_msgs, "Delayed vehicle state (ammo/health)")
+    threading.Timer(1.5, _send_delayed_vehicle_state).start()
     match_id = sess.get('battle_match_id')
     sessions = (
         get_match_battle_sessions(match_id)
