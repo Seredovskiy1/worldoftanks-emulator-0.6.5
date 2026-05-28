@@ -102,6 +102,7 @@ if ($attempts['count'] >= $max_attempts && time() - $attempts['time'] < $lockout
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
         <li class="nav-item"><a href="profile.php" class="nav-link">Личный кабинет</a></li>
+        <li class="nav-item"><a href="bugs.php" class="nav-link">Баг-репорты</a></li>
     </ul>
 </div>
 

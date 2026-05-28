@@ -140,6 +140,7 @@ $avg_xp = $total_battles > 0 ? round(intval($dossier['total_xp']) / $total_battl
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
         <li class="nav-item"><a href="profile.php" class="nav-link active">Личный кабинет</a></li>
+        <li class="nav-item"><a href="bugs.php" class="nav-link">Баг-репорты</a></li>
         <?php if (intval($account['is_admin']) === 1): ?>
             <li class="nav-item"><a href="admin.php" class="nav-link">Управление танками</a></li>
         <?php endif; ?>

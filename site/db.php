@@ -63,6 +63,11 @@ function ensure_site_schema($pdo) {
     if (db_column_exists($pdo, 'accounts', 'id') && !db_column_exists($pdo, 'accounts', 'reg_ip')) {
         $pdo->exec("ALTER TABLE accounts ADD COLUMN reg_ip VARCHAR(45) NULL DEFAULT NULL AFTER email");
     }
+    
+    // Bug reports tables
+    $pdo->exec("CREATE TABLE IF NOT EXISTS bug_reports (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, account_id BIGINT UNSIGNED NOT NULL, title VARCHAR(255) NOT NULL, description TEXT NOT NULL, status ENUM('open', 'in_progress', 'resolved', 'closed') NOT NULL DEFAULT 'open', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (id), KEY idx_bug_reports_account (account_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS bug_comments (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, bug_id BIGINT UNSIGNED NOT NULL, account_id BIGINT UNSIGNED NOT NULL, comment TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id), KEY idx_bug_comments_bug (bug_id), KEY idx_bug_comments_account (account_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
     $ready = true;
 }
 

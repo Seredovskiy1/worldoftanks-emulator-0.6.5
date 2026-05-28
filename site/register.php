@@ -150,6 +150,7 @@ if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link active">Регистрация</a></li>
         <li class="nav-item"><a href="profile.php" class="nav-link">Личный кабинет</a></li>
+        <li class="nav-item"><a href="bugs.php" class="nav-link">Баг-репорты</a></li>
     </ul>
 </div>
 

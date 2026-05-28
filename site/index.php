@@ -81,6 +81,7 @@ $active_page = 'index';
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
         <li class="nav-item"><a href="register.php" class="nav-link">Регистрация</a></li>
         <li class="nav-item"><a href="profile.php" class="nav-link">Личный кабинет</a></li>
+        <li class="nav-item"><a href="bugs.php" class="nav-link">Баг-репорты</a></li>
         <?php if (isset($_SESSION['is_admin']) && $_SESSION['is_admin']): ?>
             <li class="nav-item"><a href="admin.php" class="nav-link">Управление танками</a></li>
         <?php endif; ?>

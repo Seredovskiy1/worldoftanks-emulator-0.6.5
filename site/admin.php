@@ -796,7 +796,8 @@ $csrf_token = $_SESSION['csrf_token'];
     <ul class="nav-menu" id="navMenu">
         <li class="nav-item"><a href="index.php" class="nav-link">Главная</a></li>
         <li class="nav-item"><a href="download.php" class="nav-link">Играть</a></li>
-        <li class="nav-item"><a href="profile.php" class="nav-link">Кабинет</a></li>
+        <li class="nav-item"><a href="profile.php" class="nav-link">Личный кабинет</a></li>
+        <li class="nav-item"><a href="bugs.php" class="nav-link">Баг-репорты</a></li>
         <li class="nav-item"><a href="admin.php" class="nav-link active">Админ-панель</a></li>
     </ul>
 </div>
