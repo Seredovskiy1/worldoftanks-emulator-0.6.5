@@ -20,9 +20,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $error = 'Ошибка CSRF. Попробуйте еще раз.';
     } else {
         if ($_POST['action'] === 'add_comment') {
-            $stmt = $pdo->prepare("SELECT created_at FROM bug_comments WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
-            $stmt->execute([$_SESSION['user_id']]);
-            $last_comment = $stmt->fetchColumn();
+            $check_stmt = $pdo->prepare("SELECT account_id, status FROM bug_reports WHERE id = ?");
+            $check_stmt->execute([$bug_id]);
+            $bug_info = $check_stmt->fetch();
+            $bug_author_id = $bug_info['account_id'];
+            
+            $is_user_admin = isset($_SESSION['is_admin']) && $_SESSION['is_admin'];
+            
+            if ($bug_info['status'] === 'closed') {
+                $error = 'Этот репорт закрыт. Добавление комментариев невозможно.';
+            } elseif (!$is_user_admin && $_SESSION['user_id'] != $bug_author_id) {
+                $error = 'Только автор репорта и администрация могут оставлять комментарии.';
+            } else {
+                $stmt = $pdo->prepare("SELECT created_at FROM bug_comments WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
+                $stmt->execute([$_SESSION['user_id']]);
+                $last_comment = $stmt->fetchColumn();
 
             if ($last_comment && time() - strtotime($last_comment) < 60 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
                 $error = 'Анти-спам: вы можете оставлять комментарии не чаще, чем раз в минуту. Пожалуйста, подождите.';
@@ -65,6 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $pdo->prepare("DELETE FROM bug_reports WHERE id = ?")->execute([$bug_id]);
             header("Location: bugs.php");
             exit;
+        } elseif ($_POST['action'] === 'delete_comment' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
+            $comment_id = intval($_POST['comment_id'] ?? 0);
+            $pdo->prepare("DELETE FROM bug_comments WHERE id = ?")->execute([$comment_id]);
+            $success = 'Комментарий удален.';
         }
     }
 }
@@ -253,7 +269,17 @@ function get_status_label($status) {
                                     <span class="comment-author"><?php echo htmlspecialchars($c['username'] ?? 'Неизвестно'); ?></span>
                                     <?php if ($c['is_admin']) echo '<span class="admin-badge">Admin</span>'; ?>
                                 </div>
-                                <div><?php echo htmlspecialchars($c['created_at']); ?></div>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <div><?php echo htmlspecialchars($c['created_at']); ?></div>
+                                    <?php if ($is_admin): ?>
+                                        <form method="POST" onsubmit="return confirm('Удалить комментарий?');" style="margin: 0;">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                                            <input type="hidden" name="action" value="delete_comment">
+                                            <input type="hidden" name="comment_id" value="<?php echo $c['id']; ?>">
+                                            <button type="submit" style="background: none; border: none; color: #c0392b; cursor: pointer; font-size: 11px; text-transform: uppercase; font-weight: bold;">Удалить</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                             <div class="comment-body"><?php echo htmlspecialchars($c['comment']); ?></div>
                         </div>
@@ -262,7 +288,11 @@ function get_status_label($status) {
             </div>
         </div>
 
-        <?php if (isset($_SESSION['user_id'])): ?>
+        <?php if ($bug['status'] === 'closed'): ?>
+            <div style="margin-top: 20px; padding: 15px; background: rgba(14, 14, 15, 0.95); border: 1px solid #28282a; text-align: center; border-radius: 4px; color: #8c8c8c;">
+                Тема закрыта. Обсуждение завершено.
+            </div>
+        <?php elseif (isset($_SESSION['user_id']) && ($is_admin || $_SESSION['user_id'] == $bug['account_id'])): ?>
             <div class="card" style="margin-top: 30px;">
                 <div class="card-header">
                     <div class="card-title text-sm md:text-md">Добавить комментарий</div>
@@ -280,6 +310,10 @@ function get_status_label($status) {
                         <button type="submit" class="btn btn-primary">Отправить</button>
                     </form>
                 </div>
+            </div>
+        <?php elseif (isset($_SESSION['user_id'])): ?>
+            <div style="margin-top: 20px; padding: 15px; background: rgba(14, 14, 15, 0.95); border: 1px solid #28282a; text-align: center; border-radius: 4px; color: #8c8c8c;">
+                Только автор репорта и администраторы могут оставлять комментарии.
             </div>
         <?php else: ?>
             <div style="margin-top: 20px; padding: 15px; background: rgba(14, 14, 15, 0.95); border: 1px solid #28282a; text-align: center; border-radius: 4px;">

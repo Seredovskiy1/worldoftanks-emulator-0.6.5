@@ -19,8 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$_SESSION['user_id']]);
                 $last_bug = $stmt->fetchColumn();
 
-                if ($last_bug && time() - strtotime($last_bug) < 180 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
-                    $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в 3 минуты. Пожалуйста, подождите.';
+                if ($last_bug && time() - strtotime($last_bug) < 3600 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                    $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в час. Пожалуйста, подождите.';
                 } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
                     $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
                 } else {
