@@ -36,23 +36,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$_SESSION['user_id']]);
                 $last_comment = $stmt->fetchColumn();
 
-            if ($last_comment && time() - strtotime($last_comment) < 60 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
-                $error = 'Анти-спам: вы можете оставлять комментарии не чаще, чем раз в минуту. Пожалуйста, подождите.';
-            } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
-                $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
-            } else {
-                $comment = trim($_POST['comment'] ?? '');
-                $comment = trim($_POST['comment'] ?? '');
-                if (mb_strlen($comment) < 2) {
-                    $error = 'Комментарий слишком короткий.';
+                if ($last_comment && time() - strtotime($last_comment) < 60 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                    $error = 'Анти-спам: вы можете оставлять комментарии не чаще, чем раз в минуту. Пожалуйста, подождите.';
+                } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
+                    $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
                 } else {
-                    try {
-                        $stmt = $pdo->prepare("INSERT INTO bug_comments (bug_id, account_id, comment) VALUES (?, ?, ?)");
-                        $stmt->execute([$bug_id, $_SESSION['user_id'], $comment]);
-                        $success = 'Комментарий добавлен.';
-                    } catch (Exception $e) {
-                        error_log("Add comment error: " . $e->getMessage());
-                        $error = 'Ошибка при добавлении комментария.';
+                    $comment = trim($_POST['comment'] ?? '');
+                    if (mb_strlen($comment) < 2) {
+                        $error = 'Комментарий слишком короткий.';
+                    } else {
+                        try {
+                            $stmt = $pdo->prepare("INSERT INTO bug_comments (bug_id, account_id, comment) VALUES (?, ?, ?)");
+                            $stmt->execute([$bug_id, $_SESSION['user_id'], $comment]);
+                            $success = 'Комментарий добавлен.';
+                        } catch (Exception $e) {
+                            error_log("Add comment error: " . $e->getMessage());
+                            $error = 'Ошибка при добавлении комментария.';
+                        }
                     }
                 }
             }
