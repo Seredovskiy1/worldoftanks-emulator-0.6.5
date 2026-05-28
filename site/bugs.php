@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'recaptcha.php';
 
 $error = '';
 $success = '';
@@ -10,7 +11,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } elseif (!verify_csrf($_POST['csrf_token'] ?? '')) {
         $error = 'Ошибка CSRF. Попробуйте еще раз.';
     } else {
-        $title = trim($_POST['title'] ?? '');
+        $stmt = $pdo->prepare("SELECT created_at FROM bug_reports WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$_SESSION['user_id']]);
+        $last_bug = $stmt->fetchColumn();
+
+        if ($last_bug && time() - strtotime($last_bug) < 180 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+            $error = 'Анти-спам: вы можете создавать баг-репорты не чаще, чем раз в 3 минуты. Пожалуйста, подождите.';
+        } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
+            $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
+        } else {
+            $title = trim($_POST['title'] ?? '');
         $description = trim($_POST['description'] ?? '');
 
         if (mb_strlen($title) < 5 || mb_strlen($title) > 100) {
@@ -66,6 +76,7 @@ function get_status_label($status) {
     <link rel="icon" type="image/png" href="favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         .bug-item {
             display: flex;
@@ -204,6 +215,10 @@ function get_status_label($status) {
                         <div class="form-group">
                             <label>Подробное описание</label>
                             <textarea name="description" class="form-control" rows="5" required minlength="10" placeholder="Опишите, как воспроизвести баг..."></textarea>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                         </div>
                         
                         <button type="submit" class="btn btn-primary" style="width: 100%;">Отправить</button>

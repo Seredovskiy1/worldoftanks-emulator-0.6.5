@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'recaptcha.php';
 
 $error = '';
 $success = '';
@@ -19,17 +20,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $error = 'Ошибка CSRF. Попробуйте еще раз.';
     } else {
         if ($_POST['action'] === 'add_comment') {
-            $comment = trim($_POST['comment'] ?? '');
-            if (mb_strlen($comment) < 2) {
-                $error = 'Комментарий слишком короткий.';
+            $stmt = $pdo->prepare("SELECT created_at FROM bug_comments WHERE account_id = ? ORDER BY created_at DESC LIMIT 1");
+            $stmt->execute([$_SESSION['user_id']]);
+            $last_comment = $stmt->fetchColumn();
+
+            if ($last_comment && time() - strtotime($last_comment) < 60 && (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin'])) {
+                $error = 'Анти-спам: вы можете оставлять комментарии не чаще, чем раз в минуту. Пожалуйста, подождите.';
+            } elseif (!verify_recaptcha($_POST['g-recaptcha-response'] ?? '')) {
+                $error = 'Пожалуйста, подтвердите, что вы не робот (reCAPTCHA).';
             } else {
-                try {
-                    $stmt = $pdo->prepare("INSERT INTO bug_comments (bug_id, account_id, comment) VALUES (?, ?, ?)");
-                    $stmt->execute([$bug_id, $_SESSION['user_id'], $comment]);
-                    $success = 'Комментарий добавлен.';
-                } catch (Exception $e) {
-                    error_log("Add comment error: " . $e->getMessage());
-                    $error = 'Ошибка при добавлении комментария.';
+                $comment = trim($_POST['comment'] ?? '');
+                $comment = trim($_POST['comment'] ?? '');
+                if (mb_strlen($comment) < 2) {
+                    $error = 'Комментарий слишком короткий.';
+                } else {
+                    try {
+                        $stmt = $pdo->prepare("INSERT INTO bug_comments (bug_id, account_id, comment) VALUES (?, ?, ?)");
+                        $stmt->execute([$bug_id, $_SESSION['user_id'], $comment]);
+                        $success = 'Комментарий добавлен.';
+                    } catch (Exception $e) {
+                        error_log("Add comment error: " . $e->getMessage());
+                        $error = 'Ошибка при добавлении комментария.';
+                    }
                 }
             }
         } elseif ($_POST['action'] === 'change_status' && isset($_SESSION['is_admin']) && $_SESSION['is_admin']) {
@@ -106,6 +118,7 @@ function get_status_label($status) {
     <link rel="icon" type="image/png" href="favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config={important:true,theme:{extend:{colors:{wot:{gold:'#e5a93b',dark:'#1a1a1c',panel:'#101011'}}}}}</script>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         .comment-box {
             padding: 15px;
@@ -245,6 +258,9 @@ function get_status_label($status) {
                         <input type="hidden" name="action" value="add_comment">
                         <div class="form-group">
                             <textarea name="comment" class="form-control" rows="3" required placeholder="Ваш ответ..."></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars(RECAPTCHA_SITE_KEY, ENT_QUOTES, 'UTF-8'); ?>"></div>
                         </div>
                         <button type="submit" class="btn btn-primary">Отправить</button>
                     </form>
