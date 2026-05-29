@@ -68,34 +68,19 @@ require_once 'db.php';
                 <div class="dl-box">
                     <div class="dl-title text-base md:text-xl">Полный клиент World of Tanks v.0.6.5</div>
                     <div class="dl-meta">Размер: ~2.4 ГБ | Формат: ZIP-архив | Версия: 0.6.5 (2011 год)</div>
-                    <a href="#" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">Скачать клиент (Google Drive)</a>
+                    <a href="https://mega.nz/file/XqI2AI5S#4rjABHtHgNhcwbjMhAunvHQXaiCgSSKzLpybNMDGfrU" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">Скачать клиент (Mega.nz)</a>
                 </div>
 
-                <div class="dl-box" style="border-style: solid;">
-                    <div class="dl-title text-base md:text-xl" style="color: #e5a93b;">Серверный лаунчер-патч</div>
-                    <div class="dl-meta">Размер: ~5 МБ | Обязательно для подключения к нашему серверу</div>
-                    <a href="#" class="btn btn-primary" style="font-size: 15px; background: linear-gradient(180deg, #e5a93b 0%, #b87c14 100%); color: #000; border-color: #ffcc00; font-weight: 800;">Скачать лаунчер</a>
+                <div style="font-size: 18px; font-weight: 600; color: #e5a93b; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #28282a; padding-bottom: 8px;">Инструкция по установке</div>
+
+                <p style="color: #bbbbbb; font-size: 14px; margin-bottom: 18px;">Подробная инструкция по установке показана в видео ниже:</p>
+
+                <div style="position: relative; width: 100%; border-radius: 6px; overflow: hidden; border: 1px solid #28282a; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
+                    <video controls preload="metadata" style="width: 100%; display: block; background: #000;">
+                        <source src="video/установка_проект_орион_марсианин.mp4" type="video/mp4">
+                        Ваш браузер не поддерживает воспроизведение видео.
+                    </video>
                 </div>
-
-                <div style="font-size: 18px; font-weight: 600; color: #e5a93b; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #28282a; padding-bottom: 8px;">Инструкция по установке:</div>
-
-                <ul class="instruction-list">
-                    <li>
-                        <strong>Шаг 1:</strong> Скачайте полный архив клиента игры по ссылке выше.
-                    </li>
-                    <li>
-                        <strong>Шаг 2:</strong> Распакуйте архив в любую удобную папку (например, <code>C:\Games\World_of_Tanks_0.6.5</code>).
-                    </li>
-                    <li>
-                        <strong>Шаг 3:</strong> Скачайте файл лаунчер-патча и распакуйте его содержимое прямо в корневую папку игры с заменой существующих файлов.
-                    </li>
-                    <li>
-                        <strong>Шаг 4:</strong> Запустите игру через файл <code>WorldOfTanks.exe</code> или запустите лаунчер для автоматического подключения к серверу.
-                    </li>
-                    <li>
-                        <strong>Шаг 5:</strong> Войдите в игру, используя логин и пароль, которые вы зарегистрировали на сайте в разделе <a href="register.php">Регистрация</a>.
-                    </li>
-                </ul>
             </div>
         </div>
     </div>
