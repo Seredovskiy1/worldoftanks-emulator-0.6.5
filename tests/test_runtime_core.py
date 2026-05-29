@@ -1583,6 +1583,55 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertAlmostEqual(got_tr[10], 36.0)
         self.assertAlmostEqual(got_tr[11], 20.0)
 
+    def test_matchmaker_weight_modes(self):
+        veh = {"name": "BT-7", "vehicleClass": "lightTank", "maxHealth": 180}
+        with mock.patch.object(emulator, "MATCHMAKING_TEAM_BALANCE_MODE", "count"):
+            self.assertEqual(emulator.compute_vehicle_match_weight(veh), 1)
+        with mock.patch.object(emulator, "MATCHMAKING_TEAM_BALANCE_MODE", "health_weight"), \
+                mock.patch.object(emulator, "MATCHMAKING_TEAM_WEIGHT_FIELD", "maxHealth"):
+            self.assertEqual(emulator.compute_vehicle_match_weight(veh), 180)
+        # template: точкова вага за iм'ям має прiоритет.
+        with mock.patch.object(emulator, "MATCHMAKING_TEAM_BALANCE_MODE", "template"), \
+                mock.patch.object(emulator, "MATCHMAKING_VEHICLE_WEIGHT_OVERRIDES", {"BT-7": 7}), \
+                mock.patch.object(emulator, "MATCHMAKING_CLASS_WEIGHTS", {"lightTank": 3}):
+            self.assertEqual(emulator.compute_vehicle_match_weight(veh), 7)
+        # template: без override -> вага класу.
+        with mock.patch.object(emulator, "MATCHMAKING_TEAM_BALANCE_MODE", "template"), \
+                mock.patch.object(emulator, "MATCHMAKING_VEHICLE_WEIGHT_OVERRIDES", {}), \
+                mock.patch.object(emulator, "MATCHMAKING_CLASS_WEIGHTS", {"lightTank": 3}):
+            self.assertEqual(emulator.compute_vehicle_match_weight(veh), 3)
+        # template: клас=0 -> запасний HP.
+        with mock.patch.object(emulator, "MATCHMAKING_TEAM_BALANCE_MODE", "template"), \
+                mock.patch.object(emulator, "MATCHMAKING_VEHICLE_WEIGHT_OVERRIDES", {}), \
+                mock.patch.object(emulator, "MATCHMAKING_CLASS_WEIGHTS", {"lightTank": 0}), \
+                mock.patch.object(emulator, "MATCHMAKING_TEAM_WEIGHT_FIELD", "maxHealth"):
+            self.assertEqual(emulator.compute_vehicle_match_weight(veh), 180)
+
+    def test_matchmaker_balances_teams_by_hp(self):
+        batch = []
+        for i, hp in enumerate((1000, 900, 200, 100), start=1):
+            sess = {"account_id": i,
+                    "battle_vehicle": {"name": f"T{i}", "maxHealth": hp}}
+            batch.append({"sess": sess, "addr": ("127.0.0.1", 13000 + i)})
+        with mock.patch.object(emulator, "MATCHMAKING_TEAM_BALANCE_MODE", "health_weight"), \
+                mock.patch.object(emulator, "MATCHMAKING_TEAM_WEIGHT_FIELD", "maxHealth"):
+            emulator.assign_match_teams(batch)
+        team_hp = {1: 0, 2: 0}
+        team_count = {1: 0, 2: 0}
+        for queued in batch:
+            sess = queued["sess"]
+            team_hp[sess["battle_team"]] += sess["battle_vehicle"]["maxHealth"]
+            team_count[sess["battle_team"]] += 1
+        self.assertEqual(team_count[1], team_count[2])
+        self.assertEqual(team_hp[1], team_hp[2])  # 1100 vs 1100
+
+    def test_matchmaker_random_map_uses_enabled_pool(self):
+        with mock.patch.object(emulator, "MATCHMAKING_RANDOM_MAP_SELECTION", True), \
+                mock.patch.object(emulator, "ENABLED_ARENA_TYPE_IDS", {1, 2}):
+            picks = {emulator.choose_match_arena_type_id([]) for _ in range(80)}
+        self.assertTrue(picks.issubset({1, 2}))
+        self.assertTrue(picks)
+
     def test_static_obstacle_chunk_transform_creates_world_obstacle(self):
         ignored = {}
         data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))

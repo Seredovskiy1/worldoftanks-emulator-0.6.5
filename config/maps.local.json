@@ -1,7 +1,7 @@
 {
   "maps": {
     "fallback_arena_type_id": 1,
-    "enabled_arena_type_ids": [1],
+    "enabled_arena_type_ids": [1, 2],
     "default_spawns": {
       "1": [-405.14, 53.26, -398.27],
       "2": [75.6, 15.0, -391.92]

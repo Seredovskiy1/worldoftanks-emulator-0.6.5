@@ -4190,6 +4190,15 @@ MATCHMAKING_TEAM_WEIGHT_FIELD = str(get_value(
     CONFIG, 'matchmaking.team_weight_field', 'maxHealth'))
 MATCHMAKING_QUEUE_FAKE_FILLERS = max(0, int(get_value(
     CONFIG, 'matchmaking.queue_fake_fillers', 0)))
+# Балансувальник сам випадково обирає карту з увiмкнених (а не слухає запит
+# клiєнта) — для рандомних боїв. Налаштування в config/matchmaking.json.
+MATCHMAKING_RANDOM_MAP_SELECTION = bool(get_value(
+    CONFIG, 'matchmaking.random_map_selection', True))
+# Шаблон ваг танкiв для режиму team_balance_mode='template'.
+MATCHMAKING_CLASS_WEIGHTS = dict(get_value(
+    CONFIG, 'matchmaking.class_weights', {}) or {})
+MATCHMAKING_VEHICLE_WEIGHT_OVERRIDES = dict(get_value(
+    CONFIG, 'matchmaking.vehicle_weight_overrides', {}) or {})
 BATTLE_TICK_HZ = max(10.0, min(200.0, float(get_value(
     CONFIG, 'battle.tick_hz', 60.0))))
 BATTLE_MOTION_TICK = 1.0 / BATTLE_TICK_HZ
@@ -6566,21 +6575,41 @@ def get_base_capture_vehicle_pos(sess: dict):
         sess, sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]))
 
 
+def compute_vehicle_match_weight(vehicle: dict) -> int:
+    """Вага танка для балансу команд за шаблоном (config/matchmaking.json).
+
+    'count'         -> 1 (баланс за кiлькiстю);
+    'health_weight' -> team_weight_field (типово maxHealth) — баланс за HP;
+    'template'      -> vehicle_weight_overrides[name] -> class_weights[class] ->
+                       team_weight_field (HP) як запасний варiант."""
+    if MATCHMAKING_TEAM_BALANCE_MODE == 'count':
+        return 1
+    vehicle = vehicle or {}
+    if MATCHMAKING_TEAM_BALANCE_MODE == 'template':
+        name = str(vehicle.get('name') or '')
+        if name in MATCHMAKING_VEHICLE_WEIGHT_OVERRIDES:
+            return max(1, int(MATCHMAKING_VEHICLE_WEIGHT_OVERRIDES[name]))
+        vclass = str(vehicle.get('vehicleClass') or '')
+        class_weight = int(MATCHMAKING_CLASS_WEIGHTS.get(vclass, 0) or 0)
+        if class_weight > 0:
+            return max(1, class_weight)
+    # health_weight (дефолт) i запасний варiант для template.
+    return max(1, int(vehicle.get(MATCHMAKING_TEAM_WEIGHT_FIELD, 1)))
+
+
 def assign_match_teams(valid_batch):
     shuffled = list(valid_batch)
     random.shuffle(shuffled)
-    if MATCHMAKING_TEAM_BALANCE_MODE == 'health_weight':
-        shuffled.sort(key=lambda queued: int(get_session_battle_vehicle(
-            queued.get('sess') or {}).get(MATCHMAKING_TEAM_WEIGHT_FIELD, 0)),
+    # Жадiбний баланс: спершу найважчi танки, кожен — у легшу команду.
+    if MATCHMAKING_TEAM_BALANCE_MODE != 'count':
+        shuffled.sort(key=lambda queued: compute_vehicle_match_weight(
+            get_session_battle_vehicle(queued.get('sess') or {})),
             reverse=True)
     teams = {1: [], 2: []}
     weights = {1: 0, 2: 0}
     for queued in shuffled:
         vehicle = get_session_battle_vehicle(queued.get('sess') or {})
-        if MATCHMAKING_TEAM_BALANCE_MODE == 'count':
-            weight = 1
-        else:
-            weight = max(1, int(vehicle.get(MATCHMAKING_TEAM_WEIGHT_FIELD, 1)))
+        weight = compute_vehicle_match_weight(vehicle)
         if len(teams[1]) != len(teams[2]):
             team = 1 if len(teams[1]) < len(teams[2]) else 2
         else:
@@ -7468,11 +7497,15 @@ def send_avatar_player(sock, addr, sess):
 
 
 def choose_match_arena_type_id(valid_batch):
+    arena_ids = sorted(ENABLED_ARENA_TYPE_IDS)
+    # Рандомний бiй: балансувальник сам обирає карту з увiмкнених, iгноруючи
+    # те, що запросив клiєнт (як у реальному WoT random battle).
+    if MATCHMAKING_RANDOM_MAP_SELECTION and arena_ids:
+        return normalize_arena_type_id(random.choice(arena_ids))
     first_sess = (valid_batch[0].get('sess') or {}) if valid_batch else {}
     requested = first_sess.get('battle_arena_type_id')
     if requested is not None:
         return normalize_arena_type_id(requested)
-    arena_ids = sorted(ENABLED_ARENA_TYPE_IDS)
     if not arena_ids:
         return ARENA_TYPE_FALLBACK
     return normalize_arena_type_id(random.choice(arena_ids))

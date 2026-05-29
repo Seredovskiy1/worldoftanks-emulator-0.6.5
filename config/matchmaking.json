@@ -1,0 +1,33 @@
+{
+  "matchmaking": {
+    "_README": [
+      "Шаблон балансувальника рандомних боїв. Редагуй цей файл і перезапусти сервер.",
+      "",
+      "min_seconds / max_seconds  — через скільки секунд після постановки в чергу стартує бій (випадково в цьому діапазоні).",
+      "queue_fake_fillers         — скільки фейкових гравцiв доливати в чергу (0 = вимкнено).",
+      "random_map_selection       — true: балансувальник сам випадково обирає карту з увiмкнених (config/maps.local.json -> enabled_arena_type_ids); false: бере карту, яку запросив клiєнт.",
+      "",
+      "team_balance_mode          — як балансувати команди:",
+      "    'count'         — порівну за кiлькiстю танкiв;",
+      "    'health_weight' — порiвну за сумарним HP команд (ДЕФОЛТ);",
+      "    'template'      — за вагами: vehicle_weight_overrides -> class_weights -> team_weight_field.",
+      "team_weight_field          — поле танка для ваги в режимi 'health_weight' (типово maxHealth).",
+      "class_weights              — вага одного танка кожного класу в режимi 'template' (0 = не задано, береться HP).",
+      "vehicle_weight_overrides   — точкова вага конкретного танка за iм'ям (напр. {\"BT-7\": 5}); має прiоритет над class_weights."
+    ],
+    "min_seconds": 15,
+    "max_seconds": 20,
+    "queue_fake_fillers": 0,
+    "random_map_selection": true,
+    "team_balance_mode": "health_weight",
+    "team_weight_field": "maxHealth",
+    "class_weights": {
+      "heavyTank": 0,
+      "mediumTank": 0,
+      "lightTank": 0,
+      "SPG": 0,
+      "AT-SPG": 0
+    },
+    "vehicle_weight_overrides": {}
+  }
+}

@@ -4,6 +4,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // Disable particle FX entirely on mobile / small screens
+    const isMobile = window.innerWidth < 768 || ('ontouchstart' in window);
+    if (isMobile) {
+        return;
+    }
+
     // Create canvas
     const canvas = document.createElement('canvas');
     canvas.id = 'sparksFx';
@@ -13,87 +19,96 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.style.width = '100vw';
     canvas.style.height = '100vh';
     canvas.style.pointerEvents = 'none';
-    canvas.style.zIndex = '0'; // Behind everything
+    canvas.style.zIndex = '0';
     
-    // Add to body
     document.body.appendChild(canvas);
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: true });
     let width, height;
-    let particles = [];
+
+    // Object pool — avoid GC churn from constant splice + push
+    const MAX_PARTICLES = 60;
+    const pool = new Array(MAX_PARTICLES);
+    let poolSize = 0;
 
     function resize() {
         width = window.innerWidth;
         height = window.innerHeight;
-        const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.floor(width * ratio);
-        canvas.height = Math.floor(height * ratio);
-        ctx.scale(ratio, ratio);
+        // Cap pixel ratio at 1 for the FX canvas — no visual difference, huge perf gain
+        canvas.width = width;
+        canvas.height = height;
     }
 
     function spawn() {
-        // Spawn from bottom
-        particles.push({
+        if (poolSize >= MAX_PARTICLES) return;
+        pool[poolSize++] = {
             x: Math.random() * width,
             y: height + 20,
-            vx: -1.5 + Math.random() * 3, // Drift left/right
-            vy: -1 - Math.random() * 4, // Speed up
-            life: 120 + Math.random() * 150, // How long it lives
+            vx: -1.5 + Math.random() * 3,
+            vy: -1 - Math.random() * 3,
+            life: 100 + Math.random() * 120,
             age: 0,
-            size: 1 + Math.random() * 2.5,
-            hue: 20 + Math.random() * 35, // Gold/Orange sparks (20 to 55 hue)
-            alpha: Math.random() * 0.7 + 0.3
-        });
+            size: 1 + Math.random() * 2,
+            hue: 20 + Math.random() * 35,
+            alpha: Math.random() * 0.6 + 0.3
+        };
     }
 
     let frame = 0;
+    let running = true;
+
     function draw() {
+        if (!running) return;
         frame++;
         ctx.clearRect(0, 0, width, height);
         ctx.globalCompositeOperation = 'lighter';
         
-        // Spawn rate
-        if (frame % 2 === 0 && particles.length < 180) {
+        // Spawn every 4th frame instead of every 2nd — halves spawn rate
+        if (frame % 4 === 0) {
             spawn();
-            if (Math.random() > 0.5) spawn(); // Occasionally spawn two
         }
 
-        for (let i = particles.length - 1; i >= 0; i--) {
-            const p = particles[i];
+        let writeIdx = 0;
+        for (let i = 0; i < poolSize; i++) {
+            const p = pool[i];
             p.age++;
             p.x += p.vx;
             p.y += p.vy;
             
-            // Add some wobble and drift
-            p.vx += (Math.random() - 0.5) * 0.15;
+            // Simplified wobble
+            p.vx += (Math.random() - 0.5) * 0.1;
             
-            // Fade out based on life
             const progress = p.age / p.life;
-            const currentAlpha = p.alpha * (1 - Math.pow(progress, 2));
+            if (progress >= 1 || p.y < -30 || p.x < -30 || p.x > width + 30) {
+                continue; // Dead — don't copy to output
+            }
 
+            const currentAlpha = p.alpha * (1 - progress * progress);
+
+            // No shadowBlur — this is the #1 GPU killer on mobile/low-end
             ctx.fillStyle = `hsla(${p.hue}, 100%, 60%, ${currentAlpha})`;
-            ctx.shadowColor = `hsla(${p.hue}, 100%, 50%, ${currentAlpha * 0.8})`;
-            ctx.shadowBlur = p.size * 4;
-
             ctx.beginPath();
             ctx.arc(p.x, p.y, p.size * (1 - progress * 0.5), 0, Math.PI * 2);
             ctx.fill();
 
-            // Random flash or "pop"
-            if (Math.random() < 0.005) {
-                ctx.fillStyle = `hsla(60, 100%, 90%, ${currentAlpha})`;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            if (p.age >= p.life || p.y < -50 || p.x < -50 || p.x > width + 50) {
-                particles.splice(i, 1);
-            }
+            // Keep particle alive
+            pool[writeIdx++] = p;
         }
+        poolSize = writeIdx;
+
         ctx.globalCompositeOperation = 'source-over';
-        window.requestAnimationFrame(draw);
+        requestAnimationFrame(draw);
     }
+
+    // Pause when tab is hidden
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            running = false;
+        } else {
+            running = true;
+            requestAnimationFrame(draw);
+        }
+    });
 
     window.addEventListener('resize', resize);
     resize();
