@@ -206,6 +206,52 @@ def _mock_stone_chunk(model_path=b"content/Environment/Rocks/testStone.model",
     return b"model\x00resource\x00" + model_path + struct.pack("<12f", *matrix)
 
 
+def _build_packed_section(children):
+    """Будує одну packed-section iз дочiрнiх (name_index, type, payload).
+
+    Формат точно вiдповiдає рiдеру emulator._walk_packed_section_children:
+    int16 num, далi num записiв по 6 байт (int32 dp, uint16 keyIndex),
+    далi фiнальний int32 dp, далi конкатенований блок даних дочiрнiх.
+    Тип дочки i зберiгається у старшому нiбблi запису (i+1)/фiнального.
+    """
+    num = len(children)
+    blob = b"".join(payload for _kp, _ctype, payload in children)
+    mask = emulator._PACKED_SECTION_DATA_POS_MASK
+    shift = emulator._PACKED_SECTION_TYPE_SHIFT
+    out = struct.pack("<h", num)
+    # record[0]: own endpos = 0; key = name of child 0
+    out += struct.pack("<iH", 0, children[0][0] if num else 0)
+    cumulative = 0
+    for i in range(1, num):
+        cumulative += len(children[i - 1][2])
+        ctype = children[i - 1][1]
+        dp = (cumulative & mask) | (ctype << shift)
+        out += struct.pack("<iH", dp, children[i][0])
+    # final int32: endpos + type of the last child
+    cumulative += len(children[-1][2]) if num else 0
+    final_type = children[-1][1] if num else 0
+    out += struct.pack("<i", (cumulative & mask) | (final_type << shift))
+    out += blob
+    return out
+
+
+def _build_packed_model_chunk(resource_bytes, matrix_bytes):
+    """Мiнiмальний .chunk у форматi packed section з однiєю секцiєю <model>
+    (resource + transform), як у реальних файлах WoT."""
+    # Таблиця рядкiв: iндекси 0=model, 1=resource, 2=transform.
+    names = [b"model", b"resource", b"transform"]
+    strings_blob = b"".join(n + b"\x00" for n in names) + b"\x00"
+    SECTION = emulator._PACKED_SECTION_TYPE_SECTION
+    model_section = _build_packed_section([
+        (1, 1, resource_bytes),          # resource (string, type 1)
+        (2, emulator._PACKED_SECTION_TYPE_FLOAT, matrix_bytes),  # transform (type 3)
+    ])
+    root_section = _build_packed_section([
+        (0, SECTION, model_section),     # <model> section
+    ])
+    return struct.pack("<I", emulator._PACKED_SECTION_MAGIC) + b"\x00" + strings_blob + root_section
+
+
 def _make_combat_session(account_id, team, pos, health=300,
                          vehicle=None):
     sess = _make_session(account_id, period_active=True)
@@ -842,7 +888,7 @@ class RuntimeCoreTests(unittest.TestCase):
         with mock.patch.object(emulator.time, "time", side_effect=lambda: now[0]), \
                 mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
                 mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
-                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb)) if delay != emulator.DELAYED_VEHICLE_STATE_SECONDS else None), \
                 mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
             emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
             self.assertEqual(scheduled, [])
@@ -887,7 +933,7 @@ class RuntimeCoreTests(unittest.TestCase):
                 mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
                 mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
                 mock.patch.object(emulator, "runtime_call_later",
-                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb)) if delay != emulator.DELAYED_VEHICLE_STATE_SECONDS else None):
             emulator.send_avatar_ready_and_prebattle(object(), sess["addr"], sess)
 
         self.assertEqual(sess["battle_start_wall"], 1046.0)
@@ -923,7 +969,7 @@ class RuntimeCoreTests(unittest.TestCase):
                 mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
                 mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
                 mock.patch.object(emulator, "runtime_call_later",
-                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb)) if delay != emulator.DELAYED_VEHICLE_STATE_SECONDS else None), \
                 mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
             emulator.send_avatar_ready_and_prebattle(object(), s1["addr"], s1)
             self.assertNotIn("battle_start_wall", s1)
@@ -964,7 +1010,7 @@ class RuntimeCoreTests(unittest.TestCase):
                 mock.patch.object(emulator, "send_avatar_messages", return_value=True), \
                 mock.patch.object(emulator, "send_avatar_arena_update", side_effect=capture_arena), \
                 mock.patch.object(emulator, "runtime_call_later",
-                                  side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+                                  side_effect=lambda delay, cb: scheduled.append((delay, cb)) if delay != emulator.DELAYED_VEHICLE_STATE_SECONDS else None):
             emulator.send_avatar_ready_and_prebattle(object(), sess["addr"], sess)
 
         self.assertEqual(len(arena_updates), 1)
@@ -1067,7 +1113,7 @@ class RuntimeCoreTests(unittest.TestCase):
 
         with mock.patch.object(emulator, "send_avatar_messages", side_effect=capture_send), \
                 mock.patch.object(emulator, "send_avatar_arena_update", return_value=None), \
-                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb))), \
+                mock.patch.object(emulator, "runtime_call_later", side_effect=lambda delay, cb: scheduled.append((delay, cb)) if delay != emulator.DELAYED_VEHICLE_STATE_SECONDS else None), \
                 mock.patch.object(emulator, "start_battle_tick_loop", return_value=None):
             emulator.send_avatar_ready_and_prebattle(object(), s2["addr"], s2)
             self.assertEqual(len(scheduled), 1)
@@ -1500,6 +1546,43 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertEqual(sess["battle_motion_flags"], 1)
 
+    def test_is_static_obstacle_model_filter(self):
+        is_obst = emulator.is_static_obstacle_model
+        # Будiвлi блокують завжди, навiть дерев'янi сараї ('wood' у назвi).
+        self.assertTrue(is_obst(
+            b"content/Buildings/bld002_MiddleWoodShed/normal/lod0/bld002_MiddleWoodShed.model"))
+        self.assertTrue(is_obst(
+            b"content/BuildingsRare/blr205_Church/normal/lod0/blr205_Church.model"))
+        # Вiйськовi укрiплення: 'fence' як пiдрядок 'Defences' не має виключати.
+        self.assertTrue(is_obst(
+            b"content/MillitaryInstallations/mil203_MilitaryDefences/normal/lod0/mil203_MilitaryDefences01.model"))
+        # Скелi/каменi довкiлля блокують.
+        self.assertTrue(is_obst(
+            b"content/Environment/env044_Caucasus_Stones/normal/lod0/env044_Caucasus_Stones02.model"))
+        # Дерева, паркани, колоди, смiття довкiлля — проїзнi.
+        self.assertFalse(is_obst(
+            b"content/GatesAndFences/gaf010_Fence/normal/lod0/gaf010_FenceTile1.model"))
+        self.assertFalse(is_obst(
+            b"content/Environment/env002_Logs/normal/lod0/env002_Logs.model"))
+        self.assertFalse(is_obst(
+            b"content/Environment/env001_Stump/normal/lod0/env001_Stump.model"))
+        # LOD-копiї не враховуємо (беремо лише lod0).
+        self.assertFalse(is_obst(
+            b"content/Buildings/bld201_vhouse/lod1/bld201_vhouse01.model"))
+
+    def test_iter_packed_model_instances(self):
+        res_bytes = b"content/Buildings/bld000_base/normal/lod0/bld000_base.model"
+        matrix = struct.pack("<12f", 1, 0, 0, 0, 1, 0, 0, 0, 1, 50.0, 36.0, 20.0)
+        data = _build_packed_model_chunk(res_bytes, matrix)
+
+        instances = list(emulator.iter_packed_model_instances(data))
+        self.assertEqual(len(instances), 1)
+        got_res, got_tr = instances[0]
+        self.assertEqual(got_res, res_bytes)
+        self.assertAlmostEqual(got_tr[9], 50.0)
+        self.assertAlmostEqual(got_tr[10], 36.0)
+        self.assertAlmostEqual(got_tr[11], 20.0)
+
     def test_static_obstacle_chunk_transform_creates_world_obstacle(self):
         ignored = {}
         data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
@@ -1532,7 +1615,26 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(obstacles, [])
         self.assertEqual(ignored.get("transform"), 1)
 
-    def test_static_obstacle_far_from_terrain_is_ignored(self):
+    def test_static_obstacle_terrain_y_filter_when_enabled(self):
+        # Фiльтр за висотою терену вимкнено за замовчуванням (packed-section
+        # трансформи надiйнi). Перевiряємо, що вiн усе ще працює, якщо його
+        # явно увiмкнути через tolerance > 0.
+        ignored = {}
+        data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
+
+        with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
+                mock.patch.object(emulator, "STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE", 3.5), \
+                mock.patch.object(emulator, "terrain_height_only", return_value=30.0):
+            obstacles = emulator.build_static_obstacles_from_chunk_data(
+                emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
+
+        self.assertEqual(obstacles, [])
+        self.assertEqual(ignored.get("terrain_y"), 1)
+
+    def test_static_obstacle_far_from_terrain_kept_when_filter_disabled(self):
+        # За замовчуванням (tolerance=0) перешкоду не вiдкидають за висотою —
+        # колiзiя працює в площинi XZ, а семплювання терену на деяких картах
+        # неточне.
         ignored = {}
         data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
 
@@ -1541,8 +1643,8 @@ class RuntimeCoreTests(unittest.TestCase):
             obstacles = emulator.build_static_obstacles_from_chunk_data(
                 emulator.ARENA_TYPE_KARELIA, 0, 0, data, ignored)
 
-        self.assertEqual(obstacles, [])
-        self.assertEqual(ignored.get("terrain_y"), 1)
+        self.assertEqual(len(obstacles), 1)
+        self.assertIsNone(ignored.get("terrain_y"))
 
     def test_static_obstacle_config_exclusion_is_ignored(self):
         ignored = {}
@@ -1599,7 +1701,9 @@ class RuntimeCoreTests(unittest.TestCase):
     def test_client_vehicle_position_blocks_static_obstacle(self):
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
         original_index = dict(emulator.STATIC_OBSTACLE_INDEX_CACHE)
-        arena_type_id = 2
+        # Завжди-увiмкнена fallback-арена, щоб тест не залежав вiд того, якi
+        # карти ввімкнено в maps.local.json (normalize мапить вимкненi на fallback).
+        arena_type_id = emulator.ARENA_TYPE_FALLBACK
         sess = _make_combat_session(405, 1, (-5.0, 0.0, 0.0))
         sess["battle_arena_type_id"] = arena_type_id
         sess["server_vehicle_authoritative"] = False
@@ -2135,10 +2239,11 @@ class RuntimeCoreTests(unittest.TestCase):
         ignored = {}
         data = _mock_stone_chunk(local=(0.0, 3.0, 0.0))
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
-        original_shrink = emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK
+        original_shrink = emulator.STATIC_OBSTACLE_ENV_FOOTPRINT_SHRINK
         try:
             emulator.STATIC_OBSTACLE_CACHE.clear()
-            emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK = 0.90
+            # Мок-модель — камiнь (testStone), тож застосовується env-shrink.
+            emulator.STATIC_OBSTACLE_ENV_FOOTPRINT_SHRINK = 0.90
             with mock.patch.object(emulator, "find_client_res_file", return_value="stone.model"), \
                     mock.patch.object(emulator, "read_model_obstacle_bounds",
                                       return_value=(-4.0, -1.0, -4.0, 4.0, 1.0, 4.0)), \
@@ -2153,7 +2258,7 @@ class RuntimeCoreTests(unittest.TestCase):
         finally:
             emulator.STATIC_OBSTACLE_CACHE.clear()
             emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
-            emulator.STATIC_OBSTACLE_FOOTPRINT_SHRINK = original_shrink
+            emulator.STATIC_OBSTACLE_ENV_FOOTPRINT_SHRINK = original_shrink
 
         self.assertEqual(ignored, {})
         self.assertEqual(len(obstacles), 1)

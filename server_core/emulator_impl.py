@@ -67,6 +67,14 @@ BASEAPP_PORT = int(get_value(CONFIG, 'server.baseapp_port', 20017))
 PUBLIC_HOST = str(get_value(CONFIG, 'server.public_host', '26.108.162.225'))
 BASEAPP_INIT_DELAY_SECONDS = float(get_value(
     CONFIG, 'server.baseapp_init_delay_seconds', 0.05))
+# Скiльки секунд без жодного пакета вiд клiєнта вважати його вiдключеним
+# (UDP не дає явного сигналу про розрив). BigWorld-клiєнт шле keepalive/ACK
+# значно частiше, тож тайм-аут безпечний для активних гравцiв в ангарi.
+CLIENT_IDLE_TIMEOUT_SECONDS = float(get_value(
+    CONFIG, 'server.client_idle_timeout_seconds', 60.0))
+# Перiод перевiрки «мертвих» сесiй.
+CLIENT_REAPER_INTERVAL_SECONDS = float(get_value(
+    CONFIG, 'server.client_reaper_interval_seconds', 5.0))
 
 # { token_bytes : { 'bf_key': bytes, 'addr': (ip,port) } }
 active_sessions = {}
@@ -1340,6 +1348,43 @@ def get_online_count() -> int:
             seen.add(account_id)
     return len(seen)
 
+_client_reaper_started = False
+
+def prune_disconnected_clients(sock):
+    """Прибирає сесiї, вiд яких давно не було пакетiв, i, якщо когось
+    вiдключили, розсилає оновлений лiчильник онлайну. Без цього сесiя
+    висить у baseapp_clients вiчно, i в ангарi показується завищений
+    онлайн (напр. лишається «2», коли другий гравець уже вийшов)."""
+    now = time.time()
+    removed = []
+    for addr, sess in list(baseapp_clients.items()):
+        last_recv = float(sess.get('last_recv', sess.get('login_time', 0.0)))
+        if now - last_recv > CLIENT_IDLE_TIMEOUT_SECONDS:
+            baseapp_clients.pop(addr, None)
+            # Зупиняємо session-tick i позначаємо сесiю вiдключеною.
+            if sess.get('addr') == addr:
+                sess['addr'] = None
+            sess['init_sent'] = False
+            removed.append((addr, sess.get('username') or 'player'))
+    if removed:
+        for addr, name in removed:
+            print(f"[-] Клiєнт вiдключений (тайм-аут {CLIENT_IDLE_TIMEOUT_SECONDS:.0f}s): "
+                  f"{name} {addr} | онлайн={get_online_count()}")
+        try:
+            broadcast_account_server_counters(sock)
+        except Exception as exc:
+            print(f"    [!] broadcast counters (reaper) FAIL: {exc}")
+    runtime_call_later(CLIENT_REAPER_INTERVAL_SECONDS,
+                       lambda: prune_disconnected_clients(sock))
+
+def ensure_client_reaper_started(sock):
+    global _client_reaper_started
+    if _client_reaper_started:
+        return
+    _client_reaper_started = True
+    runtime_call_later(CLIENT_REAPER_INTERVAL_SECONDS,
+                       lambda: prune_disconnected_clients(sock))
+
 def get_active_battle_count() -> int:
     with battle_lock:
         return 1 if active_battle_accounts else 0
@@ -2173,6 +2218,7 @@ def load_all_vehicles(include_disabled: bool = False):
             'rotationSpeedLimit': float(v.get('rotationSpeedLimit') or 0.0),
             'armorModel': dict(v.get('armorModel') or {}),
             'defaultAmmo': default_ammo,
+            'maxAmmo': int(v.get('maxAmmo') or 0),
             'shells': shells,
         })
     global _MOTION_WARNED
@@ -2638,7 +2684,39 @@ def build_vehicle_ammo_stock(vehicle: dict):
     ammo = list((vehicle or {}).get('defaultAmmo') or [])
     for i in range(0, len(ammo), 2):
         stock[int(ammo[i])] = max(0, int(ammo[i + 1]))
+    # Захист: танк нiколи не повинен заходити в бiй з порожнiм боєкомплектом.
+    # Якщо defaultAmmo вiдсутнiй/обнулений (напр. клiєнт прислав порожнiй
+    # layout), вiдновлюємо стандартний боєкомплект зi снарядiв танка.
+    if sum(stock.values()) <= 0:
+        fallback = make_default_ammo_from_shells(
+            (vehicle or {}).get('shells'), (vehicle or {}).get('maxAmmo', 0))
+        stock = {}
+        for i in range(0, len(fallback), 2):
+            stock[int(fallback[i])] = max(0, int(fallback[i + 1]))
     return stock
+
+
+def build_session_ammo_stock(sess: dict) -> dict:
+    """Боєкомплект для бою з урахуванням персонального layout акаунта.
+
+    Прiоритет: збережений per-account layout -> defaultAmmo танка ->
+    (через build_vehicle_ammo_stock) стандартний боєкомплект зi снарядiв."""
+    vehicle = get_session_battle_vehicle(sess)
+    account_id = int(sess.get('account_id') or 0)
+    inv_id = int(sess.get('battle_vehicle_inv_id') or 0)
+    if account_id and inv_id:
+        try:
+            saved = load_vehicle_ammo_layouts(account_id).get(inv_id)
+        except Exception as exc:
+            print(f"    [!] load_vehicle_ammo_layouts(battle) FAIL: {exc}")
+            saved = None
+        if saved and sum(int(q) for q in list(saved)[1::2]) > 0:
+            stock = {}
+            saved = list(saved)
+            for i in range(0, len(saved), 2):
+                stock[int(saved[i])] = max(0, int(saved[i + 1]))
+            return stock
+    return build_vehicle_ammo_stock(vehicle)
 
 
 def select_available_shell(stock: dict, preferred: int = 0):
@@ -4098,6 +4176,10 @@ BATTLE_AUTO_READY_FALLBACK_SECONDS = float(get_value(
     CONFIG, 'battle.auto_ready_fallback_seconds', 6.0))
 BATTLE_PERIOD_TIME_OFFSET_SECONDS = float(get_value(
     CONFIG, 'battle.period_time_offset_seconds', 3.0))
+# Затримка перед надсиланням стану машини (боєкомплект/здоров'я) пiсля
+# avatar-ready — клiєнт встигає створити сутнiсть Vehicle.
+DELAYED_VEHICLE_STATE_SECONDS = float(get_value(
+    CONFIG, 'battle.delayed_vehicle_state_seconds', 1.5))
 MATCHMAKING_MIN_SECONDS = float(get_value(
     CONFIG, 'matchmaking.min_seconds', 15))
 MATCHMAKING_MAX_SECONDS = float(get_value(
@@ -4371,10 +4453,19 @@ STATIC_OBSTACLE_Y_HEIGHT = float(get_value(
     CONFIG, 'combat.static_obstacle_y_height', 5.0))
 STATIC_OBSTACLE_CHUNK_MARGIN = float(get_value(
     CONFIG, 'combat.static_obstacle_chunk_margin', 80.0))
+# <= 0 вимикає перевiрку. З packed-section екстракцiєю трансформи надiйнi,
+# тож фiльтр за висотою терену бiльше не потрiбен (а на деяких картах, напр.
+# Карелiї, семплювання терену неточне й вiн хибно вiдкидав 90% реальних скель).
 STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE = float(get_value(
-    CONFIG, 'combat.static_obstacle_terrain_y_tolerance', 3.5))
+    CONFIG, 'combat.static_obstacle_terrain_y_tolerance', 0.0))
 STATIC_OBSTACLE_FOOTPRINT_SHRINK = max(0.05, min(1.0, float(get_value(
     CONFIG, 'combat.static_obstacle_footprint_shrink', 0.75))))
+# Скелi/каменi нерегулярнi: їх bounding-box значно перекриває реальну форму,
+# тож танк блокувався в "порожнiх" кутах bbox, проїжджаючи повз. Для них
+# футпринт стискаємо сильнiше, щоб колiзiя тулилась до видимого каменю.
+# Будiвлi коробчастi — їх bbox точний, тож вони лишаються на загальному shrink.
+STATIC_OBSTACLE_ENV_FOOTPRINT_SHRINK = max(0.05, min(1.0, float(get_value(
+    CONFIG, 'combat.static_obstacle_env_footprint_shrink', 0.6))))
 STATIC_OBSTACLE_TANK_HALO = max(0.0, float(get_value(
     CONFIG, 'combat.static_obstacle_tank_halo', 0.8)))
 STATIC_OBSTACLE_INDEX_CELL = max(8.0, float(get_value(
@@ -6660,7 +6751,7 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['battle_targeting_state_time'] = time.time()
     sess['battle_current_shell'] = 0
     sess['battle_next_shell'] = 0
-    sess['battle_ammo_stock'] = build_vehicle_ammo_stock(vehicle)
+    sess['battle_ammo_stock'] = build_session_ammo_stock(sess)
     sess['battle_vehicle_health'] = get_vehicle_max_health(vehicle)
     sess['battle_reload_until'] = 0.0
     sess['battle_shells_fired'] = {}
@@ -7550,7 +7641,11 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
     def _send_delayed_vehicle_state():
         state_msgs = build_battle_vehicle_state_messages(sess)
         send_avatar_messages(sock, addr, sess, state_msgs, "Delayed vehicle state (ammo/health)")
-    threading.Timer(1.5, _send_delayed_vehicle_state).start()
+    # Через однопотоковий event-loop: НЕ використовуємо threading.Timer —
+    # окремий потiк паралельно з session-tick iнкрементував би out_channel_seq
+    # тiєї ж сесiї, ламаючи нумерацiю пакетiв, i клiєнт мiг вiдкинути пакет з
+    # боєкомплектом (саме тому снаряди «не на всiх танках» завантажувались).
+    runtime_call_later(DELAYED_VEHICLE_STATE_SECONDS, _send_delayed_vehicle_state)
     match_id = sess.get('battle_match_id')
     sessions = (
         get_match_battle_sessions(match_id)
@@ -8851,17 +8946,33 @@ def is_static_obstacle_model(model_path: bytes) -> bool:
         return False
     if b'/lod1/' in name or b'/lod2/' in name:
         return False
-    for keyword in _STATIC_OBSTACLE_EXCLUDE_KEYWORDS:
-        if keyword in name:
-            return False
+    # Суцiльнi рукотворнi споруди — будiвлi (всi, навiть дерев'янi сараї) та
+    # вiйськовi установки/укрiплення завжди блокують. Виключнi ключовi слова
+    # (tree/wood/fence/...) призначенi для дрiбного смiття довкiлля i НЕ мають
+    # застосовуватись тут: ранiше 'wood' хибно виключав bldXXX_WoodShed, а
+    # 'fence' як пiдрядок — milXXX_MilitaryDe[fence]s.
     for prefix in _STATIC_OBSTACLE_PREFIXES:
         if name.startswith(prefix):
             return True
+    # Довкiлля: блокують лише каменi/скелi/меморiали; дерева, кущi, паркани,
+    # колоди, смiття — проїзнi (щоб не плодити невидимих блокерiв на дорогах).
     if name.startswith(b'content/environment/'):
+        for keyword in _STATIC_OBSTACLE_EXCLUDE_KEYWORDS:
+            if keyword in name:
+                return False
         for keyword in _STATIC_OBSTACLE_ENV_KEYWORDS:
             if keyword in name:
                 return True
     return False
+
+
+def obstacle_footprint_shrink(model_path: bytes) -> float:
+    """Камiнь/скеля -> сильнiше стиснення (bbox перекриває реальну форму);
+    будiвлi/меморiали -> загальний коефiцiєнт (їх bbox коробчастий i точний)."""
+    name = (model_path or b'').lower()
+    if b'stone' in name or b'rock' in name:
+        return STATIC_OBSTACLE_ENV_FOOTPRINT_SHRINK
+    return STATIC_OBSTACLE_FOOTPRINT_SHRINK
 
 
 def static_obstacle_exclusion_zones(arena_type_id: int):
@@ -8924,7 +9035,53 @@ def read_chunk_model_transform(data: bytes, offset: int):
     return values
 
 
+def iter_packed_model_instances(data: bytes):
+    """РџСЂРѕС…РѕРґРёС‚СЊ .chunk СЏРє packed section С– РІС–РґРґР°С” (resource_bytes, transform12)
+    РґР»СЏ РєРѕР¶РЅРѕС— СЃРµРєС†С–С— <model> (resource + transform). Р¦Рµ С‚РѕС‡РЅРµ РґР¶РµСЂРµР»Рѕ
+    РіРµРѕРјРµС‚СЂС–С— (РЅР° РІС–РґРјС–РЅСѓ РІС–Рґ СЂРµРіРµРєСЃ-РµРІСЂРёСЃС‚РёРєРё): С‚СЂР°РЅСЃС„РѕСЂРј Р±РµСЂРµС‚СЊСЃСЏ
+    Р· РІР»Р°СЃРЅРѕРіРѕ РїРѕР»СЏ, Р° РЅРµ Р·С– СЃР»С–РїРѕРіРѕ С‡РёС‚Р°РЅРЅСЏ Р±Р°Р№С‚С–РІ РїС–СЃР»СЏ СЂСЏРґРєР°."""
+    strings, root_off = _read_packed_section_strings(data)
+    if strings is None or root_off <= 0:
+        return
+    stack = [root_off]
+    while stack:
+        children = _walk_packed_section_children(data, stack.pop(), strings)
+        if not children:
+            continue
+        for child in children:
+            if child['type'] != _PACKED_SECTION_TYPE_SECTION or child['data_size'] < 2:
+                continue
+            stack.append(child['data_off'])
+            if child['name'] != b'model':
+                continue
+            resource = None
+            transform = None
+            for sub in (_walk_packed_section_children(
+                    data, child['data_off'], strings) or []):
+                if sub['name'] == b'resource' and sub['data_size'] > 0:
+                    resource = data[sub['data_off']:
+                                    sub['data_off'] + sub['data_size']].rstrip(b'\x00')
+                elif sub['name'] == b'transform' and sub['data_size'] >= 48:
+                    try:
+                        transform = struct.unpack_from('<12f', data, sub['data_off'])
+                    except struct.error:
+                        transform = None
+            if resource and transform and all(math.isfinite(v) for v in transform):
+                yield resource, transform
+
+
 def iter_static_model_instances_from_chunk(data: bytes, ignored=None):
+    strings, root_off = _read_packed_section_strings(data)
+    if strings is not None and root_off > 0:
+        # РћСЃРЅРѕРІРЅРёР№ С€Р»СЏС…: РЅР°РґС–Р№РЅР° packed-section РіРµРѕРјРµС‚СЂС–СЏ.
+        for model_path, transform in iter_packed_model_instances(data):
+            if not is_static_obstacle_model(model_path):
+                if ignored is not None:
+                    ignored['resource'] = int(ignored.get('resource', 0)) + 1
+                continue
+            yield model_path, transform
+        return
+    # Р—Р°РїР°СЃРЅРёР№ С€Р»СЏС… РґР»СЏ РЅРµ-packed С„Р°Р№Р»С–РІ: СЃС‚Р°СЂР° СЂРµРіРµРєСЃ-РµРІСЂРёСЃС‚РёРєР°.
     for match in STATIC_OBSTACLE_MODEL_RE.finditer(data or b''):
         model_path = match.group()
         if not is_static_obstacle_model(model_path):
@@ -8962,11 +9119,12 @@ def validate_static_obstacle_instance(arena_type_id: int, chunk_x: int,
         if ignored is not None:
             ignored['excluded'] = int(ignored.get('excluded', 0)) + 1
         return None
-    terrain_y = terrain_height_only(arena_type_id, x, z, local_y)
-    if abs(local_y - terrain_y) > STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE:
-        if ignored is not None:
-            ignored['terrain_y'] = int(ignored.get('terrain_y', 0)) + 1
-        return None
+    if STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE > 0.0:
+        terrain_y = terrain_height_only(arena_type_id, x, z, local_y)
+        if abs(local_y - terrain_y) > STATIC_OBSTACLE_TERRAIN_Y_TOLERANCE:
+            if ignored is not None:
+                ignored['terrain_y'] = int(ignored.get('terrain_y', 0)) + 1
+            return None
     bounds = read_model_obstacle_bounds(model_path)
     footprint = build_model_footprint(chunk_x, chunk_z, transform, bounds)
     transformed_radius = transformed_bounds_radius(x, z, footprint)
@@ -8974,10 +9132,9 @@ def validate_static_obstacle_instance(arena_type_id: int, chunk_x: int,
         transformed_radius = stone_obstacle_radius(model_path)
     visual_radius = transformed_radius + STATIC_OBSTACLE_SHOT_RADIUS_PAD
     move_radius = movement_obstacle_radius(visual_radius)
-    if (footprint and len(footprint) >= 3 and
-            STATIC_OBSTACLE_FOOTPRINT_SHRINK < 1.0):
-        footprint = scaled_footprint(
-            footprint, x, z, STATIC_OBSTACLE_FOOTPRINT_SHRINK)
+    shrink = obstacle_footprint_shrink(model_path)
+    if footprint and len(footprint) >= 3 and shrink < 1.0:
+        footprint = scaled_footprint(footprint, x, z, shrink)
     return (x, local_y, z, move_radius, visual_radius, model_path, footprint)
 
 
@@ -11487,9 +11644,11 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         if arr:
             veh_inv_id = arr[0]
             ammo_pairs = arr[1:]
-            vehicle = get_vehicle_by_inventory_id(veh_inv_id)
-            if vehicle is not None:
-                vehicle['defaultAmmo'] = list(ammo_pairs)
+            # НЕ мутуємо глобальний словник танка (get_vehicle_by_inventory_id
+            # повертає спiльний для всiх акаунтiв об'єкт): layout зберiгаємо
+            # per-account у БД, а бiй/ангар читають його звiдти. Пряма мутацiя
+            # псувала боєкомплект мiж акаунтами i обнуляла його на порожнiй
+            # layout — через це частина танкiв заходила в бiй без снарядiв.
             if account_id:
                 try:
                     save_vehicle_ammo_layout(account_id, veh_inv_id,
@@ -11898,6 +12057,8 @@ def handle_baseapp(sock):
 
     # РџС–СЃР»СЏ СѓСЃРїС–С€РЅРѕРіРѕ login РєР»С–С”РЅС‚ РјРѕР¶Рµ РїРµСЂРµР№С‚Рё РЅР° Р·Р°С€РёС„СЂРѕРІР°РЅС– РїР°РєРµС‚Рё.
     sess_for_addr = baseapp_clients.get(addr)
+    if sess_for_addr is not None:
+        sess_for_addr['last_recv'] = time.time()
     decrypted = False
     if sess_for_addr:
         dec = bw_decrypt_packet(data, sess_for_addr['bf_key'])
@@ -11956,7 +12117,10 @@ def handle_baseapp(sock):
         sess['out_channel_seq'] = 0
         sess['out_nub_seq'] = 0
         sess['session_tick_counter'] = 0
+        sess['last_recv'] = time.time()
+        sess['login_time'] = time.time()
         baseapp_clients[addr] = sess
+        ensure_client_reaper_started(sock)
 
         # 1) Р’С–РґРїРѕРІС–РґСЊ РЅР° baseAppLogin: РїСЂРѕСЃС‚Рѕ echo token СЏРє SessionKey
         reply = make_reply(reply_id, token_received)

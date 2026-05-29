@@ -1,15 +1,7 @@
 {
   "maps": {
-    "fallback_arena_type_id": 2,
-    "enabled_arena_type_ids": [2],
-    "static_obstacle_exclusions": {
-      "1": [
-        {
-          "center": [3.6, 36.2],
-          "radius": 4.0
-        }
-      ]
-    },
+    "fallback_arena_type_id": 1,
+    "enabled_arena_type_ids": [1],
     "default_spawns": {
       "1": [-405.14, 53.26, -398.27],
       "2": [75.6, 15.0, -391.92]

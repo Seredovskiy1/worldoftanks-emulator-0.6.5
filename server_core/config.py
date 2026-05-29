@@ -203,7 +203,7 @@ DEFAULT_CONFIG = {
         "static_obstacle_y_below": 1.5,
         "static_obstacle_y_height": 5.0,
         "static_obstacle_chunk_margin": 80.0,
-        "static_obstacle_terrain_y_tolerance": 3.5,
+        "static_obstacle_terrain_y_tolerance": 0.0,
         "tank_collision_radius": 1.0,
         "tank_collision_enabled": True,
         "tank_collision_half_width_scale": 0.85,
