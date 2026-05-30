@@ -4614,7 +4614,7 @@ SHOT_TANK_HIT_RADIUS_V = float(get_value(
 SHOT_TANK_MARKER_VERT_ABOVE = float(get_value(
     CONFIG, 'combat.shot_tank_marker_vert_above', 25.0))
 SHOT_GUN_ALIGNMENT_TOLERANCE_COS = math.cos(math.radians(float(get_value(
-    CONFIG, 'combat.shot_gun_alignment_tolerance_degrees', 35.0))))
+    CONFIG, 'combat.shot_gun_alignment_tolerance_degrees', 15.0))))
 SHOT_DISPERSION_ENABLED = bool(get_value(
     CONFIG, 'combat.shot_dispersion_enabled', True))
 SHOT_HIT_CHANCE_PERCENT = float(get_value(
@@ -6403,6 +6403,12 @@ def update_remote_vehicle_visibility(sock, observer_sess: dict,
             return False
         if keep_remote_entity_on_visibility_loss(observer_sess, remote_sess):
             return False
+        # Знищена техніка (уламки) має лишатися видимою до кінця бою — інакше
+        # вбитий танк зникав, щойно спостерігач переставав його «світити».
+        if is_destroyed_vehicle_session(remote_sess):
+            known = observer_sess.setdefault('known_remote_accounts', set())
+            if remote_sess.get('account_id') in known:
+                return False
         hide_remote_vehicle(sock, observer_sess, remote_sess)
         return False
     known = observer_sess.setdefault('known_remote_accounts', set())
@@ -10655,6 +10661,21 @@ def find_shot_target(source_sess: dict, shot_pos, shot_vec):
                 vertical_signed = center[1] - float(marker_pos[1])
                 print(f"    [shot] debug: {uname} pos={pos} center={center} h={horizontal:.2f} v_signed={vertical_signed:+.2f} (limits H={SHOT_TANK_HIT_RADIUS_H} V_below={SHOT_TANK_HIT_RADIUS_V} V_above={SHOT_TANK_MARKER_VERT_ABOVE})")
         return None
+
+    # Постріл влучає лише якщо ствол реально дивиться на ціль. Інакше з піднятим
+    # уверх дулом (камера на ворогові) маркер «прилипав» до танка і завдавав хп.
+    gun_dir = get_session_current_gun_direction(source_sess)
+    aim_dx = best_center[0] - shot_pos[0]
+    aim_dy = best_center[1] - shot_pos[1]
+    aim_dz = best_center[2] - shot_pos[2]
+    aim_len = math.sqrt(aim_dx * aim_dx + aim_dy * aim_dy + aim_dz * aim_dz)
+    if aim_len > 0.001:
+        aim_cos = (gun_dir[0] * aim_dx + gun_dir[1] * aim_dy +
+                   gun_dir[2] * aim_dz) / aim_len
+        if aim_cos < SHOT_GUN_ALIGNMENT_TOLERANCE_COS:
+            print(f"    [shot] miss: gun not aimed at target "
+                  f"(cos={aim_cos:.3f} < {SHOT_GUN_ALIGNMENT_TOLERANCE_COS:.3f})")
+            return None
 
     if chosen_ray_candidate is not None:
         vehicle = chosen_ray_candidate['vehicle']
