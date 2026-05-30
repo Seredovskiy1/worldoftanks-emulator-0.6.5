@@ -1632,6 +1632,61 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(picks.issubset({1, 2}))
         self.assertTrue(picks)
 
+    def test_shop_includes_artefacts(self):
+        # Без оптичних пристроїв (9) та обладнання (11) у shop вкладка "Склад"
+        # не знаходила артефакти гравця i вiчно вантажилась.
+        import pickle as _pickle
+        shop = _pickle.loads(emulator.make_shop_pickle())
+        items = shop["items"]
+        none_idx = emulator.NATION_NONE_INDEX
+        opt = items[none_idx][emulator.ITEM_TYPE_OPTIONAL_DEVICE][0]
+        eqs = items[none_idx][emulator.ITEM_TYPE_EQUIPMENT][0]
+        self.assertGreater(len(opt), 0)
+        self.assertGreater(len(eqs), 0)
+        # Усi артефакти, виданi гравцю за замовчуванням, мають бути в shop.
+        for item_type, in_nation in (
+                (emulator.ITEM_TYPE_OPTIONAL_DEVICE, 4),
+                (emulator.ITEM_TYPE_EQUIPMENT, 1)):
+            cd = emulator.make_artefact_compact_descr(item_type, in_nation)
+            self.assertIn(cd, items[none_idx][item_type][0])
+
+    def test_onclientready_resends_vehicle_state(self):
+        # Снаряди губились: вiдкладений send спрацьовував до готовностi панелi
+        # (через auto-ready fallback), а на справжнiй onClientReady стан не
+        # перешався. Тепер onClientReady завжди (пере)надсилає боєкомплект.
+        sess = _make_combat_session(601, 1, (0.0, 0.0, 0.0))
+        sess["battle_bundle_sent"] = True
+        sess["avatar_ready_sent"] = True  # fallback вже виставив готовнiсть
+        calls = []
+        with mock.patch.object(emulator, "build_battle_vehicle_state_messages",
+                               side_effect=lambda s: b"AMMO") as bvs, \
+                mock.patch.object(emulator, "send_avatar_messages",
+                                  side_effect=lambda *a, **k: calls.append(a[3]) or True), \
+                mock.patch.object(emulator, "send_avatar_ready_and_prebattle",
+                                  return_value=None):
+            handled = emulator.handle_avatar_base_method(
+                object(), sess["addr"], sess, 0xc7, struct.pack("<I", 42))
+        self.assertTrue(handled)
+        self.assertTrue(bvs.called)
+        self.assertIn(b"AMMO", calls)
+
+    def test_battle_space_id_unique_per_battle(self):
+        # Унiкальний SpaceID на бiй (разом з ротацiєю EntityID).
+        ids = {emulator.battle_space_id_for(m) for m in (1, 2, 3, 4)}
+        self.assertEqual(len(ids), 4)
+        self.assertNotIn(emulator.SPACE_ID, ids)
+        self.assertEqual(emulator.battle_space_id_for(0), emulator.SPACE_ID)
+        self.assertEqual(
+            emulator.get_battle_space_id({"battle_match_id": 7}),
+            emulator.battle_space_id_for(7))
+
+    def test_send_battle_vehicle_state_skips_when_not_in_battle(self):
+        sess = _make_combat_session(602, 1, (0.0, 0.0, 0.0))
+        sess["battle_bundle_sent"] = False
+        with mock.patch.object(emulator, "build_battle_vehicle_state_messages",
+                               side_effect=AssertionError("must not build")):
+            emulator.send_battle_vehicle_state(object(), sess["addr"], sess)
+
     def test_static_obstacle_chunk_transform_creates_world_obstacle(self):
         ignored = {}
         data = _mock_stone_chunk(local=(12.0, 3.0, 34.0))
@@ -3228,6 +3283,96 @@ class RuntimeCoreTests(unittest.TestCase):
         ids = _message_ids(msgs)
 
         self.assertLess(ids.index(0x07), ids.index(0x05))
+
+    def test_avatar_player_bundle_can_defer_own_vehicle_entity(self):
+        compact = emulator.get_vehicle_compact_descr()
+        vehicle = _make_combat_vehicle()
+
+        msgs = emulator.build_avatar_player_bundle(
+            vehicle_compact_descr=compact,
+            vehicle_data=vehicle,
+            player_name="tester",
+            include_vehicle_entity=False)
+
+        self.assertIn(0x06, _message_ids(msgs))
+        self.assertEqual(_message_payloads(msgs, 0x08), [])
+        self.assertNotIn(
+            bytes([0x0A]) + struct.pack("<IB", emulator.PLAYER_VEHICLE_ID, 0),
+            msgs)
+
+    def test_own_vehicle_spawn_bundle_enters_aoi_before_create_entity(self):
+        compact = emulator.get_vehicle_compact_descr()
+        vehicle = _make_combat_vehicle()
+
+        msgs = emulator.build_own_vehicle_spawn_bundle(
+            vehicle_compact_descr=compact,
+            vehicle_data=vehicle,
+            player_name="tester")
+
+        self.assertEqual(msgs[0], 0x0A)
+        entity_id, alias = struct.unpack_from("<IB", msgs, 1)
+        self.assertEqual(entity_id, emulator.PLAYER_VEHICLE_ID)
+        self.assertEqual(alias, 0)
+        create_pos = 1 + 5
+        self.assertEqual(msgs[create_pos], 0x08)
+
+    def test_send_avatar_player_defers_own_vehicle_create(self):
+        compact = emulator.get_vehicle_compact_descr()
+        sess = _make_combat_session(701, 1, (0.0, 0.0, 0.0))
+        sess["battle_bundle_sent"] = False
+        sess["battle_vehicle"]["compactDescr"] = compact
+        sess["battle_vehicle_compactDescr"] = compact
+        sess["battle_vehicle_inv_id"] = 1
+        sess["bf_key"] = b"0123456789abcdef"
+        sent_plain = []
+
+        def capture_channel(msgs, _sess, reliable=False):
+            sent_plain.append(bytes(msgs))
+            return msgs
+
+        with mock.patch.object(emulator, "sample_terrain",
+                               return_value=(0.0, (0.0, 1.0, 0.0))), \
+                mock.patch.object(emulator, "build_channel_packet",
+                                  side_effect=capture_channel), \
+                mock.patch.object(emulator, "bw_encrypt_packet",
+                                  side_effect=lambda pkt, _key: pkt), \
+                mock.patch.object(emulator, "runtime_sendto",
+                                  return_value=None), \
+                mock.patch.object(emulator, "schedule_own_vehicle_spawn",
+                                  return_value=None) as schedule:
+            emulator.send_avatar_player(object(), sess["addr"], sess)
+
+        self.assertTrue(sess["battle_bundle_sent"])
+        self.assertFalse(sess["own_vehicle_spawn_sent"])
+        schedule.assert_called_once()
+        self.assertEqual(_message_payloads(sent_plain[0], 0x08), [])
+
+    def test_schedule_own_vehicle_spawn_enables_announce_and_ready_fallback(self):
+        sess = _make_combat_session(702, 1, (0.0, 0.0, 0.0))
+        sess["battle_bundle_sent"] = True
+        sess["own_vehicle_spawn_sent"] = False
+        sess["battle_generation"] = 3
+        scheduled = []
+
+        with mock.patch.object(emulator, "runtime_call_later",
+                               side_effect=lambda delay, cb: scheduled.append((delay, cb))):
+            emulator.schedule_own_vehicle_spawn(object(), sess["addr"], sess)
+
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(scheduled[0][0], emulator.OWN_VEHICLE_SPAWN_DELAY_SECONDS)
+
+        with mock.patch.object(emulator, "send_own_vehicle_spawn",
+                               return_value=True) as spawn, \
+                mock.patch.object(emulator, "announce_battle_player",
+                                  return_value=None) as announce, \
+                mock.patch.object(emulator, "schedule_avatar_ready_fallback",
+                                  return_value=None) as fallback:
+            scheduled[0][1]()
+
+        spawn.assert_called_once()
+        announce.assert_called_once_with(mock.ANY, sess)
+        fallback.assert_called_once()
+        self.assertFalse(sess["own_vehicle_spawn_scheduled"])
 
     def test_avatar_ready_fallback_sends_ready_when_client_sticks_loading(self):
         sess = _make_loading_session(44)

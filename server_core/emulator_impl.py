@@ -1678,7 +1678,46 @@ VEHICLE_ENTITY_TYPE = 2   # CLIENT-SIDE clientIndex! РќР• server idx=5.
 PLAYER_ENTITY_ID    = 1   # any non-zero EntityID for our player (Account)
 AVATAR_ENTITY_ID    = 100 # РѕРєСЂРµРјРёР№ EntityID РґР»СЏ Avatar entity Сѓ Р±РѕСЋ
 PLAYER_VEHICLE_ID   = 200 # EntityID РґР»СЏ Vehicle entity, РЅР° СЏРєРѕРјСѓ РіСЂР°С” player
-SPACE_ID            = 1   # arbitrary SpaceID for hangar
+
+# Клiєнт 0.6.5 кешує власну машину (#200, позначена unloadable) i НЕ знищує
+# її мiж боями. Якщо наступний бiй знову створює #200 — createEntity
+# iгнорується (entity вже iснує), машина не входить у свiт, init не
+# завершується → екран завантаження висить. Тому РОТУЄМО EntityID власних
+# Avatar/Vehicle на кожен бiй (rotate_battle_entity_ids), щоб клiєнт завжди
+# бачив СВIЖI сутностi. Дiапазони тримаємо < 1000 ( remote-машини = 1000+acc).
+# УВАГА: глобальний стан — коректно для послiдовних боїв (типовий сценарiй);
+# для одночасних рiзних матчiв потрiбна per-session версiя.
+AVATAR_ENTITY_ID_BASE  = 100
+PLAYER_VEHICLE_ID_BASE = 300
+_battle_entity_seq = 0
+
+
+def rotate_battle_entity_ids():
+    global AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID, _battle_entity_seq
+    _battle_entity_seq = (_battle_entity_seq + 1) % 200
+    off = _battle_entity_seq
+    AVATAR_ENTITY_ID = AVATAR_ENTITY_ID_BASE + off      # 100..299
+    PLAYER_VEHICLE_ID = PLAYER_VEHICLE_ID_BASE + off    # 300..499
+    return AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID
+SPACE_ID            = 1   # arbitrary SpaceID for hangar/battle
+BATTLE_SPACE_ID_BASE = 100
+
+
+def battle_space_id_for(match_id) -> int:
+    """Унiкальний SpaceID на кожен бiй. РАЗОМ з ротацiєю EntityID
+    (rotate_battle_entity_ids) це змушує клiєнт повнiстю перезавантажити i
+    простiр, i власнi сутностi мiж боями. Поодинцi (тiльки простiр АБО тiльки
+    сутностi) не працює — другий бiй застрягав на init-кроцi того ресурсу, що
+    лишався старим. Дiапазон не конфлiктує з ангаром (SPACE_ID=1)."""
+    try:
+        m = int(match_id or 0)
+    except (TypeError, ValueError):
+        m = 0
+    return (BATTLE_SPACE_ID_BASE + (m % 60000)) if m > 0 else SPACE_ID
+
+
+def get_battle_space_id(sess) -> int:
+    return battle_space_id_for((sess or {}).get('battle_match_id'))
 
 # в”Ђв”Ђв”Ђ Account.def ClientMethods (РїРѕСЂСЏРґРѕРє Р· PackedSection РїР°СЂСЃРµСЂР°) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 #   idx=0  version_eu6501      (РјР°СЂker, 0x81)
@@ -3989,6 +4028,24 @@ def make_shop_pickle() -> bytes:
                     comp_descr = (item_id << 8) | (15 << 4) | itype
                     items[15][itype][0][comp_descr] = price
 
+    # Авторитетне джерело артефактiв — data/_artefacts.json. Клiєнтськi
+    # common/optional_devices.xml та equipments.xml у 0.6.5 запакованi й
+    # зазвичай недоступнi, тож блок вище нiчого не клав → shop[15][9]/[11]
+    # лишались ПОРОЖНI. Через це вкладка "Склад" (depot) не знаходила
+    # оптичнi пристрої/обладнання гравця в shop i вiчно вантажилась.
+    artefacts_cfg = load_artefacts_config() or {}
+    for section, itype in (('optional_devices', ITEM_TYPE_OPTIONAL_DEVICE),
+                           ('equipments', ITEM_TYPE_EQUIPMENT)):
+        for it in artefacts_cfg.get(section, []):
+            in_nation = int(it.get('id') or 0)
+            if in_nation <= 0:
+                continue
+            comp_descr = make_artefact_compact_descr(itype, in_nation)
+            if comp_descr in items[NATION_NONE_INDEX][itype][0]:
+                continue
+            items[NATION_NONE_INDEX][itype][0][comp_descr] = \
+                get_artefact_price(itype, in_nation)
+
     shop = {
         'rev': 1,
         'slotsPrices':       (5, [300, 600, 900, 1200, 1500, 1800]),
@@ -4180,6 +4237,8 @@ BATTLE_PERIOD_TIME_OFFSET_SECONDS = float(get_value(
 # avatar-ready — клiєнт встигає створити сутнiсть Vehicle.
 DELAYED_VEHICLE_STATE_SECONDS = float(get_value(
     CONFIG, 'battle.delayed_vehicle_state_seconds', 1.5))
+OWN_VEHICLE_SPAWN_DELAY_SECONDS = float(get_value(
+    CONFIG, 'battle.own_vehicle_spawn_delay_seconds', 4.0))
 MATCHMAKING_MIN_SECONDS = float(get_value(
     CONFIG, 'matchmaking.min_seconds', 15))
 MATCHMAKING_MAX_SECONDS = float(get_value(
@@ -4909,13 +4968,14 @@ def build_avatar_vehicle_bind(pos, yaw: float) -> bytes:
 def build_battle_motion_sync(pos, yaw: float,
                              speed: float = 0.0,
                              rspeed: float = 0.0,
-                             bind_avatar: bool = False) -> bytes:
+                             bind_avatar: bool = False,
+                             space_id: int = SPACE_ID) -> bytes:
     msgs = b''
     if bind_avatar:
         msgs += build_set_vehicle(AVATAR_ENTITY_ID, PLAYER_VEHICLE_ID)
     msgs += (
         build_forced_position(AVATAR_ENTITY_ID, (0.0, 0.0, 0.0), yaw,
-                              space_id=SPACE_ID,
+                              space_id=space_id,
                               vehicle_id=PLAYER_VEHICLE_ID) +
         build_avatar_update_own_vehicle_position(pos, yaw, speed, rspeed) +
         build_vehicle_motion_update(pos, yaw)
@@ -4949,7 +5009,8 @@ def build_battle_motion_tick_for_session(sess: dict, pos, yaw: float,
             pos, yaw, speed, rspeed)
     if sess.pop('battle_motion_force_position', False):
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
-                                      space_id=SPACE_ID, vehicle_id=0)
+                                      space_id=get_battle_space_id(sess),
+                                      vehicle_id=0)
     return msgs
 
 
@@ -5066,7 +5127,8 @@ def decode_client_coord_ypr(payload: bytes, offset: int = 0):
 def build_own_vehicle_motion_update(pos, yaw: float,
                                     speed: float = 0.0,
                                     rspeed: float = 0.0,
-                                    force: bool = False) -> bytes:
+                                    force: bool = False,
+                                    space_id: int = SPACE_ID) -> bytes:
     """Hard-sync the own camera matrix and the actual Vehicle entity.
 
     This is not used for every motion tick. updateOwnVehiclePosition resets the
@@ -5079,7 +5141,7 @@ def build_own_vehicle_motion_update(pos, yaw: float,
     )
     if force:
         msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
-                                      space_id=SPACE_ID, vehicle_id=0)
+                                      space_id=space_id, vehicle_id=0)
     return msgs
 
 
@@ -5137,7 +5199,9 @@ def build_avatar_update_gun_marker(shot_pos, shot_vec,
 def build_avatar_show_tracer(shot_id: int, shot_pos, velocity,
                              gravity: float = 9.81,
                              effects_index: int = 0,
-                             vehicle_id: int = PLAYER_VEHICLE_ID) -> bytes:
+                             vehicle_id: int = None) -> bytes:
+    if vehicle_id is None:
+        vehicle_id = PLAYER_VEHICLE_ID
     em = struct.pack('<I', AVATAR_ENTITY_ID)
     em += struct.pack('<I', vehicle_id)
     em += struct.pack('<f', float(shot_id))
@@ -5233,7 +5297,9 @@ def build_avatar_explode_projectile(shot_id: int, effects_index: int,
     return msg_varlen(AVATAR_EXPLODE_PROJECTILE_MSG_ID, em)
 
 
-def build_vehicle_show_shooting(vehicle_id: int = PLAYER_VEHICLE_ID) -> bytes:
+def build_vehicle_show_shooting(vehicle_id: int = None) -> bytes:
+    if vehicle_id is None:
+        vehicle_id = PLAYER_VEHICLE_ID
     return msg_varlen(VEHICLE_SHOW_SHOOTING_MSG_ID,
                       struct.pack('<I', vehicle_id))
 
@@ -5282,7 +5348,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
                                vehicle_list=None,
                                statistics_list=None,
                                battle_id: int = 1,
-                               arena_extra_data: dict = None) -> bytes:
+                               arena_extra_data: dict = None,
+                               include_vehicle_entity: bool = True) -> bytes:
     """РџРµСЂРµС…С–Рґ Account в†’ Avatar РґР»СЏ РІС…РѕРґСѓ РІ Р±С–Р№.
 
     Bundle:
@@ -5327,8 +5394,10 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     geometry_path = ARENA_GEOMETRY_PATH.get(
         arena_type_id, b'spaces/01_karelia/')
     mapping_data = build_geometry_mapping_data(geometry_path)
-    entry_id = struct.pack('<IHH', SPACE_ID, 0, int(battle_id or 1) & 0xffff)
-    msgs += build_space_data_message(SPACE_ID,
+    # Унiкальний SpaceID на кожен бiй → клiєнт гарантовано перевантажує карту.
+    space_id = battle_space_id_for(battle_id)
+    entry_id = struct.pack('<IHH', space_id, 0, int(battle_id or 1) & 0xffff)
+    msgs += build_space_data_message(space_id,
                                      SPACE_DATA_MAPPING_KEY_CLIENT_SERVER,
                                      mapping_data,
                                      entry_id=entry_id)
@@ -5372,7 +5441,7 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     cell_props += struct.pack('<B', team)              # team  (UINT8)
     cell_props += struct.pack('<I', PLAYER_VEHICLE_ID)  # playerVehicleID
 
-    ccp = struct.pack('<I', SPACE_ID)
+    ccp = struct.pack('<I', space_id)
     ccp += struct.pack('<I', 0)               # vehicleID РЅР° СЏРєРѕРјСѓ СЃС‚РѕС—С‚СЊ Avatar вЂ” 0
     ccp += struct.pack('<fff', *spawn_pos)    # position (x, y, z)
     ccp += struct.pack('<fff', spawn_yaw, 0.0, 0.0) # direction (yaw, pitch, roll)
@@ -5392,6 +5461,8 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     msgs += build_avatar_update_arena(ARENA_UPDATE_PERIOD,
                                       (initial_period, period_end_time,
                                        period_length, None))
+    if not include_vehicle_entity:
+        return msgs
 
     # 4. enterAoI(Vehicle) Р”Рћ createEntity!
     #    EntityManager::onEntityCreate РїРµСЂРµРІС–СЂСЏС” unknownEntities_[id].count С–
@@ -5414,6 +5485,30 @@ def build_avatar_player_bundle(arena_type_id: int = ARENA_TYPE_KARELIA,
     #      + yaw(int8) + pitch(int8) + roll(int8)
     #      + ALL_CLIENTS+CELL_PUBLIC properties (def order, pass 2).
     veh_compact_descr = vehicle_compact_descr or get_vehicle_compact_descr()
+    msgs += build_vehicle_create_message(PLAYER_VEHICLE_ID,
+                                         VEHICLE_ENTITY_TYPE,
+                                         veh_compact_descr,
+                                         vehicle_data=vehicle_data,
+                                         pos=spawn_pos,
+                                         yaw=spawn_yaw,
+                                         team=team,
+                                         player_name=player_name)
+    return msgs
+
+
+def build_own_vehicle_spawn_bundle(vehicle_compact_descr: bytes = None,
+                                   vehicle_data: dict = None,
+                                   player_name: str = 'qwerty',
+                                   team: int = 1,
+                                   spawn_pos=None,
+                                   spawn_yaw: float = 0.0) -> bytes:
+    """Build only enterAoI + createEntity for the player's own Vehicle."""
+    if spawn_pos is None:
+        spawn_pos = ARENA_SPAWN_POS.get(ARENA_TYPE_KARELIA,
+                                        (-360.0, 80.0, -360.0))
+    team = max(1, min(2, int(team or 1)))
+    veh_compact_descr = vehicle_compact_descr or get_vehicle_compact_descr()
+    msgs = msg_fixed(0x0A, struct.pack('<IB', PLAYER_VEHICLE_ID, 0))
     msgs += build_vehicle_create_message(PLAYER_VEHICLE_ID,
                                          VEHICLE_ENTITY_TYPE,
                                          veh_compact_descr,
@@ -6413,7 +6508,8 @@ def start_battle_tick_loop(sock):
                                     sock, addr, sess,
                                     build_forced_position(
                                         PLAYER_VEHICLE_ID, pos, yaw,
-                                        space_id=SPACE_ID, vehicle_id=0),
+                                        space_id=get_battle_space_id(sess),
+                                        vehicle_id=0),
                                     '',
                                     reliable=False)
                     process_pending_vehicle_collision(sock, sess)
@@ -6804,6 +6900,8 @@ def init_battle_state(sess: dict, spawn_pos):
     sess['avatar_ready_sent'] = False
     sess['battle_client_ready'] = False
     sess['battle_ready_fallback_scheduled'] = False
+    sess['own_vehicle_spawn_sent'] = False
+    sess['own_vehicle_spawn_scheduled'] = False
     sess['battle_period_timer_started'] = False
     sess['battle_late_period_timer_started'] = False
     sess['battle_forced_position_sent_for_motion'] = False
@@ -7052,7 +7150,8 @@ def send_own_vehicle_position(sock, addr, sess, label: str = '',
     rspeed = sess.get('battle_rspeed', 0.0)
     return send_avatar_messages(
         sock, addr, sess,
-        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force),
+        build_own_vehicle_motion_update(pos, yaw, speed, rspeed, force=force,
+                                        space_id=get_battle_space_id(sess)),
         label,
         reliable=reliable)
 
@@ -7084,7 +7183,8 @@ def send_destroyed_vehicle_freeze(sock, sess: dict) -> bool:
     if sess.get('battle_client_control_enabled'):
         msgs += disable_client_vehicle_control_message(sess)
     msgs += build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
-                                  space_id=SPACE_ID, vehicle_id=0)
+                                  space_id=get_battle_space_id(sess),
+                                  vehicle_id=0)
     return send_avatar_messages(sock, addr, sess, msgs,
                                 "Vehicle.destroyed freeze",
                                 reliable=True)
@@ -7323,7 +7423,8 @@ def build_battle_period_start_messages(sess: dict):
         sess.get('battle_pos', ARENA_SPAWN_POS[ARENA_TYPE_KARELIA]),
         sess.get('battle_yaw', 0.0),
         0.0, 0.0,
-        bind_avatar=True)
+        bind_avatar=True,
+        space_id=get_battle_space_id(sess))
     sess['battle_last_own_vehicle_sync_time'] = time.time()
     if CLIENT_AUTHORITATIVE_VEHICLE_CONTROL:
         msgs += build_control_entity(PLAYER_VEHICLE_ID, True)
@@ -7442,10 +7543,57 @@ def start_battle_period_for_session(sock, sess: dict) -> bool:
     return True
 
 
+def send_own_vehicle_spawn(sock, addr, sess) -> bool:
+    if not addr or sess.get('battle_ended') or not sess.get('battle_bundle_sent'):
+        return False
+    if sess.get('own_vehicle_spawn_sent'):
+        return True
+    battle_vehicle = get_session_battle_vehicle(sess)
+    veh_compact = (sess.get('battle_vehicle_compactDescr') or
+                   (battle_vehicle or {}).get('compactDescr'))
+    if not battle_vehicle or not veh_compact:
+        return False
+    msgs = build_own_vehicle_spawn_bundle(
+        vehicle_compact_descr=veh_compact,
+        vehicle_data=battle_vehicle,
+        player_name=sess.get('username') or 'player',
+        team=int(sess.get('battle_team') or 1),
+        spawn_pos=sess.get('battle_pos'),
+        spawn_yaw=sess.get('battle_yaw', 0.0))
+    if not send_avatar_messages(
+            sock, addr, sess, msgs,
+            "delayed own Vehicle enterAoI + createEntity"):
+        return False
+    sess['own_vehicle_spawn_sent'] = True
+    return True
+
+
+def schedule_own_vehicle_spawn(sock, addr, sess):
+    delay = max(0.0, float(OWN_VEHICLE_SPAWN_DELAY_SECONDS))
+    if sess.get('own_vehicle_spawn_scheduled') or sess.get('own_vehicle_spawn_sent'):
+        return
+    generation = sess.get('battle_generation', 0)
+    sess['own_vehicle_spawn_scheduled'] = True
+
+    def _spawn():
+        sess['own_vehicle_spawn_scheduled'] = False
+        if generation != sess.get('battle_generation', 0):
+            return
+        if sess.get('battle_ended') or not sess.get('battle_bundle_sent'):
+            return
+        spawn_addr = sess.get('addr') or addr
+        if not send_own_vehicle_spawn(sock, spawn_addr, sess):
+            return
+        announce_battle_player(sock, sess)
+        schedule_avatar_ready_fallback(sock, spawn_addr, sess)
+
+    runtime_call_later(delay, _spawn)
+
+
 def send_avatar_player(sock, addr, sess):
     """РЁР»Рµ РїРѕРІРЅРёР№ battle-bundle:
        createBasePlayer(Avatar) + createCellPlayer(Avatar, playerVehicleID=200)
-       + createEntity(Vehicle 200) + enterAoI(Vehicle 200)."""
+       + delayed enterAoI/createEntity(Vehicle)."""
     battle_vehicle = get_session_battle_vehicle(sess)
     veh_compact = (sess.get('battle_vehicle_compactDescr') or
                    (battle_vehicle or {}).get('compactDescr'))
@@ -7475,7 +7623,8 @@ def send_avatar_player(sock, addr, sess):
                                       period_length=0,
                                       vehicle_list=vehicle_list,
                                       statistics_list=statistics_list,
-                                      battle_id=int(sess.get('battle_match_id') or 1))
+                                      battle_id=int(sess.get('battle_match_id') or 1),
+                                      include_vehicle_entity=False)
     pkt = build_channel_packet(msgs, sess, reliable=True)
     pkt = bw_encrypt_packet(pkt, sess['bf_key'])
     try:
@@ -7483,14 +7632,16 @@ def send_avatar_player(sock, addr, sess):
     except Exception:
         return
     sess['battle_bundle_sent'] = True
+    sess['own_vehicle_spawn_sent'] = False
+    sess['own_vehicle_spawn_scheduled'] = False
     sess['known_remote_accounts'] = set()
     remember_match_vehicle_roster(sess, roster_sessions)
-    announce_battle_player(sock, sess)
-    schedule_avatar_ready_fallback(sock, addr, sess)
+    schedule_own_vehicle_spawn(sock, addr, sess)
     print(f"    [>] battle-bundle: createBasePlayer(Avatar #{AVATAR_ENTITY_ID}) "
           f"+ spaceData(arenaType={arena_type_id}) "
-          f"+ createCellPlayer(playerVeh=#{PLAYER_VEHICLE_ID}) + "
-        f"enterAoI + createEntity(Vehicle, invID={sess.get('battle_vehicle_inv_id', 1)}, "
+          f"+ createCellPlayer(playerVeh=#{PLAYER_VEHICLE_ID}) "
+        f"+ delayed Vehicle spawn in {OWN_VEHICLE_SPAWN_DELAY_SECONDS:.1f}s "
+        f"(invID={sess.get('battle_vehicle_inv_id', 1)}, "
         f"team={sess.get('battle_team', 1)}, base={get_session_spawn_base(sess)}, "
         f"spawn={spawn_pos}, health={get_vehicle_max_health(battle_vehicle)}, "
         f"prebattle={prebattle_left}s)")
@@ -7584,6 +7735,12 @@ def start_matchmaking_timer(sock):
                                    "Account.onArenaCreated()  [matchmaker]")
             except Exception as e:
                 print(f"    [!] matchmaker arena event error: {e}")
+        # Свiжi EntityID власних Avatar/Vehicle на цей бiй (щоб клiєнт не
+        # перевикористовував кешованi сутностi з минулого бою → інакше екран
+        # завантаження висить). Один offset на весь матч — усi гравцi матчу
+        # отримують однаковi id для СВОЇХ сутностей (вони client-relative).
+        avatar_id, vehicle_id = rotate_battle_entity_ids()
+        print(f"    [battle] entity ids: Avatar=#{avatar_id} Vehicle=#{vehicle_id}")
         for queued in valid_batch:
             sess = queued.get('sess')
             addr = queued.get('addr')
@@ -7641,7 +7798,8 @@ def schedule_avatar_ready_fallback(sock, addr, sess):
             return
         if sess.get('battle_client_ready'):
             return
-        if sess.get('battle_ended') or not sess.get('battle_bundle_sent'):
+        if (sess.get('battle_ended') or not sess.get('battle_bundle_sent') or
+                not sess.get('own_vehicle_spawn_sent', True)):
             return
         fallback_addr = sess.get('addr') or addr
         if not fallback_addr:
@@ -7653,8 +7811,20 @@ def schedule_avatar_ready_fallback(sock, addr, sess):
     runtime_call_later(delay, _fallback)
 
 
+def send_battle_vehicle_state(sock, addr, sess, label="Vehicle state (ammo/health)"):
+    """Надсилає стан машини (боєкомплект + здоров'я) клiєнту. Iдемпотентна —
+    updateVehicleAmmo на клiєнтi оновлює наявнi слоти, тож безпечно слати
+    повторно. Викликається i вiдкладено (запас), i на справжнiй onClientReady."""
+    if not addr or sess.get('battle_ended') or not sess.get('battle_bundle_sent'):
+        return
+    state_msgs = build_battle_vehicle_state_messages(sess)
+    send_avatar_messages(sock, addr, sess, state_msgs, label)
+
+
 def send_avatar_ready_and_prebattle(sock, addr, sess):
     if sess.get('avatar_ready_sent'):
+        return
+    if not sess.get('own_vehicle_spawn_sent', True):
         return
     sess['battle_ready_fallback_scheduled'] = False
     sess['avatar_ready_sent'] = True
@@ -7666,19 +7836,22 @@ def send_avatar_ready_and_prebattle(sock, addr, sess):
                       pos[2] + math.cos(yaw) * 100.0)
     msgs = b''
     msgs += build_battle_motion_sync(pos, yaw, 0.0, 0.0,
-                                     bind_avatar=True)
+                                     bind_avatar=True,
+                                     space_id=get_battle_space_id(sess))
     msgs += build_targeting_for_point(sess, initial_target)
     send_avatar_messages(sock, addr, sess, msgs,
                          "Avatar ready + initial vehicle position/targeting")
 
-    def _send_delayed_vehicle_state():
-        state_msgs = build_battle_vehicle_state_messages(sess)
-        send_avatar_messages(sock, addr, sess, state_msgs, "Delayed vehicle state (ammo/health)")
     # Через однопотоковий event-loop: НЕ використовуємо threading.Timer —
     # окремий потiк паралельно з session-tick iнкрементував би out_channel_seq
     # тiєї ж сесiї, ламаючи нумерацiю пакетiв, i клiєнт мiг вiдкинути пакет з
-    # боєкомплектом (саме тому снаряди «не на всiх танках» завантажувались).
-    runtime_call_later(DELAYED_VEHICLE_STATE_SECONDS, _send_delayed_vehicle_state)
+    # боєкомплектом. Це лише ЗАПАСНИЙ канал: основну вiдправку робимо на
+    # справжнiй onClientReady (див. send_battle_vehicle_state), коли панель
+    # снарядiв клiєнта вже iснує.
+    runtime_call_later(
+        DELAYED_VEHICLE_STATE_SECONDS,
+        lambda: send_battle_vehicle_state(
+            sock, addr, sess, "Delayed vehicle state (ammo/health)"))
     match_id = sess.get('battle_match_id')
     sessions = (
         get_match_battle_sessions(match_id)
@@ -10488,7 +10661,8 @@ def send_forced_vehicle_position(sock, sess: dict):
     return send_avatar_messages(
         sock, addr, sess,
         build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
-                              space_id=SPACE_ID, vehicle_id=0),
+                              space_id=get_battle_space_id(sess),
+                              vehicle_id=0),
         '',
         reliable=False)
 
@@ -11456,6 +11630,8 @@ def send_player_back_to_hangar(sock, addr, sess: dict):
     sess['avatar_ready_sent'] = False
     sess['battle_client_ready'] = False
     sess['battle_ready_fallback_scheduled'] = False
+    sess['own_vehicle_spawn_sent'] = False
+    sess['own_vehicle_spawn_scheduled'] = False
     sess['battle_motion_flags'] = 0
     sess['battle_speed'] = 0.0
     sess['battle_rspeed'] = 0.0
@@ -11483,6 +11659,12 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
     if msg_id in AVATAR_BASE_METHOD_ON_CLIENT_READY_IDS:
         print(f"    [avatar] onClientReady req={req_id}")
         send_avatar_ready_and_prebattle(sock, addr, sess)
+        # Клiєнт щойно повiдомив, що бойова сцена завантажена → панель снарядiв
+        # iснує. (Пере)надсилаємо боєкомплект тут, бо вiдкладений запасний
+        # send мiг спрацювати ранiше за готовнiсть панелi (через auto-ready
+        # fallback) → снаряди не з'являлись.
+        send_battle_vehicle_state(sock, addr, sess,
+                                  "Vehicle state on onClientReady (ammo/health)")
         return True
 
     if msg_id in AVATAR_BASE_METHOD_VEHICLE_MOVE_WITH_IDS:
@@ -11527,7 +11709,8 @@ def handle_avatar_base_method(sock, addr, sess, msg_id: int, payload: bytes):
             send_avatar_messages(
                 sock, addr, sess,
                 build_forced_position(PLAYER_VEHICLE_ID, pos, yaw,
-                                      space_id=SPACE_ID, vehicle_id=0),
+                                      space_id=get_battle_space_id(sess),
+                                      vehicle_id=0),
                 "Vehicle.forced_position (filter reset on first motion)",
                 reliable=True)
         if not sess.get('server_vehicle_authoritative', True):
@@ -11872,6 +12055,16 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         return
 
     if cmd == CMD_ENQUEUE_FOR_ARENA:
+        # Якщо гравець ставиться в чергу, ще не вийшовши з попереднього бою
+        # начисто (battle_bundle_sent / лишився battle_match_id) — спершу
+        # повертаємо його в ангар. Iнакше сутностi Avatar(#100)/Vehicle(#200)
+        # вiд минулого бою не очищуються, i прив'язка власної машини в новому
+        # бою не завершує init → екран завантаження висить (звук/ESC є, але
+        # оверлей не зникає). resetEntities у leave-бандлi дає чистий старт.
+        if sess.get('battle_bundle_sent') or sess.get('battle_match_id'):
+            print("    [battle] enqueue while still in battle state — "
+                  "resetting to hangar first for a clean re-entry")
+            send_player_back_to_hangar(sock, addr, sess)
         args = parse_doCmd_int3(payload) or (1, 0, 0)
         veh_inv_id, arena_type_id, queue_type = args
         vehicle = get_vehicle_by_inventory_id(veh_inv_id)
@@ -11925,6 +12118,8 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
         print(f"    [>] onCmdResponseExt(req={req_id}, res=0, ext=empty) "
               f"[Avatar.onClientReady]")
         send_avatar_ready_and_prebattle(sock, addr, sess)
+        send_battle_vehicle_state(sock, addr, sess,
+                                  "Vehicle state on onClientReady (ammo/health)")
         return
 
     msg = build_oncmdrespext(req_id, RES_SUCCESS, make_empty_ext_pickle())

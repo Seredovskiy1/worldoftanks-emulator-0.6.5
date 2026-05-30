@@ -291,7 +291,6 @@ class EventLoopRuntime:
                                  FORCED_POSITION_BROADCAST_INTERVAL))
         if interval <= 0.0:
             return
-        space_id = int(getattr(mod, "SPACE_ID", 1))
         own_id = int(getattr(mod, "PLAYER_VEHICLE_ID", 200))
         spawn_default = mod.ARENA_SPAWN_POS[mod.ARENA_TYPE_KARELIA]
         for sess in active_sessions:
@@ -306,6 +305,11 @@ class EventLoopRuntime:
                 continue
             pos = sess.get("battle_pos") or spawn_default
             yaw = float(sess.get("battle_yaw", 0.0))
+            # Унiкальний SpaceID бою (а не глобальний SPACE_ID) — щоб
+            # forced_position збiгався з простором, у якому створено машину.
+            get_space = getattr(mod, "get_battle_space_id", None)
+            space_id = (get_space(sess) if get_space
+                        else int(getattr(mod, "SPACE_ID", 1)))
             msgs = mod.build_forced_position(own_id, pos, yaw,
                                              space_id=space_id, vehicle_id=0)
             mod.send_avatar_messages(sock, addr, sess, msgs, "",
