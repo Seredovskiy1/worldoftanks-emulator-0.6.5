@@ -159,6 +159,207 @@ function class_label($class) {
     return $labels[$class] ?? $class;
 }
 
+function set_admin_flash($type, $message) {
+    $_SESSION['admin_flash'] = [
+        'type' => $type === 'danger' ? 'danger' : 'success',
+        'message' => $message,
+    ];
+}
+
+function take_admin_flash() {
+    $flash = $_SESSION['admin_flash'] ?? null;
+    unset($_SESSION['admin_flash']);
+    return is_array($flash) ? $flash : null;
+}
+
+function redirect_admin_news($extra = []) {
+    $params = array_merge(['tab' => 'news'], $extra);
+    header('Location: admin.php?' . http_build_query($params));
+    exit;
+}
+
+function require_form_csrf() {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
+        set_admin_flash('danger', 'Сессия устарела. Обнови страницу и попробуй еще раз.');
+        redirect_admin_news();
+    }
+}
+
+function limit_text($value, $limit) {
+    $value = trim((string)$value);
+    if (function_exists('mb_substr')) {
+        return mb_substr($value, 0, $limit, 'UTF-8');
+    }
+    return substr($value, 0, $limit);
+}
+
+function news_upload_dir() {
+    return __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'news';
+}
+
+function ensure_news_upload_dir() {
+    $dir = news_upload_dir();
+    if (!is_dir($dir) && !mkdir($dir, 0775, true)) {
+        throw new RuntimeException('Не удалось создать папку uploads/news.');
+    }
+    if (!is_writable($dir)) {
+        throw new RuntimeException('Папка uploads/news недоступна для записи.');
+    }
+    return $dir;
+}
+
+function normalize_uploaded_files($field) {
+    if (empty($_FILES[$field]) || !is_array($_FILES[$field]['name'])) {
+        return [];
+    }
+    $files = [];
+    foreach ($_FILES[$field]['name'] as $idx => $name) {
+        $files[] = [
+            'name' => $name,
+            'type' => $_FILES[$field]['type'][$idx] ?? '',
+            'tmp_name' => $_FILES[$field]['tmp_name'][$idx] ?? '',
+            'error' => intval($_FILES[$field]['error'][$idx] ?? UPLOAD_ERR_NO_FILE),
+            'size' => intval($_FILES[$field]['size'][$idx] ?? 0),
+        ];
+    }
+    return $files;
+}
+
+function upload_error_message($code) {
+    $messages = [
+        UPLOAD_ERR_INI_SIZE => 'Файл больше лимита PHP upload_max_filesize.',
+        UPLOAD_ERR_FORM_SIZE => 'Файл больше лимита формы.',
+        UPLOAD_ERR_PARTIAL => 'Файл загрузился не полностью.',
+        UPLOAD_ERR_NO_TMP_DIR => 'На сервере нет временной папки для загрузок.',
+        UPLOAD_ERR_CANT_WRITE => 'Сервер не смог записать файл.',
+        UPLOAD_ERR_EXTENSION => 'PHP-расширение остановило загрузку.',
+    ];
+    return $messages[$code] ?? 'Не удалось загрузить файл.';
+}
+
+function allowed_news_media() {
+    return [
+        'image/jpeg' => ['type' => 'image', 'ext' => 'jpg', 'max' => 8 * 1024 * 1024],
+        'image/png' => ['type' => 'image', 'ext' => 'png', 'max' => 8 * 1024 * 1024],
+        'image/webp' => ['type' => 'image', 'ext' => 'webp', 'max' => 8 * 1024 * 1024],
+        'image/gif' => ['type' => 'image', 'ext' => 'gif', 'max' => 8 * 1024 * 1024],
+        'video/mp4' => ['type' => 'video', 'ext' => 'mp4', 'max' => 128 * 1024 * 1024],
+        'video/webm' => ['type' => 'video', 'ext' => 'webm', 'max' => 128 * 1024 * 1024],
+        'video/ogg' => ['type' => 'video', 'ext' => 'ogv', 'max' => 128 * 1024 * 1024],
+    ];
+}
+
+function detect_file_mime($tmp_name) {
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $mime = finfo_file($finfo, $tmp_name);
+            finfo_close($finfo);
+            if ($mime) {
+                return $mime;
+            }
+        }
+    }
+    return function_exists('mime_content_type') ? mime_content_type($tmp_name) : '';
+}
+
+function attach_news_uploads($pdo, $news_id) {
+    $files = normalize_uploaded_files('media_files');
+    if (empty($files)) {
+        return 0;
+    }
+    $dir = ensure_news_upload_dir();
+    $allowed = allowed_news_media();
+    $stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order), -1) FROM site_news_media WHERE news_id = ?");
+    $stmt->execute([$news_id]);
+    $sort = intval($stmt->fetchColumn()) + 1;
+    $insert = $pdo->prepare("INSERT INTO site_news_media (news_id, media_type, file_path, original_name, mime_type, size_bytes, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $saved = 0;
+
+    foreach ($files as $file) {
+        if ($file['error'] === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            throw new RuntimeException(upload_error_message($file['error']));
+        }
+        if (!is_uploaded_file($file['tmp_name'])) {
+            throw new RuntimeException('Загрузка отклонена: временный файл не найден.');
+        }
+        $mime = detect_file_mime($file['tmp_name']);
+        if (!isset($allowed[$mime])) {
+            throw new RuntimeException('Разрешены только JPG, PNG, WEBP, GIF, MP4, WEBM и OGG.');
+        }
+        $meta = $allowed[$mime];
+        if ($file['size'] > $meta['max']) {
+            $limit = $meta['type'] === 'image' ? '8 МБ' : '128 МБ';
+            throw new RuntimeException('Файл "' . $file['name'] . '" больше лимита ' . $limit . '.');
+        }
+        $filename = date('Ymd_His') . '_' . intval($news_id) . '_' . bin2hex(random_bytes(8)) . '.' . $meta['ext'];
+        $target = $dir . DIRECTORY_SEPARATOR . $filename;
+        if (!move_uploaded_file($file['tmp_name'], $target)) {
+            throw new RuntimeException('Не удалось сохранить файл "' . $file['name'] . '".');
+        }
+        $relative = 'uploads/news/' . $filename;
+        $insert->execute([
+            $news_id,
+            $meta['type'],
+            $relative,
+            limit_text($file['name'], 255),
+            $mime,
+            $file['size'],
+            $sort++,
+            date('Y-m-d H:i:s'),
+        ]);
+        $saved++;
+    }
+    return $saved;
+}
+
+function news_media_absolute_path($file_path) {
+    $file_path = str_replace('\\', '/', (string)$file_path);
+    if (strpos($file_path, '..') !== false || substr($file_path, 0, 13) !== 'uploads/news/') {
+        return null;
+    }
+    return __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file_path);
+}
+
+function delete_news_media_file($file_path) {
+    $path = news_media_absolute_path($file_path);
+    if ($path && is_file($path)) {
+        @unlink($path);
+    }
+}
+
+function parse_news_datetime($value) {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return null;
+    }
+    $time = strtotime(str_replace('T', ' ', $value));
+    return $time ? date('Y-m-d H:i:s', $time) : null;
+}
+
+function news_datetime_input($value) {
+    if (!$value) {
+        return '';
+    }
+    $time = strtotime((string)$value);
+    return $time ? date('Y-m-d\TH:i', $time) : '';
+}
+
+function format_bytes($bytes) {
+    $bytes = intval($bytes);
+    if ($bytes >= 1024 * 1024) {
+        return round($bytes / 1024 / 1024, 1) . ' МБ';
+    }
+    if ($bytes >= 1024) {
+        return round($bytes / 1024, 1) . ' КБ';
+    }
+    return $bytes . ' Б';
+}
+
 $vehicles = load_vehicle_catalog();
 $vehicle_name_set = [];
 $nations = [];
@@ -289,6 +490,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['ajax'])) {
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['ajax'])) {
+    $action = $_POST['action'] ?? '';
+    if (in_array($action, ['save_news', 'delete_news', 'delete_news_media'], true)) {
+        require_form_csrf();
+        try {
+            if ($action === 'save_news') {
+                $news_id = intval($_POST['news_id'] ?? 0);
+                $title = limit_text($_POST['title'] ?? '', 180);
+                $summary = limit_text($_POST['summary'] ?? '', 512);
+                $body = trim((string)($_POST['body'] ?? ''));
+                $status = ($_POST['status'] ?? 'draft') === 'published' ? 'published' : 'draft';
+                $is_pinned = isset($_POST['is_pinned']) ? 1 : 0;
+                $published_at = parse_news_datetime($_POST['published_at'] ?? '');
+                if ($status === 'published' && !$published_at) {
+                    $published_at = date('Y-m-d H:i:s');
+                }
+                if ($status === 'draft' && !$published_at) {
+                    $published_at = null;
+                }
+                if ($title === '') {
+                    throw new RuntimeException('У новости должен быть заголовок.');
+                }
+                if ($body === '') {
+                    throw new RuntimeException('Текст новости не может быть пустым.');
+                }
+
+                if ($news_id > 0) {
+                    $stmt = $pdo->prepare("UPDATE site_news SET author_account_id = ?, title = ?, summary = ?, body = ?, status = ?, is_pinned = ?, published_at = ? WHERE id = ?");
+                    $stmt->execute([
+                        intval($_SESSION['user_id'] ?? 0) ?: null,
+                        $title,
+                        $summary,
+                        $body,
+                        $status,
+                        $is_pinned,
+                        $published_at,
+                        $news_id,
+                    ]);
+                } else {
+                    $stmt = $pdo->prepare("INSERT INTO site_news (author_account_id, title, summary, body, status, is_pinned, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $now = date('Y-m-d H:i:s');
+                    $stmt->execute([
+                        intval($_SESSION['user_id'] ?? 0) ?: null,
+                        $title,
+                        $summary,
+                        $body,
+                        $status,
+                        $is_pinned,
+                        $published_at,
+                        $now,
+                        $now,
+                    ]);
+                    $news_id = intval($pdo->lastInsertId());
+                }
+
+                $uploaded = attach_news_uploads($pdo, $news_id);
+                set_admin_flash('success', $uploaded > 0 ? 'Новость сохранена, медиа загружено: ' . $uploaded . '.' : 'Новость сохранена.');
+                redirect_admin_news(['edit_id' => $news_id]);
+            }
+
+            if ($action === 'delete_news_media') {
+                $media_id = intval($_POST['media_id'] ?? 0);
+                $stmt = $pdo->prepare("SELECT news_id, file_path FROM site_news_media WHERE id = ?");
+                $stmt->execute([$media_id]);
+                $media = $stmt->fetch();
+                if (!$media) {
+                    throw new RuntimeException('Медиа не найдено.');
+                }
+                delete_news_media_file($media['file_path']);
+                $stmt = $pdo->prepare("DELETE FROM site_news_media WHERE id = ?");
+                $stmt->execute([$media_id]);
+                set_admin_flash('success', 'Медиа удалено.');
+                redirect_admin_news(['edit_id' => intval($media['news_id'])]);
+            }
+
+            if ($action === 'delete_news') {
+                $news_id = intval($_POST['news_id'] ?? 0);
+                $stmt = $pdo->prepare("SELECT file_path FROM site_news_media WHERE news_id = ?");
+                $stmt->execute([$news_id]);
+                foreach ($stmt->fetchAll() as $media) {
+                    delete_news_media_file($media['file_path']);
+                }
+                $stmt = $pdo->prepare("DELETE FROM site_news WHERE id = ?");
+                $stmt->execute([$news_id]);
+                set_admin_flash('success', 'Новость удалена.');
+                redirect_admin_news();
+            }
+        } catch (Exception $e) {
+            error_log("Admin news action error: " . $e->getMessage());
+            set_admin_flash('danger', $e->getMessage());
+            $edit_id = intval($_POST['news_id'] ?? 0);
+            redirect_admin_news($edit_id > 0 ? ['edit_id' => $edit_id] : []);
+        }
+    }
+}
+
 $disabled_tanks = [];
 $account_overrides = [];
 $accounts = [];
@@ -301,8 +598,19 @@ $filter_tier = $_GET['tier'] ?? '';
 $filter_status = $_GET['status'] ?? '';
 $selected_account_id = intval($_GET['account_id'] ?? 0);
 $tab = $_GET['tab'] ?? 'vehicles';
+if (!in_array($tab, ['vehicles', 'users', 'news'], true)) {
+    $tab = 'vehicles';
+}
 $user_search = trim($_GET['user_search'] ?? '');
 $user_page = max(1, intval($_GET['user_page'] ?? 1));
+$news_search = trim($_GET['news_search'] ?? '');
+$news_status = $_GET['news_status'] ?? '';
+if (!in_array($news_status, ['', 'draft', 'published'], true)) {
+    $news_status = '';
+}
+$news_page = max(1, intval($_GET['news_page'] ?? 1));
+$news_edit_id = intval($_GET['edit_id'] ?? 0);
+$admin_flash = take_admin_flash();
 
 try {
     $disabled_tanks = $pdo->query("SELECT vehicle_name FROM disabled_vehicles")->fetchAll(PDO::FETCH_COLUMN);
@@ -426,6 +734,67 @@ $total_pages = max(1, intval(ceil($total_items / $limit)));
 $page = min($page, $total_pages);
 $offset = ($page - 1) * $limit;
 $paginated_vehicles = array_slice($filtered_vehicles, $offset, $limit);
+
+$news_limit = 20;
+$news_where = [];
+$news_bind = [];
+if ($news_search !== '') {
+    $news_where[] = "(n.title LIKE ? OR n.summary LIKE ? OR n.body LIKE ?)";
+    $news_like = '%' . $news_search . '%';
+    $news_bind[] = $news_like;
+    $news_bind[] = $news_like;
+    $news_bind[] = $news_like;
+}
+if ($news_status !== '') {
+    $news_where[] = "n.status = ?";
+    $news_bind[] = $news_status;
+}
+$news_where_sql = $news_where ? ('WHERE ' . implode(' AND ', $news_where)) : '';
+$news_total = 0;
+$news_items = [];
+$editing_news = null;
+$editing_media = [];
+$news_stats = ['published' => 0, 'draft' => 0, 'media' => 0];
+try {
+    $count_stmt = $pdo->prepare("SELECT COUNT(*) FROM site_news n $news_where_sql");
+    $count_stmt->execute($news_bind);
+    $news_total = intval($count_stmt->fetchColumn());
+    $news_total_pages = max(1, intval(ceil($news_total / $news_limit)));
+    $news_page = min($news_page, $news_total_pages);
+    $news_offset = ($news_page - 1) * $news_limit;
+    $sql = "SELECT n.*, a.username AS author_name, COALESCE(mc.media_count, 0) AS media_count
+            FROM site_news n
+            LEFT JOIN accounts a ON a.id = n.author_account_id
+            LEFT JOIN (
+                SELECT news_id, COUNT(*) AS media_count
+                FROM site_news_media
+                GROUP BY news_id
+            ) mc ON mc.news_id = n.id
+            $news_where_sql
+            ORDER BY n.is_pinned DESC, COALESCE(n.published_at, n.created_at) DESC, n.id DESC
+            LIMIT $news_limit OFFSET $news_offset";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($news_bind);
+    $news_items = $stmt->fetchAll();
+
+    $news_stats['published'] = intval($pdo->query("SELECT COUNT(*) FROM site_news WHERE status = 'published'")->fetchColumn());
+    $news_stats['draft'] = intval($pdo->query("SELECT COUNT(*) FROM site_news WHERE status = 'draft'")->fetchColumn());
+    $news_stats['media'] = intval($pdo->query("SELECT COUNT(*) FROM site_news_media")->fetchColumn());
+
+    if ($news_edit_id > 0) {
+        $stmt = $pdo->prepare("SELECT n.*, a.username AS author_name FROM site_news n LEFT JOIN accounts a ON a.id = n.author_account_id WHERE n.id = ?");
+        $stmt->execute([$news_edit_id]);
+        $editing_news = $stmt->fetch() ?: null;
+        if ($editing_news) {
+            $stmt = $pdo->prepare("SELECT * FROM site_news_media WHERE news_id = ? ORDER BY sort_order ASC, id ASC");
+            $stmt->execute([$news_edit_id]);
+            $editing_media = $stmt->fetchAll();
+        }
+    }
+} catch (Exception $e) {
+    error_log("Admin news query: " . $e->getMessage());
+    $news_total_pages = 1;
+}
 $csrf_token = $_SESSION['csrf_token'];
 ?>
 <!DOCTYPE html>
@@ -478,6 +847,21 @@ $csrf_token = $_SESSION['csrf_token'];
         .table-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .notice-line { display: none; margin-bottom: 14px; }
         .notice-line.show { display: block; animation: noticeDrop 0.18s ease-out; }
+        .news-editor-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr); gap: 16px; align-items: start; }
+        .news-textarea { min-height: 210px; resize: vertical; line-height: 1.55; }
+        .media-drop { border: 1px dashed #4a3b20; background: rgba(229,169,59,0.06); border-radius: 4px; padding: 14px; color: #b7b0a7; }
+        .media-drop input { width: 100%; margin-top: 8px; color: #d8d8d8; }
+        .news-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+        .news-media-card { background: #121214; border: 1px solid #29292c; border-radius: 4px; padding: 8px; min-width: 0; }
+        .news-media-preview { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 3px; background: #050505; border: 1px solid #242426; display: block; }
+        .news-media-name { color: #d8d8d8; font-size: 11px; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .news-media-meta { color: #8c8c8c; font-size: 10px; margin-top: 2px; }
+        .news-list-admin { display: flex; flex-direction: column; gap: 10px; }
+        .news-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; background: rgba(18,18,20,0.78); border: 1px solid #29292c; border-radius: 4px; padding: 12px; }
+        .news-admin-title { color: #fff; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .news-admin-meta { color: #8c8c8c; font-size: 11px; display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+        .news-admin-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .inline-form { display: inline; }
         .danger-link { color: #e74c3c; background: none; border: 0; cursor: pointer; font: inherit; font-weight: 700; }
         .row-flash { animation: rowFlash 0.7s ease-out; }
         .tanks-table td { vertical-align: middle; }
@@ -492,6 +876,7 @@ $csrf_token = $_SESSION['csrf_token'];
         @media (max-width: 1080px) {
             .admin-grid { grid-template-columns: 1fr; }
             .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .news-editor-grid { grid-template-columns: 1fr; }
         }
         @media (max-width: 760px) {
             .admin-hero-strip, .bulk-panel { grid-template-columns: 1fr; flex-direction: column; align-items: flex-start; }
@@ -889,8 +1274,15 @@ $csrf_token = $_SESSION['csrf_token'];
         <div class="admin-stack">
             <div class="admin-tabs" style="display:flex;gap:4px;margin-bottom:14px;">
                 <a href="admin.php?tab=vehicles&amp;account_id=<?php echo intval($selected_account_id); ?>&amp;account_search=<?php echo h($account_search); ?>" class="btn <?php echo $tab === 'vehicles' ? 'btn-primary' : 'btn-secondary'; ?>" style="flex:1;text-align:center;">Контроль техники</a>
+                <a href="admin.php?tab=news" class="btn <?php echo $tab === 'news' ? 'btn-primary' : 'btn-secondary'; ?>" style="flex:1;text-align:center;">Новости сайта</a>
                 <a href="admin.php?tab=users&amp;account_id=<?php echo intval($selected_account_id); ?>&amp;account_search=<?php echo h($account_search); ?>" class="btn <?php echo $tab === 'users' ? 'btn-primary' : 'btn-secondary'; ?>" style="flex:1;text-align:center;">Пользователи</a>
             </div>
+
+            <?php if ($admin_flash): ?>
+                <div class="alert <?php echo $admin_flash['type'] === 'danger' ? 'alert-danger' : 'alert-success'; ?>">
+                    <?php echo h($admin_flash['message'] ?? ''); ?>
+                </div>
+            <?php endif; ?>
 
             <?php if ($tab === 'vehicles'): ?>
             <div class="admin-hero-strip">
@@ -1062,6 +1454,207 @@ $csrf_token = $_SESSION['csrf_token'];
                                 $link = 'admin.php?' . http_build_query($query_params);
                             ?>
                                 <a href="<?php echo h($link); ?>" class="pagination-item <?php echo $page === $i ? 'active' : ''; ?>"><?php echo $i; ?></a>
+                            <?php endfor; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php elseif ($tab === 'news'): ?>
+            <?php
+            $form_news = $editing_news ?: [
+                'id' => 0,
+                'title' => '',
+                'summary' => '',
+                'body' => '',
+                'status' => 'draft',
+                'is_pinned' => 0,
+                'published_at' => '',
+            ];
+            ?>
+            <div class="admin-hero-strip">
+                <div>
+                    <div class="admin-hero-title text-base md:text-xl">Новости сайта</div>
+                    <div class="admin-hero-sub">Публикации появляются на главной странице. К новости можно прикрепить несколько изображений или видео.</div>
+                </div>
+                <div class="admin-live"><?php echo $news_stats['published']; ?> опубликовано</div>
+            </div>
+
+            <div class="metric-grid">
+                <div class="metric">
+                    <div class="metric-value"><?php echo $news_stats['published']; ?></div>
+                    <div class="metric-label">опубликовано</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value"><?php echo $news_stats['draft']; ?></div>
+                    <div class="metric-label">черновиков</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value"><?php echo $news_stats['media']; ?></div>
+                    <div class="metric-label">медиафайлов</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value"><?php echo $news_total; ?></div>
+                    <div class="metric-label">в текущем списке</div>
+                </div>
+            </div>
+
+            <div class="news-editor-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title text-sm md:text-lg"><?php echo intval($form_news['id']) > 0 ? 'Редактирование новости' : 'Новая публикация'; ?></div>
+                        <?php if (intval($form_news['id']) > 0): ?>
+                            <a href="admin.php?tab=news" class="btn btn-secondary">Новая</a>
+                        <?php endif; ?>
+                    </div>
+                    <div class="card-body">
+                        <form action="admin.php?tab=news" method="POST" enctype="multipart/form-data" class="admin-form-grid">
+                            <input type="hidden" name="csrf_token" value="<?php echo h($csrf_token); ?>">
+                            <input type="hidden" name="action" value="save_news">
+                            <input type="hidden" name="news_id" value="<?php echo intval($form_news['id']); ?>">
+
+                            <div class="form-group full">
+                                <label>Заголовок</label>
+                                <input type="text" name="title" class="form-control" maxlength="180" required value="<?php echo h($form_news['title']); ?>" placeholder="Например: Открыт общий тест">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Статус</label>
+                                <select name="status" class="form-control">
+                                    <option value="draft" <?php echo $form_news['status'] === 'draft' ? 'selected' : ''; ?>>Черновик</option>
+                                    <option value="published" <?php echo $form_news['status'] === 'published' ? 'selected' : ''; ?>>Опубликовано</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Дата публикации</label>
+                                <input type="datetime-local" name="published_at" class="form-control" value="<?php echo h(news_datetime_input($form_news['published_at'] ?? '')); ?>">
+                            </div>
+
+                            <div class="form-group full">
+                                <label>Короткое описание</label>
+                                <input type="text" name="summary" class="form-control" maxlength="512" value="<?php echo h($form_news['summary']); ?>" placeholder="Показывается под заголовком на главной">
+                            </div>
+
+                            <div class="form-group full">
+                                <label>Текст новости</label>
+                                <textarea name="body" class="form-control news-textarea" required placeholder="Основной текст новости"><?php echo h($form_news['body']); ?></textarea>
+                            </div>
+
+                            <div class="form-group full">
+                                <label class="switch-label" style="display:flex;gap:10px;align-items:center;color:#d8d8d8;text-transform:none;">
+                                    <input type="checkbox" name="is_pinned" value="1" <?php echo intval($form_news['is_pinned'] ?? 0) === 1 ? 'checked' : ''; ?>>
+                                    Закрепить выше остальных новостей
+                                </label>
+                            </div>
+
+                            <div class="form-group full media-drop">
+                                <div style="font-weight:800;color:#e5a93b;text-transform:uppercase;font-size:12px;">Медиа</div>
+                                <div style="font-size:12px;">Можно выбрать несколько файлов. Изображения до 8 МБ, видео до 128 МБ.</div>
+                                <input type="file" name="media_files[]" multiple accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg">
+                            </div>
+
+                            <div class="full table-actions">
+                                <button type="submit" class="btn btn-primary">Сохранить</button>
+                                <?php if (intval($form_news['id']) > 0): ?>
+                                    <a href="index.php" class="btn btn-secondary" target="_blank">Открыть главную</a>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title text-sm md:text-lg">Прикрепленные медиа</div>
+                        <div class="muted"><?php echo count($editing_media); ?> файлов</div>
+                    </div>
+                    <div class="card-body">
+                        <?php if ($editing_news && !empty($editing_media)): ?>
+                            <div class="news-media-grid">
+                                <?php foreach ($editing_media as $media): ?>
+                                    <div class="news-media-card">
+                                        <?php if ($media['media_type'] === 'image'): ?>
+                                            <img src="<?php echo h($media['file_path']); ?>" alt="<?php echo h($media['original_name']); ?>" class="news-media-preview">
+                                        <?php else: ?>
+                                            <video src="<?php echo h($media['file_path']); ?>" class="news-media-preview" controls preload="metadata"></video>
+                                        <?php endif; ?>
+                                        <div class="news-media-name"><?php echo h($media['original_name']); ?></div>
+                                        <div class="news-media-meta"><?php echo h($media['media_type']); ?> · <?php echo h(format_bytes($media['size_bytes'])); ?></div>
+                                        <form action="admin.php?tab=news&amp;edit_id=<?php echo intval($editing_news['id']); ?>" method="POST" class="inline-form" onsubmit="return confirm('Удалить этот файл?');">
+                                            <input type="hidden" name="csrf_token" value="<?php echo h($csrf_token); ?>">
+                                            <input type="hidden" name="action" value="delete_news_media">
+                                            <input type="hidden" name="media_id" value="<?php echo intval($media['id']); ?>">
+                                            <button type="submit" class="danger-link" style="margin-top:8px;">Удалить</button>
+                                        </form>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="admin-empty">Сначала сохрани новость, затем добавь картинки или видео.</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title text-sm md:text-lg">Список новостей</div>
+                    <div class="muted"><?php echo $news_total; ?> записей</div>
+                </div>
+                <div class="card-body">
+                    <form action="admin.php" method="GET" class="admin-toolbar">
+                        <input type="hidden" name="tab" value="news">
+                        <input type="text" name="news_search" class="form-control search-input" placeholder="Поиск по новостям" value="<?php echo h($news_search); ?>">
+                        <select name="news_status" class="form-control">
+                            <option value="">Все статусы</option>
+                            <option value="published" <?php echo $news_status === 'published' ? 'selected' : ''; ?>>Опубликованные</option>
+                            <option value="draft" <?php echo $news_status === 'draft' ? 'selected' : ''; ?>>Черновики</option>
+                        </select>
+                        <button type="submit" class="btn btn-primary">Фильтр</button>
+                        <a href="admin.php?tab=news" class="btn btn-secondary">Сбросить</a>
+                    </form>
+
+                    <div class="news-list-admin">
+                        <?php foreach ($news_items as $item): ?>
+                            <div class="news-admin-row">
+                                <div>
+                                    <div class="news-admin-title"><?php echo h($item['title']); ?></div>
+                                    <div class="news-admin-meta">
+                                        <span><?php echo $item['status'] === 'published' ? '<span class="pill pill-on">опубликовано</span>' : '<span class="pill pill-neutral">черновик</span>'; ?></span>
+                                        <?php if (intval($item['is_pinned']) === 1): ?><span class="pill pill-on">закреплено</span><?php endif; ?>
+                                        <span><?php echo h($item['published_at'] ?: $item['created_at']); ?></span>
+                                        <span><?php echo h($item['author_name'] ?: 'admin'); ?></span>
+                                        <span>медиа: <?php echo intval($item['media_count']); ?></span>
+                                    </div>
+                                </div>
+                                <div class="news-admin-actions">
+                                    <a class="btn btn-secondary" href="admin.php?tab=news&amp;edit_id=<?php echo intval($item['id']); ?>">Редактировать</a>
+                                    <form action="admin.php?tab=news" method="POST" class="inline-form" onsubmit="return confirm('Удалить новость полностью?');">
+                                        <input type="hidden" name="csrf_token" value="<?php echo h($csrf_token); ?>">
+                                        <input type="hidden" name="action" value="delete_news">
+                                        <input type="hidden" name="news_id" value="<?php echo intval($item['id']); ?>">
+                                        <button type="submit" class="btn btn-danger">Удалить</button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <?php if (empty($news_items)): ?>
+                            <div class="admin-empty">Новостей по этим фильтрам нет.</div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($news_total_pages > 1): ?>
+                        <div class="pagination">
+                            <?php
+                            $n_start = max(1, $news_page - 4);
+                            $n_end = min($news_total_pages, $news_page + 4);
+                            for ($i = $n_start; $i <= $n_end; $i++):
+                                $query_params = $_GET;
+                                $query_params['tab'] = 'news';
+                                $query_params['news_page'] = $i;
+                                $link = 'admin.php?' . http_build_query($query_params);
+                            ?>
+                                <a href="<?php echo h($link); ?>" class="pagination-item <?php echo $news_page === $i ? 'active' : ''; ?>"><?php echo $i; ?></a>
                             <?php endfor; ?>
                         </div>
                     <?php endif; ?>

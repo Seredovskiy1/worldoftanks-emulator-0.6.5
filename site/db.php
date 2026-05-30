@@ -47,6 +47,8 @@ function ensure_site_schema($pdo) {
     if ($ready) {
         return;
     }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS site_news (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, author_account_id BIGINT UNSIGNED NULL, title VARCHAR(180) NOT NULL, summary VARCHAR(512) NOT NULL DEFAULT '', body MEDIUMTEXT NOT NULL, status ENUM('draft', 'published') NOT NULL DEFAULT 'draft', is_pinned TINYINT NOT NULL DEFAULT 0, published_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (id), KEY idx_site_news_status (status, published_at), KEY idx_site_news_pinned (is_pinned, published_at), KEY idx_site_news_author (author_account_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS site_news_media (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, news_id BIGINT UNSIGNED NOT NULL, media_type ENUM('image', 'video') NOT NULL, file_path VARCHAR(255) NOT NULL, original_name VARCHAR(255) NOT NULL, mime_type VARCHAR(120) NOT NULL, size_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0, sort_order INT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id), KEY idx_site_news_media_news (news_id, sort_order), CONSTRAINT fk_site_news_media_news FOREIGN KEY (news_id) REFERENCES site_news(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     $pdo->exec("CREATE TABLE IF NOT EXISTS disabled_vehicles (vehicle_name VARCHAR(128) NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (vehicle_name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     $pdo->exec("CREATE TABLE IF NOT EXISTS account_vehicle_overrides (account_id BIGINT UNSIGNED NOT NULL, vehicle_name VARCHAR(128) NOT NULL, is_enabled TINYINT NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (account_id, vehicle_name), KEY idx_account_vehicle_overrides_vehicle (vehicle_name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     $pdo->exec("CREATE TABLE IF NOT EXISTS vehicle_access_events (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, scope VARCHAR(16) NOT NULL, account_id BIGINT UNSIGNED NULL, vehicle_name VARCHAR(128) NOT NULL, is_enabled TINYINT NOT NULL, created_at DATETIME NOT NULL, PRIMARY KEY (id), KEY idx_vehicle_access_events_account (account_id), KEY idx_vehicle_access_events_scope (scope)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
@@ -101,7 +103,7 @@ function security_headers() {
     header('X-Frame-Options: DENY');
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://www.google.com https://www.gstatic.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src https://www.google.com; img-src 'self' data:; connect-src 'self'; font-src 'self'");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://www.google.com https://www.gstatic.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src https://www.google.com; img-src 'self' data:; media-src 'self'; connect-src 'self'; font-src 'self'");
 }
 
 security_headers();

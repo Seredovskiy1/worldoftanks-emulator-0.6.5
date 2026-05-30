@@ -1,9 +1,19 @@
 <?php
 require_once 'db.php';
 
+function h($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function format_news_date($value) {
+    $time = strtotime((string)$value);
+    return $time ? date('d.m.Y H:i', $time) : '';
+}
+
 $total_accounts = 0;
 $total_battles = 0;
 $total_wins = 0;
+$news_items = [];
 
 try {
     $stmt = $pdo->query("SELECT COUNT(*) FROM accounts");
@@ -16,6 +26,36 @@ try {
     $total_wins = intval($stmt->fetchColumn());
 } catch (Exception $e) {
     error_log("Index stats query: " . $e->getMessage());
+}
+
+try {
+    $stmt = $pdo->query("SELECT n.*, a.username AS author_name
+        FROM site_news n
+        LEFT JOIN accounts a ON a.id = n.author_account_id
+        WHERE n.status = 'published'
+          AND (n.published_at IS NULL OR n.published_at <= NOW())
+        ORDER BY n.is_pinned DESC, COALESCE(n.published_at, n.created_at) DESC, n.id DESC
+        LIMIT 8");
+    $news_items = $stmt->fetchAll();
+    if (!empty($news_items)) {
+        $ids = array_map(function($item) {
+            return intval($item['id']);
+        }, $news_items);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("SELECT * FROM site_news_media WHERE news_id IN ($placeholders) ORDER BY news_id ASC, sort_order ASC, id ASC");
+        $stmt->execute($ids);
+        $media_by_news = [];
+        foreach ($stmt->fetchAll() as $media) {
+            $media_by_news[intval($media['news_id'])][] = $media;
+        }
+        foreach ($news_items as &$news_item) {
+            $news_item['media'] = $media_by_news[intval($news_item['id'])] ?? [];
+        }
+        unset($news_item);
+    }
+} catch (Exception $e) {
+    error_log("Index news query: " . $e->getMessage());
+    $news_items = [];
 }
 
 $active_page = 'index';
@@ -104,32 +144,55 @@ $active_page = 'index';
             </div>
             <div class="card-body">
                 <div class="news-list">
-                    <div class="news-item flex-col md:flex-row">
-                        <img src="images/wot_banner.png" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" alt="Новость 1">
-                        <div class="news-info">
-                            <a href="#" class="news-title">Запуск классического сервера 0.6.5!</a>
-                            <div class="news-meta">
-                                <span>Сегодня, 15:30</span>
-                                <span>Администрация</span>
-                            </div>
-                            <div class="news-text">
-                                Рады объявить об успешном открытии сервера классической версии игры! Вас ждут старые карты, знакомый баланс и ламповая атмосфера начала эпохи танковых баталий. Скачивайте клиент в разделе "Играть"!
+                    <?php foreach ($news_items as $news): ?>
+                        <?php
+                        $media = $news['media'] ?? [];
+                        $lead_media = $media[0] ?? null;
+                        ?>
+                        <div class="news-item news-item-rich flex-col md:flex-row">
+                            <?php if ($lead_media && $lead_media['media_type'] === 'image'): ?>
+                                <img src="<?php echo h($lead_media['file_path']); ?>" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" alt="<?php echo h($news['title']); ?>">
+                            <?php elseif ($lead_media && $lead_media['media_type'] === 'video'): ?>
+                                <video src="<?php echo h($lead_media['file_path']); ?>" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" controls preload="metadata"></video>
+                            <?php else: ?>
+                                <img src="images/wot_banner.png" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" alt="<?php echo h($news['title']); ?>">
+                            <?php endif; ?>
+                            <div class="news-info">
+                                <div class="news-title"><?php echo h($news['title']); ?></div>
+                                <div class="news-meta">
+                                    <span><?php echo h(format_news_date($news['published_at'] ?: $news['created_at'])); ?></span>
+                                    <span><?php echo h($news['author_name'] ?: 'Администрация'); ?></span>
+                                    <?php if (intval($news['is_pinned']) === 1): ?><span>Закреплено</span><?php endif; ?>
+                                </div>
+                                <?php if (trim((string)$news['summary']) !== ''): ?>
+                                    <div class="news-summary"><?php echo h($news['summary']); ?></div>
+                                <?php endif; ?>
+                                <div class="news-text">
+                                    <?php echo nl2br(h($news['body'])); ?>
+                                </div>
+                                <?php if (count($media) > 1): ?>
+                                    <div class="news-media-strip">
+                                        <?php foreach ($media as $idx => $item): ?>
+                                            <?php if ($idx === 0) { continue; } ?>
+                                            <?php if ($item['media_type'] === 'image'): ?>
+                                                <img src="<?php echo h($item['file_path']); ?>" alt="<?php echo h($item['original_name']); ?>" class="news-media-tile">
+                                            <?php else: ?>
+                                                <video src="<?php echo h($item['file_path']); ?>" class="news-media-tile" controls preload="metadata"></video>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         </div>
-                    </div>
-                    <div class="news-item flex-col md:flex-row">
-                        <img src="images/wot_banner.png" class="news-img w-full md:w-[120px] h-[100px] md:h-[90px]" alt="Новость 2">
-                        <div class="news-info">
-                            <a href="#" class="news-title">Обновленная система управления танками в админке</a>
-                            <div class="news-meta">
-                                <span>Вчера, 12:45</span>
-                                <span>Технический отдел</span>
-                            </div>
-                            <div class="news-text">
-                                Мы добавили удобную панель для администраторов, которая позволяет включать и отключать отдельные танки в игре в реальном времени. Это поможет точнее балансировать игровые сессии во время событий.
+                    <?php endforeach; ?>
+                    <?php if (empty($news_items)): ?>
+                        <div class="news-item">
+                            <div class="news-info">
+                                <div class="news-title">Новостей пока нет</div>
+                                <div class="news-text">Администрация еще не опубликовала новости. Загляните позже.</div>
                             </div>
                         </div>
-                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

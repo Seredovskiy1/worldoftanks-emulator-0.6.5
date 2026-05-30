@@ -12,6 +12,43 @@ CREATE DATABASE IF NOT EXISTS `wot_emulator`
 USE `wot_emulator`;
 
 -- ----------------------------------------------------------------------------
+--  site_news / site_news_media -- public news managed from the admin panel
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `site_news` (
+    `id`                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `author_account_id`  BIGINT UNSIGNED     NULL,
+    `title`              VARCHAR(180)    NOT NULL,
+    `summary`            VARCHAR(512)    NOT NULL DEFAULT '',
+    `body`               MEDIUMTEXT      NOT NULL,
+    `status`             ENUM('draft', 'published') NOT NULL DEFAULT 'draft',
+    `is_pinned`          TINYINT         NOT NULL DEFAULT 0,
+    `published_at`       DATETIME            NULL,
+    `created_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_site_news_status` (`status`, `published_at`),
+    KEY `idx_site_news_pinned` (`is_pinned`, `published_at`),
+    KEY `idx_site_news_author` (`author_account_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `site_news_media` (
+    `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `news_id`        BIGINT UNSIGNED NOT NULL,
+    `media_type`     ENUM('image', 'video') NOT NULL,
+    `file_path`      VARCHAR(255)    NOT NULL,
+    `original_name`  VARCHAR(255)    NOT NULL,
+    `mime_type`      VARCHAR(120)    NOT NULL,
+    `size_bytes`     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    `sort_order`     INT             NOT NULL DEFAULT 0,
+    `created_at`     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_site_news_media_news` (`news_id`, `sort_order`),
+    CONSTRAINT `fk_site_news_media_news`
+        FOREIGN KEY (`news_id`) REFERENCES `site_news`(`id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
 --  accounts -- player profile + persistent currency / progression
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `accounts` (
