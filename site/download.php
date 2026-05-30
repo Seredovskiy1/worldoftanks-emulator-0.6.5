@@ -71,6 +71,7 @@ require_once 'db.php';
                     <a href="https://mega.nz/file/XqI2AI5S#4rjABHtHgNhcwbjMhAunvHQXaiCgSSKzLpybNMDGfrU" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">Скачать клиент (Mega.nz)</a>
                     <a href="https://fex.net/ru/s/p0lvm0f" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px; margin-left: 10px;">Скачать клиент (Fex.net)</a>
                     <a href="https://limewire.com/d/Sfct4#4jZNLmzBhV" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px; margin-left: 10px;">Скачать клиент (LimeWire)</a>
+                    <a href="https://disk.yandex.ru/d/9USaIQXNZB-pAQ" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px; margin-left: 10px;">Скачать клиент (Яндекс Диск)</a>
                 </div>
 
                 <div style="font-size: 18px; font-weight: 600; color: #e5a93b; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #28282a; padding-bottom: 8px;">Инструкция по установке</div>
