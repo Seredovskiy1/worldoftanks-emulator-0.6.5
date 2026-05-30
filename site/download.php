@@ -70,7 +70,7 @@ require_once 'db.php';
                     <div class="dl-meta">Размер: ~2.4 ГБ | Формат: ZIP-архив | Версия: 0.6.5 (2011 год)</div>
                     <a href="https://mega.nz/file/XqI2AI5S#4rjABHtHgNhcwbjMhAunvHQXaiCgSSKzLpybNMDGfrU" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px;">Скачать клиент (Mega.nz)</a>
                     <a href="https://fex.net/ru/s/p0lvm0f" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px; margin-left: 10px;">Скачать клиент (Fex.net)</a>
-                    <a href="game/ProjectOrion.zip" download class="btn btn-primary" style="font-size: 16px; padding: 12px 30px; margin-left: 10px;">Скачать напрямую с сайта</a>
+                    <a href="https://limewire.com/d/Sfct4#4jZNLmzBhV" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 12px 30px; margin-left: 10px;">Скачать клиент (LimeWire)</a>
                 </div>
 
                 <div style="font-size: 18px; font-weight: 600; color: #e5a93b; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #28282a; padding-bottom: 8px;">Инструкция по установке</div>
