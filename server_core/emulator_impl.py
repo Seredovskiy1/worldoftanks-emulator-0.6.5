@@ -9145,6 +9145,10 @@ _STATIC_OBSTACLE_EXCLUDE_KEYWORDS = (
     b'dead', b'broken', b'debris', b'fallen', b'trunk', b'branch', b'snag', b'wood',
 )
 
+_STATIC_OBSTACLE_MOTION_PASS_KEYWORDS = (
+    b'militarydefences',
+)
+
 
 def is_static_obstacle_model(model_path: bytes) -> bool:
     name = (model_path or b'').lower()
@@ -9169,6 +9173,14 @@ def is_static_obstacle_model(model_path: bytes) -> bool:
         for keyword in _STATIC_OBSTACLE_ENV_KEYWORDS:
             if keyword in name:
                 return True
+    return False
+
+
+def is_motion_passable_static_obstacle(model_path: bytes) -> bool:
+    name = (model_path or b'').lower()
+    for keyword in _STATIC_OBSTACLE_MOTION_PASS_KEYWORDS:
+        if keyword in name:
+            return True
     return False
 
 
@@ -9699,6 +9711,8 @@ def find_blocking_static_obstacle(arena_type_id: int, x: float, z: float,
                                   tank_radius: float = STATIC_OBSTACLE_TANK_HALO):
     for obstacle in iter_obstacles_near_point(
             arena_type_id, x, z, halo=tank_radius):
+        if is_motion_passable_static_obstacle(obstacle[5] if len(obstacle) >= 6 else b''):
+            continue
         ox, oy, oz = obstacle[0], obstacle[1], obstacle[2]
         footprint = get_obstacle_move_footprint(obstacle)
         block_radius = get_obstacle_move_radius(obstacle) + tank_radius
@@ -9723,6 +9737,8 @@ def find_blocking_static_obstacle_on_path(arena_type_id: int,
                                           tank_radius: float = STATIC_OBSTACLE_TANK_HALO):
     for obstacle in iter_obstacles_near_segment(
             arena_type_id, prev_x, prev_z, new_x, new_z, halo=tank_radius):
+        if is_motion_passable_static_obstacle(obstacle[5] if len(obstacle) >= 6 else b''):
+            continue
         ox, oy, oz = obstacle[0], obstacle[1], obstacle[2]
         footprint = get_obstacle_move_footprint(obstacle)
         block_radius = get_obstacle_move_radius(obstacle) + tank_radius

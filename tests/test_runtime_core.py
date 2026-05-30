@@ -1802,6 +1802,28 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertTrue(was_blocked)
         self.assertEqual((new_x, new_z), (10.5, 0.0))
 
+    def test_military_defences_do_not_block_vehicle_motion(self):
+        original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
+        try:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE[emulator.ARENA_TYPE_KARELIA] = [
+                (10.0, 0.0, 10.0, 3.0, 4.0,
+                 b"content/MillitaryInstallations/mil203_MilitaryDefences/normal/lod0/mil203_MilitaryDefences01.model")
+            ]
+
+            blocked = emulator.find_blocking_static_obstacle(
+                emulator.ARENA_TYPE_KARELIA, 10.5, 10.0, tank_radius=2.5)
+            new_x, new_z, was_blocked = emulator.resolve_motion_against_obstacles(
+                emulator.ARENA_TYPE_KARELIA, 0.0, 0.0, 10.5, 10.0,
+                tank_radius=2.5)
+        finally:
+            emulator.STATIC_OBSTACLE_CACHE.clear()
+            emulator.STATIC_OBSTACLE_CACHE.update(original_cache)
+
+        self.assertIsNone(blocked)
+        self.assertFalse(was_blocked)
+        self.assertEqual((new_x, new_z), (10.5, 10.0))
+
     def test_client_vehicle_position_blocks_static_obstacle(self):
         original_cache = dict(emulator.STATIC_OBSTACLE_CACHE)
         original_index = dict(emulator.STATIC_OBSTACLE_INDEX_CACHE)
