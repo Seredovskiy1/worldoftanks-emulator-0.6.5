@@ -33,7 +33,6 @@ try {
         FROM site_news n
         LEFT JOIN accounts a ON a.id = n.author_account_id
         WHERE n.status = 'published'
-          AND (n.published_at IS NULL OR n.published_at <= NOW())
         ORDER BY n.is_pinned DESC, COALESCE(n.published_at, n.created_at) DESC, n.id DESC
         LIMIT 8");
     $news_items = $stmt->fetchAll();
