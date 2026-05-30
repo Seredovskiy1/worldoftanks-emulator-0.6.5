@@ -341,6 +341,33 @@ SCHEMA_STATEMENTS = (
     " quantity INT NOT NULL DEFAULT 0,"
     " PRIMARY KEY (account_id, vehicle_inv_id, slot_idx)"
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+    "CREATE TABLE IF NOT EXISTS disabled_vehicles ("
+    " vehicle_name VARCHAR(128) NOT NULL,"
+    " updated_at DATETIME NOT NULL,"
+    " PRIMARY KEY (vehicle_name)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS account_vehicle_overrides ("
+    " account_id BIGINT UNSIGNED NOT NULL,"
+    " vehicle_name VARCHAR(128) NOT NULL,"
+    " is_enabled TINYINT NOT NULL,"
+    " updated_at DATETIME NOT NULL,"
+    " PRIMARY KEY (account_id, vehicle_name),"
+    " KEY idx_account_vehicle_overrides_vehicle (vehicle_name)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS vehicle_access_events ("
+    " id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+    " scope VARCHAR(16) NOT NULL,"
+    " account_id BIGINT UNSIGNED NULL,"
+    " vehicle_name VARCHAR(128) NOT NULL,"
+    " is_enabled TINYINT NOT NULL,"
+    " created_at DATETIME NOT NULL,"
+    " PRIMARY KEY (id),"
+    " KEY idx_vehicle_access_events_account (account_id),"
+    " KEY idx_vehicle_access_events_scope (scope)"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 )
 
 
@@ -2160,6 +2187,7 @@ def is_hull_locked_gun_vehicle(vehicle: dict) -> bool:
 
 
 _MOTION_WARNED = False
+_VEHICLE_ACCESS_WARNED = False
 _VEHICLES_CACHE = {}
 _VEHICLES_BY_INV_CACHE = {}
 
@@ -2417,11 +2445,12 @@ def load_artefacts_config():
 
 
 def reset_data_caches():
-    global _TANKMEN_CONFIG_CACHE, _ARTEFACTS_CONFIG_CACHE, _MOTION_WARNED, _ALL_UNLOCK_DESCRIPTORS_CACHE
+    global _TANKMEN_CONFIG_CACHE, _ARTEFACTS_CONFIG_CACHE, _MOTION_WARNED, _VEHICLE_ACCESS_WARNED, _ALL_UNLOCK_DESCRIPTORS_CACHE
     _TANKMEN_CONFIG_CACHE = None
     _ARTEFACTS_CONFIG_CACHE = None
     _ALL_UNLOCK_DESCRIPTORS_CACHE = None
     _MOTION_WARNED = False
+    _VEHICLE_ACCESS_WARNED = False
     _VEHICLES_CACHE.clear()
     _VEHICLES_BY_INV_CACHE.clear()
     STATIC_OBSTACLE_CACHE.clear()
@@ -2523,6 +2552,151 @@ def get_vehicle_by_inventory_id(inv_id: int):
     except (TypeError, ValueError):
         return None
     return get_vehicle_inventory_map().get(inv_id)
+
+
+def _db_vehicle_name(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode('utf-8', 'ignore')
+    return str(value or '')
+
+
+def _warn_vehicle_access_unavailable(exc):
+    global _VEHICLE_ACCESS_WARNED
+    if _VEHICLE_ACCESS_WARNED:
+        return
+    print(f"[!] vehicle access rules unavailable; all vehicles enabled: {exc}")
+    _VEHICLE_ACCESS_WARNED = True
+
+
+def _vehicle_access_stamp(value) -> str:
+    if value is None:
+        return ''
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return str(value)
+
+
+def load_vehicle_access_rules(account_id: int = 0):
+    """Read admin-panel vehicle access rules from the shared web DB.
+
+    Returns None on DB/table errors so gameplay fails open instead of locking
+    players out when MySQL is temporarily unavailable.
+    """
+    account_id = int(account_id or 0)
+    disabled = set()
+    overrides = {}
+    try:
+        with db_lock:
+            conn = db_connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT vehicle_name FROM disabled_vehicles")
+                    disabled = {
+                        _db_vehicle_name(row[0])
+                        for row in (cur.fetchall() or [])
+                        if _db_vehicle_name(row[0])
+                    }
+                    if account_id:
+                        cur.execute(
+                            "SELECT vehicle_name, is_enabled "
+                            "FROM account_vehicle_overrides "
+                            "WHERE account_id=%s",
+                            (account_id,))
+                        overrides = {
+                            _db_vehicle_name(row[0]): bool(int(row[1] or 0))
+                            for row in (cur.fetchall() or [])
+                            if _db_vehicle_name(row[0])
+                        }
+            finally:
+                conn.close()
+    except Exception as exc:
+        _warn_vehicle_access_unavailable(exc)
+        return None
+    return {'disabled': disabled, 'overrides': overrides}
+
+
+def get_vehicle_access_revision(account_id: int = 0):
+    account_id = int(account_id or 0)
+    try:
+        with db_lock:
+            conn = db_connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*), MAX(updated_at) "
+                        "FROM disabled_vehicles")
+                    global_row = cur.fetchone() or (0, None)
+                    if account_id:
+                        cur.execute(
+                            "SELECT COUNT(*), MAX(updated_at) "
+                            "FROM account_vehicle_overrides "
+                            "WHERE account_id=%s",
+                            (account_id,))
+                        account_row = cur.fetchone() or (0, None)
+                        cur.execute(
+                            "SELECT COUNT(*), COALESCE(MAX(id), 0) "
+                            "FROM vehicle_access_events "
+                            "WHERE scope=%s OR account_id=%s",
+                            ('global', account_id))
+                    else:
+                        account_row = (0, None)
+                        cur.execute(
+                            "SELECT COUNT(*), COALESCE(MAX(id), 0) "
+                            "FROM vehicle_access_events WHERE scope=%s",
+                            ('global',))
+                    event_row = cur.fetchone() or (0, 0)
+            finally:
+                conn.close()
+    except Exception as exc:
+        _warn_vehicle_access_unavailable(exc)
+        return None
+    return (
+        int(global_row[0] or 0),
+        _vehicle_access_stamp(global_row[1]),
+        int(account_row[0] or 0),
+        _vehicle_access_stamp(account_row[1]),
+        int(event_row[0] or 0),
+        int(event_row[1] or 0),
+    )
+
+
+def vehicle_access_rules_allow(vehicle: dict, rules) -> bool:
+    if not vehicle or rules is None:
+        return True
+    name = str(vehicle.get('name') or '')
+    if not name:
+        return True
+    overrides = rules.get('overrides') or {}
+    if name in overrides:
+        return bool(overrides[name])
+    return name not in (rules.get('disabled') or set())
+
+
+def is_vehicle_accessible_for_account(account_id: int, vehicle: dict,
+                                      rules=None) -> bool:
+    if rules is None:
+        rules = load_vehicle_access_rules(account_id)
+    return vehicle_access_rules_allow(vehicle, rules)
+
+
+def filter_vehicles_for_account_access(account_id: int, vehicles: list) -> list:
+    vehicles = list(vehicles or [])
+    rules = load_vehicle_access_rules(account_id)
+    if rules is None:
+        return vehicles
+    return [
+        vehicle for vehicle in vehicles
+        if vehicle_access_rules_allow(vehicle, rules)
+    ]
+
+
+def find_first_accessible_vehicle_for_account(account_id: int, rules=None):
+    if rules is None:
+        rules = load_vehicle_access_rules(account_id)
+    for inv_id, vehicle in sorted(get_vehicle_inventory_map().items()):
+        if vehicle_access_rules_allow(vehicle, rules):
+            return int(inv_id), vehicle
+    return 0, None
 
 
 def get_vehicle_compact_descr(inv_id: int = None) -> bytes:
@@ -3364,7 +3538,8 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
       5=vehicleEngine, 6=vehicleFuelTank, 7=vehicleRadio, 8=tankman,
       9=optionalDevice, 10=shell, 11=equipment.
     """
-    veh_list = load_all_vehicles()
+    veh_list = filter_vehicles_for_account_access(account_id,
+                                                  load_all_vehicles())
     server_stats = get_server_stats()
     if account_id:
         try:
@@ -3415,6 +3590,9 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
         veh_ammo_layouts = {}
 
     veh_by_inv = get_vehicle_inventory_map()
+    accessible_vehicle_inv_ids = {
+        int(vehicle['inv_id']) for vehicle in veh_list
+    }
     tankmen_compDescr = {}
     tankmen_vehicle   = {}
     crew_by_vehicle   = {}
@@ -3422,6 +3600,8 @@ def make_full_sync_pickle(account_id: int = 0) -> bytes:
     for tm in tankmen_rows:
         tm_inv = int(tm['inv_id'])
         veh_inv = int(tm['vehicle_inv_id'] or 0)
+        if veh_inv and veh_inv not in accessible_vehicle_inv_ids:
+            veh_inv = 0
         nation_id = int(tm['nation_id'])
         vehicle_type_id = int(tm['vehicle_type_id'])
         first_name_id = int(tm['first_name_id'] or 0)
@@ -3583,6 +3763,24 @@ _EXTERNAL_SYNC_REV_CACHE = {}
 _sync_cache_lock = threading.RLock()
 
 
+def refresh_external_sync_revision(account_id: int = 0):
+    key = int(account_id or 0)
+    revision = get_vehicle_access_revision(key)
+    if revision is None:
+        return
+    with _sync_cache_lock:
+        old_revision = _EXTERNAL_SYNC_REV_CACHE.get(key)
+        if old_revision is None:
+            _EXTERNAL_SYNC_REV_CACHE[key] = revision
+            return
+        if old_revision == revision:
+            return
+        _EXTERNAL_SYNC_REV_CACHE[key] = revision
+        _ACCOUNT_SYNC_REV[key] = int(_ACCOUNT_SYNC_REV.get(key, 0)) + 1
+        _CACHED_SYNC_PICKLE.pop(key, None)
+        _CACHED_SYNC_BLOB.pop(key, None)
+
+
 def get_account_sync_revision(account_id: int = 0) -> int:
     key = int(account_id or 0)
     with _sync_cache_lock:
@@ -3602,6 +3800,7 @@ def bump_account_sync_revision(account_id: int = 0) -> int:
 
 def get_sync_pickle(account_id: int = 0) -> bytes:
     key = int(account_id or 0)
+    refresh_external_sync_revision(key)
     with _sync_cache_lock:
         cached = _CACHED_SYNC_PICKLE.get(key)
         if cached is None:
@@ -3612,10 +3811,15 @@ def get_sync_pickle(account_id: int = 0) -> bytes:
 
 def get_sync_blob(account_id: int = 0) -> bytes:
     key = int(account_id or 0)
+    refresh_external_sync_revision(key)
     with _sync_cache_lock:
         cached = _CACHED_SYNC_BLOB.get(key)
         if cached is None:
-            cached = zlib.compress(get_sync_pickle(key))
+            sync_pickle = _CACHED_SYNC_PICKLE.get(key)
+            if sync_pickle is None:
+                sync_pickle = make_full_sync_pickle(key)
+                _CACHED_SYNC_PICKLE[key] = sync_pickle
+            cached = zlib.compress(sync_pickle)
             _CACHED_SYNC_BLOB[key] = cached
         return cached
 
@@ -11822,6 +12026,7 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
     if cmd == CMD_SYNC_DATA:
         if sess.get('sync_data_stream_sent'):
             account_id = int(sess.get('account_id') or 0)
+            refresh_external_sync_revision(account_id)
             current_rev = get_account_sync_revision(account_id)
             requested_rev = parse_sync_requested_revision(payload)
             if requested_rev != current_rev:
@@ -12083,17 +12288,45 @@ def handle_account_doCmd(sock, addr, sess, msg_id: int, payload: bytes):
             send_player_back_to_hangar(sock, addr, sess)
         args = parse_doCmd_int3(payload) or (1, 0, 0)
         veh_inv_id, arena_type_id, queue_type = args
+        account_id = int(sess.get('account_id') or 0)
+        access_rules = load_vehicle_access_rules(account_id)
         vehicle = get_vehicle_by_inventory_id(veh_inv_id)
         if vehicle is None:
             print(f"    [!] requested battle vehicle invID={veh_inv_id} not found; "
                   f"using invID=1")
             vehicle = get_vehicle_by_inventory_id(1)
             veh_inv_id = 1
+        if vehicle is not None and not vehicle_access_rules_allow(
+                vehicle, access_rules):
+            blocked_inv_id = int(veh_inv_id)
+            blocked_name = vehicle.get('name') or 'unknown'
+            fallback_inv_id, fallback_vehicle = (
+                find_first_accessible_vehicle_for_account(
+                    account_id, access_rules))
+            if fallback_vehicle is None:
+                print(f"    [-] battle enqueue rejected: invID={blocked_inv_id} "
+                      f"name={blocked_name} disabled by admin and no "
+                      f"accessible fallback vehicle")
+                send_account_event(sock, addr, sess,
+                                   ACCOUNT_ONKICKEDFROMQUEUE_MSG_ID,
+                                   "Account.onKickedFromQueue()")
+                return
+            print(f"    [battle] invID={blocked_inv_id} name={blocked_name} "
+                  f"disabled by admin; using invID={fallback_inv_id} "
+                  f"name={fallback_vehicle.get('name')}")
+            veh_inv_id = fallback_inv_id
+            vehicle = fallback_vehicle
+        if vehicle is None:
+            print("    [-] battle enqueue rejected: no vehicles available")
+            send_account_event(sock, addr, sess,
+                               ACCOUNT_ONKICKEDFROMQUEUE_MSG_ID,
+                               "Account.onKickedFromQueue()")
+            return
         set_session_battle_vehicle_snapshot(sess, vehicle, veh_inv_id)
         sess['battle_arena_type_id'] = normalize_arena_type_id(arena_type_id)
         sess['battle_queue_type'] = queue_type
         sess['battle_id'] = store_battle_entry(sess['battle_arena_type_id'],
-                                               sess.get('account_id') or 0,
+                                               account_id,
                                                veh_inv_id)
         fwd, bwd = get_vehicle_speed_limits(vehicle)
         compact = sess.get('battle_vehicle_compactDescr') or b''

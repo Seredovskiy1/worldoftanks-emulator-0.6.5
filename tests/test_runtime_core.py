@@ -2894,6 +2894,76 @@ class RuntimeCoreTests(unittest.TestCase):
             emulator._EXTERNAL_SYNC_REV_CACHE.clear()
             emulator._EXTERNAL_SYNC_REV_CACHE.update(old_external)
 
+    def test_external_vehicle_access_revision_invalidates_sync_cache(self):
+        account_id = 654321
+        old_rev = dict(emulator._ACCOUNT_SYNC_REV)
+        old_pickle = dict(emulator._CACHED_SYNC_PICKLE)
+        old_blob = dict(emulator._CACHED_SYNC_BLOB)
+        old_external = dict(emulator._EXTERNAL_SYNC_REV_CACHE)
+        try:
+            emulator._ACCOUNT_SYNC_REV[account_id] = 4
+            emulator._EXTERNAL_SYNC_REV_CACHE[account_id] = ("old",)
+            emulator._CACHED_SYNC_PICKLE[account_id] = b"pickle"
+            emulator._CACHED_SYNC_BLOB[account_id] = b"blob"
+
+            with mock.patch.object(emulator, "get_vehicle_access_revision",
+                                   return_value=("new",)):
+                emulator.refresh_external_sync_revision(account_id)
+
+            self.assertEqual(emulator._ACCOUNT_SYNC_REV[account_id], 5)
+            self.assertNotIn(account_id, emulator._CACHED_SYNC_PICKLE)
+            self.assertNotIn(account_id, emulator._CACHED_SYNC_BLOB)
+            self.assertEqual(
+                emulator._EXTERNAL_SYNC_REV_CACHE[account_id], ("new",))
+        finally:
+            emulator._ACCOUNT_SYNC_REV.clear()
+            emulator._ACCOUNT_SYNC_REV.update(old_rev)
+            emulator._CACHED_SYNC_PICKLE.clear()
+            emulator._CACHED_SYNC_PICKLE.update(old_pickle)
+            emulator._CACHED_SYNC_BLOB.clear()
+            emulator._CACHED_SYNC_BLOB.update(old_blob)
+            emulator._EXTERNAL_SYNC_REV_CACHE.clear()
+            emulator._EXTERNAL_SYNC_REV_CACHE.update(old_external)
+
+    def test_vehicle_access_rules_account_override_wins(self):
+        vehicle = {"name": "SU-18"}
+        globally_disabled = {
+            "disabled": {"SU-18"},
+            "overrides": {},
+        }
+        account_enabled = {
+            "disabled": {"SU-18"},
+            "overrides": {"SU-18": True},
+        }
+        account_disabled = {
+            "disabled": set(),
+            "overrides": {"SU-18": False},
+        }
+
+        self.assertFalse(
+            emulator.vehicle_access_rules_allow(vehicle, globally_disabled))
+        self.assertTrue(
+            emulator.vehicle_access_rules_allow(vehicle, account_enabled))
+        self.assertFalse(
+            emulator.vehicle_access_rules_allow(vehicle, account_disabled))
+
+    def test_full_sync_filters_admin_disabled_vehicles(self):
+        blocked = next(
+            vehicle for vehicle in emulator.load_all_vehicles()
+            if emulator.is_artillery_vehicle(vehicle))
+        allowed = next(
+            vehicle for vehicle in emulator.load_all_vehicles()
+            if vehicle["name"] != blocked["name"])
+        rules = {"disabled": {blocked["name"]}, "overrides": {}}
+
+        with mock.patch.object(emulator, "load_vehicle_access_rules",
+                               return_value=rules):
+            diff = pickle.loads(emulator.make_full_sync_pickle(0))
+
+        comp_descr = diff["inventory"][1]["compDescr"]
+        self.assertNotIn(blocked["inv_id"], comp_descr)
+        self.assertIn(allowed["inv_id"], comp_descr)
+
     def test_stale_sync_request_replays_full_stream(self):
         account_id = 987655
         old_rev = dict(emulator._ACCOUNT_SYNC_REV)
@@ -2961,6 +3031,51 @@ class RuntimeCoreTests(unittest.TestCase):
         enqueue.assert_called_once_with(sock, addr, sess)
         self.assertEqual(sess["battle_vehicle_inv_id"], 1)
         self.assertEqual(sess["battle_id"], 91)
+
+    def test_enqueue_replaces_admin_disabled_vehicle(self):
+        blocked = next(
+            vehicle for vehicle in emulator.load_all_vehicles()
+            if emulator.is_artillery_vehicle(vehicle))
+        fallback = next(
+            vehicle for vehicle in emulator.load_all_vehicles()
+            if vehicle["name"] != blocked["name"])
+        rules = {"disabled": {blocked["name"]}, "overrides": {}}
+        sess = {
+            "account_id": 773,
+            "username": "queued",
+            "addr": ("127.0.0.1", 1773),
+        }
+        sock = object()
+        addr = sess["addr"]
+        payload = struct.pack(
+            "<hhiii", 0, emulator.CMD_ENQUEUE_FOR_ARENA,
+            blocked["inv_id"], emulator.ARENA_TYPE_KARELIA, 0)
+
+        with mock.patch.object(emulator, "load_vehicle_access_rules",
+                               return_value=rules), \
+                mock.patch.object(emulator, "store_battle_entry",
+                                  return_value=92) as store, \
+                mock.patch.object(emulator, "send_account_event",
+                                  return_value=True) as send_event, \
+                mock.patch.object(emulator, "enqueue_for_matchmaking",
+                                  return_value=None) as enqueue, \
+                mock.patch.object(emulator, "push_account_diff",
+                                  return_value=True) as push_diff:
+            emulator.handle_account_doCmd(sock, addr, sess, 0xc4, payload)
+
+        store.assert_called_once_with(
+            emulator.ARENA_TYPE_KARELIA, sess["account_id"],
+            fallback["inv_id"])
+        send_event.assert_called_once_with(
+            sock, addr, sess, emulator.ACCOUNT_ONENQUEUED_MSG_ID,
+            "Account.onEnqueued()")
+        push_diff.assert_called_once_with(
+            sock, addr, sess,
+            {"cache": {"vehsLock": {
+                fallback["inv_id"]: emulator.LOCK_REASON_IN_QUEUE}}})
+        enqueue.assert_called_once_with(sock, addr, sess)
+        self.assertEqual(sess["battle_vehicle_inv_id"], fallback["inv_id"])
+        self.assertEqual(sess["battle_vehicle_name"], fallback["name"])
 
     def test_dequeue_pushes_vehicle_unlock_and_cancels_empty_queue_timer(self):
         class FakeTimer:
