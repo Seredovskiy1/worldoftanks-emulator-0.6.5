@@ -203,9 +203,7 @@ function ensure_news_upload_dir() {
     if (!is_dir($dir) && !mkdir($dir, 0775, true)) {
         throw new RuntimeException('Не удалось создать папку uploads/news.');
     }
-    if (!is_writable($dir)) {
-        throw new RuntimeException('Папка uploads/news недоступна для записи.');
-    }
+    @chmod($dir, 0775);
     return $dir;
 }
 
@@ -500,7 +498,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['ajax'])) {
                 $title = limit_text($_POST['title'] ?? '', 180);
                 $summary = limit_text($_POST['summary'] ?? '', 512);
                 $body = trim((string)($_POST['body'] ?? ''));
-                $status = ($_POST['status'] ?? 'draft') === 'published' ? 'published' : 'draft';
+                $status = ($_POST['status'] ?? 'published') === 'draft' ? 'draft' : 'published';
                 $is_pinned = isset($_POST['is_pinned']) ? 1 : 0;
                 $published_at = parse_news_datetime($_POST['published_at'] ?? '');
                 if ($status === 'published' && !$published_at) {
@@ -545,8 +543,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['ajax'])) {
                     $news_id = intval($pdo->lastInsertId());
                 }
 
-                $uploaded = attach_news_uploads($pdo, $news_id);
-                set_admin_flash('success', $uploaded > 0 ? 'Новость сохранена, медиа загружено: ' . $uploaded . '.' : 'Новость сохранена.');
+                try {
+                    $uploaded = attach_news_uploads($pdo, $news_id);
+                    set_admin_flash('success', $uploaded > 0 ? 'Новость сохранена, медиа загружено: ' . $uploaded . '.' : 'Новость сохранена.');
+                } catch (Exception $media_error) {
+                    error_log("Admin news upload error: " . $media_error->getMessage());
+                    set_admin_flash('danger', 'Новость сохранена, но медиа не загрузилось: ' . $media_error->getMessage());
+                }
                 redirect_admin_news(['edit_id' => $news_id]);
             }
 
@@ -1466,7 +1469,7 @@ $csrf_token = $_SESSION['csrf_token'];
                 'title' => '',
                 'summary' => '',
                 'body' => '',
-                'status' => 'draft',
+                'status' => 'published',
                 'is_pinned' => 0,
                 'published_at' => '',
             ];
